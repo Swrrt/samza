@@ -54,49 +54,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.Option;
 
-
-/**
- * StreamProcessor can be embedded in any application or executed in a distributed environment (aka cluster) as an
- * independent process.
- *
- * <p>
- *
- * <b>Note</b>: A single JVM can create multiple StreamProcessor instances. It is safe to create StreamProcessor instances in
- * multiple threads. This class is thread safe.
- *
- * </p>
- *
- * <pre>
- * A StreamProcessor could be in any one of the following states:
- * NEW, STARTED, IN_REBALANCE, RUNNING, STOPPING, STOPPED.
- *
- * Describes the valid state transitions of the {@link StreamProcessor}.
- *
- *
- *                                                                                                   ────────────────────────────────
- *                                                                                                  │                               │
- *                                                                                                  │                               │
- *                                                                                                  │                               │
- *                                                                                                  │                               │
- *     New                                StreamProcessor.start()          Rebalance triggered      V        Receives JobModel      │
- *  StreamProcessor ──────────▶   NEW ───────────────────────────▶ STARTED ──────────────────▶ IN_REBALANCE ─────────────────────▶ RUNNING
- *   Creation                      │                                 │     by group leader          │     and starts Container      │
- *                                 │                                 │                              │                               │
- *                             Stre│amProcessor.stop()           Stre│amProcessor.stop()        Stre│amProcessor.stop()         Stre│amProcessor.stop()
- *                                 │                                 │                              │                               │
- *                                 │                                 │                              │                               │
- *                                 │                                 │                              │                               │
- *                                 V                                 V                              V                               V
- *                                  ───────────────────────────▶ STOPPING D──────────────────────────────────────────────────────────
- *                                                                  │
- *                                                                  │
- *                                            After JobCoordinator and SamzaContainer had shutdown.
- *                                                                  │
- *                                                                  V
- *                                                                 STOPPED
- *
- * </pre>
- */
 @InterfaceStability.Evolving
 public class StreamProcessor {
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamProcessor.class);
