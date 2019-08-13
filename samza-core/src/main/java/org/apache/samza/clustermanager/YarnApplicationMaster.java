@@ -54,7 +54,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class YarnApplicationMaster{
-    private static final Logger log = LoggerFactory.getLogger(ClusterBasedJobCoordinator.class);
+    private static final Logger log = LoggerFactory.getLogger(YarnApplicationMaster.class);
 
     private final Config config;
     private final ClusterManagerConfig clusterManagerConfig;

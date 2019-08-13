@@ -69,7 +69,7 @@ public class LocalStreamProcessorRunner {
 
 
             // create the StreamProcessors
-            JobConfig jobConfig = (JobConfig)config;
+            JobConfig jobConfig = new JobConfig(config);
             StreamProcessor processor = createStreamProcessor(jobConfig, appDesc,
                     null);
             processor.start();
