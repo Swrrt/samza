@@ -45,7 +45,7 @@ public class YarnApplicationMaster extends ClusterBasedJobCoordinator{
     private static final Logger log = LoggerFactory.getLogger(YarnApplicationMaster.class);
 
     private final LeaderJobCoordinator leaderJobCoordinator;
-    
+
     public YarnApplicationMaster(Config coordinatorSystemConfig){
         super(coordinatorSystemConfig);
         leaderJobCoordinator = createLeaderJobCoordinator(coordinatorSystemConfig);

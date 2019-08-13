@@ -311,18 +311,6 @@ public class FollowerJobCoordinator implements JobCoordinator {
         return new JobModel(new MapConfig(), model.getContainers());
     }
 
-    class LeaderElectorListenerImpl implements LeaderElectorListener {
-        @Override
-        public void onBecomingLeader() {
-            LOG.info("ZkJobCoordinator::onBecomeLeader - I became the leader");
-            metrics.isLeader.set(true);
-            zkUtils.subscribeToProcessorChange(new FollowerJobCoordinator.ProcessorChangeHandler(zkUtils));
-            debounceTimer.scheduleAfterDebounceTime(ON_PROCESSOR_CHANGE, debounceTimeMs, () -> {
-                // actual actions to do are the same as onProcessorChange
-                doOnProcessorChange(new ArrayList<>());
-            });
-        }
-    }
 
     class ZkBarrierListenerImpl implements ZkBarrierListener {
         private final String barrierAction = "BarrierAction";
@@ -376,31 +364,6 @@ public class FollowerJobCoordinator implements JobCoordinator {
             LOG.error("Encountered error while attaining consensus on JobModel version " + version);
             metrics.barrierError.inc();
             stop();
-        }
-    }
-
-    class ProcessorChangeHandler extends ZkUtils.GenerationAwareZkChildListener {
-
-        public ProcessorChangeHandler(ZkUtils zkUtils) {
-            super(zkUtils, "ProcessorChangeHandler");
-        }
-
-        /**
-         * Called when the children of the given path changed.
-         *
-         * @param parentPath      The parent path
-         * @param currentChildren The children or null if the root node (parent path) was deleted.
-         * @throws Exception
-         */
-        @Override
-        public void doHandleChildChange(String parentPath, List<String> currentChildren)
-                throws Exception {
-            if (currentChildren == null) {
-                LOG.info("handleChildChange on path " + parentPath + " was invoked with NULL list of children");
-            } else {
-                LOG.info("ProcessorChangeHandler::handleChildChange - Path: {} Current Children: {} ", parentPath, currentChildren);
-                onProcessorChange(currentChildren);
-            }
         }
     }
 
