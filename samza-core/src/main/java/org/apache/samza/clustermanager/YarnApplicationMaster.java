@@ -310,7 +310,7 @@ public class YarnApplicationMaster{
     }
 
     private LeaderJobCoordinator createLeaderJobCoordinator(Config config) {
-        String jobCoordinatorFactoryClassName = "LeaderJobCoordinator";
+        String jobCoordinatorFactoryClassName = "LeaderJobCoordinatorFactory";
         return (LeaderJobCoordinator)Util.getObj(jobCoordinatorFactoryClassName, LeaderJobCoordinatorFactory.class).getJobCoordinator(config);
     }
     private void startLeader(){
