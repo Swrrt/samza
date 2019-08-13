@@ -61,8 +61,8 @@ public class LocalStreamProcessorRunner {
                 ApplicationDescriptorUtil.getAppDescriptor(ApplicationUtil.fromConfig(config), config);
         LocalStreamProcessorRunner runner = new LocalStreamProcessorRunner();
         runner.run(appDesc, containerId, jobModel, config);
-
-        System.exit(0);
+        while(true);
+        //System.exit(0);
     }
     private void run(ApplicationDescriptorImpl<? extends ApplicationDescriptor> appDesc, String containerId,
                             JobModel jobModel, Config config) {
