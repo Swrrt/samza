@@ -59,11 +59,12 @@ public class LocalStreamProcessorRunner {
 
         ApplicationDescriptorImpl<? extends ApplicationDescriptor> appDesc =
                 ApplicationDescriptorUtil.getAppDescriptor(ApplicationUtil.fromConfig(config), config);
-        run(appDesc, containerId, jobModel, config);
+        LocalStreamProcessorRunner runner = new LocalStreamProcessorRunner();
+        runner.run(appDesc, containerId, jobModel, config);
 
         System.exit(0);
     }
-    private static void run(ApplicationDescriptorImpl<? extends ApplicationDescriptor> appDesc, String containerId,
+    private void run(ApplicationDescriptorImpl<? extends ApplicationDescriptor> appDesc, String containerId,
                             JobModel jobModel, Config config) {
         try {
 
@@ -71,7 +72,7 @@ public class LocalStreamProcessorRunner {
             // create the StreamProcessors
             JobConfig jobConfig = new JobConfig(config);
             StreamProcessor processor = createStreamProcessor(jobConfig, appDesc,
-                    null);
+                    sp -> new LocalStreamProcessorLifecycleListener(sp, jobConfig));
             processor.start();
         } catch (Throwable throwable) {
             throw new SamzaException(String.format("Failed to start application: %s",
@@ -87,6 +88,30 @@ public class LocalStreamProcessorRunner {
                 reporters.put(name, factory.getMetricsReporter(name, null, config)));
         return new StreamProcessor(config, reporters, taskFactory, appDesc.getApplicationContainerContextFactory(),
                 appDesc.getApplicationTaskContextFactory(), listenerFactory, null);
+    }
+
+    private final class LocalStreamProcessorLifecycleListener implements ProcessorLifecycleListener {
+        private final StreamProcessor processor;
+        LocalStreamProcessorLifecycleListener(StreamProcessor processor, Config jobConfig) {
+            this.processor = processor;
+        }
+
+        @Override
+        public void beforeStart() {
+        }
+
+        @Override
+        public void afterStart() {
+        }
+
+        @Override
+        public void afterStop() {
+        }
+
+        @Override
+        public void afterFailure(Throwable t) {
+
+        }
     }
 
 }
