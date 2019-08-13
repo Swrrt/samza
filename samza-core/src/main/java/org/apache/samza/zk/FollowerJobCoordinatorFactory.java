@@ -49,7 +49,7 @@ public class FollowerJobCoordinatorFactory implements JobCoordinatorFactory {
         String jobCoordinatorZkBasePath = getJobCoordinationZkPath(config);
         ZkUtils zkUtils = getZkUtils(config, metricsRegistry, jobCoordinatorZkBasePath);
         LOG.debug("Creating ZkJobCoordinator with config: {}.", config);
-        return new FollowerJobCoordinator(config, metricsRegistry, zkUtils);
+        return new FollowerJobCoordinator(config, metricsRegistry, zkUtils, config.get("containerId"));
     }
 
     private ZkUtils getZkUtils(Config config, MetricsRegistry metricsRegistry, String coordinatorZkBasePath) {

@@ -56,7 +56,6 @@ public class LocalStreamProcessorRunner {
         MDC.put("containerName", "samza-container-" + containerId);
         MDC.put("jobName", jobName);
         MDC.put("jobId", jobId);
-
         ApplicationDescriptorImpl<? extends ApplicationDescriptor> appDesc =
                 ApplicationDescriptorUtil.getAppDescriptor(ApplicationUtil.fromConfig(config), config);
         LocalStreamProcessorRunner runner = new LocalStreamProcessorRunner();
@@ -70,6 +69,7 @@ public class LocalStreamProcessorRunner {
 
 
             // create the StreamProcessors
+            config.put("containerId", containerId);
             JobConfig jobConfig = new JobConfig(config);
             StreamProcessor processor = createStreamProcessor(jobConfig, appDesc,
                     sp -> new LocalStreamProcessorLifecycleListener(sp, jobConfig));

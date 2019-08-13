@@ -95,12 +95,12 @@ public class FollowerJobCoordinator implements JobCoordinator {
     @VisibleForTesting
     ScheduleAfterDebounceTime debounceTimer;
 
-    FollowerJobCoordinator(Config config, MetricsRegistry metricsRegistry, ZkUtils zkUtils) {
+    FollowerJobCoordinator(Config config, MetricsRegistry metricsRegistry, ZkUtils zkUtils, String containerId) {
         this.config = config;
 
         this.metrics = new ZkJobCoordinatorMetrics(metricsRegistry);
 
-        this.processorId = createProcessorId(config);
+        this.processorId = containerId;
         this.zkUtils = zkUtils;
         // setup a listener for a session state change
         // we are mostly interested in "session closed" and "new session created" events
@@ -273,22 +273,6 @@ public class FollowerJobCoordinator implements JobCoordinator {
         LOG.info("pid=" + processorId + "Published new Job Model. Version = " + nextJMVersion);
 
         debounceTimer.scheduleAfterDebounceTime(ON_ZK_CLEANUP, 0, () -> zkUtils.cleanupZK(NUM_VERSIONS_TO_LEAVE));
-    }
-
-    private String createProcessorId(Config config) {
-        // TODO: This check to be removed after 0.13+
-        ApplicationConfig appConfig = new ApplicationConfig(config);
-        if (appConfig.getProcessorId() != null) {
-            return appConfig.getProcessorId();
-        } else if (StringUtils.isNotBlank(appConfig.getAppProcessorIdGeneratorClass())) {
-            ProcessorIdGenerator idGenerator =
-                    Util.getObj(appConfig.getAppProcessorIdGeneratorClass(), ProcessorIdGenerator.class);
-            return idGenerator.generateProcessorId(config);
-        } else {
-            throw new ConfigException(String
-                    .format("Expected either %s or %s to be configured", ApplicationConfig.PROCESSOR_ID,
-                            ApplicationConfig.APP_PROCESSOR_ID_GENERATOR_CLASS));
-        }
     }
 
     /**
