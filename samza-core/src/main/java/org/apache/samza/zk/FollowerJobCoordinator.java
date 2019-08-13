@@ -106,6 +106,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
         // we are mostly interested in "session closed" and "new session created" events
         zkUtils.getZkClient().subscribeStateChanges(new FollowerJobCoordinator.ZkSessionStateChangedListener());
         //leaderElector = new ZkLeaderElector(processorId, zkUtils);
+        zkUtils.validatePaths(new String[]{zkUtils.getKeyBuilder().getProcessorsPath()});
         //leaderElector.setLeaderElectorListener(new FollowerJobCoordinator.LeaderElectorListenerImpl());
         this.debounceTimeMs = new JobConfig(config).getDebounceTimeMs();
         this.reporters = MetricsReporterLoader.getMetricsReporters(new MetricsConfig(config), processorId);
