@@ -18,6 +18,7 @@
  */
 
 package org.apache.samza.job.yarn
+
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.yarn.api.ApplicationConstants
 import org.apache.hadoop.yarn.api.records.ApplicationId
@@ -33,14 +34,14 @@ import org.slf4j.LoggerFactory
 /**
  * Starts the application manager
  */
-class YarnJob(config: Config, hadoopConfig: Configuration) extends StreamJob {
+class ScalableYarnJob(config: Config, hadoopConfig: Configuration) extends StreamJob {
 
   val client = new ClientHelper(hadoopConfig)
   var appId: Option[ApplicationId] = None
   val yarnConfig = new YarnConfig(config)
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  def submit: YarnJob = {
+  def submit: ScalableYarnJob = {
     try {
       val cmdExec = buildAmCmd()
 
@@ -87,11 +88,13 @@ class YarnJob(config: Config, hadoopConfig: Configuration) extends StreamJob {
     }
     logger.info("Inside YarnJob: fwk_path is %s, ver is %s use it directly " format(fwkPath, fwkVersion))
 
-    var cmdExec = "./__package/bin/run-jc.sh" // default location
+    //var cmdExec = "./__package/bin/run-jc.sh" // default location
+    var cmdExec = "./__package/bin/run-am.sh"
 
     if (!fwkPath.isEmpty()) {
       // if we have framework installed as a separate package - use it
-      cmdExec = fwkPath + "/" + fwkVersion + "/bin/run-jc.sh"
+      //cmdExec = fwkPath + "/" + fwkVersion + "/bin/run-jc.sh"
+      cmdExec = fwkPath + "/" + fwkVersion + "/bin/run-am.sh"
 
       logger.info("Using FWK path: " + "export SAMZA_LOG_DIR=%s && ln -sfn %s logs && exec %s 1>logs/%s 2>logs/%s".
              format(ApplicationConstants.LOG_DIR_EXPANSION_VAR, ApplicationConstants.LOG_DIR_EXPANSION_VAR, cmdExec,
@@ -146,7 +149,7 @@ class YarnJob(config: Config, hadoopConfig: Configuration) extends StreamJob {
     }
   }
 
-  def kill: YarnJob = {
+  def kill: ScalableYarnJob = {
     // getAppId only returns one appID. Run multiple times to kill dupes (erroneous case)
     getAppId match {
       case Some(appId) =>

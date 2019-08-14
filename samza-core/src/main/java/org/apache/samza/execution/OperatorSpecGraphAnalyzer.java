@@ -56,6 +56,8 @@ import org.apache.samza.table.TableSpec;
     Multimap<OperatorSpec, InputOperatorSpec> joinToInputOpSpecs = HashMultimap.create();
 
     // Create a getNextOpSpecs() function that emulates connections between every SendToTableOperatorSpec
+    // — which are terminal OperatorSpecs — and all StreamTableJoinOperatorSpecs referencing the same TableSpec.
+    //
     // This is necessary to support Stream-Table Join scenarios because it allows us to associate streams behind
     // SendToTableOperatorSpecs with streams participating in Stream-Table Joins, a connection that would not be
     // easy to make otherwise since SendToTableOperatorSpecs are terminal operator specs.
