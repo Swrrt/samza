@@ -37,7 +37,7 @@ public class LocalStreamProcessorRunner {
         String containerId = System.getenv(ShellCommandConfig.ENV_CONTAINER_ID());
         log.info(String.format("Got container ID: %s", containerId));
         System.out.println(String.format("Container ID: %s", containerId));
-
+        if(containerId.equals("0"))containerId = "000002";
         String coordinatorUrl = System.getenv(ShellCommandConfig.ENV_COORDINATOR_URL());
         log.info(String.format("Got coordinator URL: %s", coordinatorUrl));
         System.out.println(String.format("Coordinator URL: %s", coordinatorUrl));
