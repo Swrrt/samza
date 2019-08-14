@@ -5,10 +5,7 @@ import org.apache.samza.application.ApplicationUtil;
 import org.apache.samza.application.descriptors.ApplicationDescriptor;
 import org.apache.samza.application.descriptors.ApplicationDescriptorImpl;
 import org.apache.samza.application.descriptors.ApplicationDescriptorUtil;
-import org.apache.samza.config.ApplicationConfig;
-import org.apache.samza.config.Config;
-import org.apache.samza.config.JobConfig;
-import org.apache.samza.config.ShellCommandConfig;
+import org.apache.samza.config.*;
 import org.apache.samza.container.SamzaContainer;
 import org.apache.samza.job.ApplicationStatus;
 import org.apache.samza.job.model.JobModel;
@@ -17,6 +14,7 @@ import org.apache.samza.processor.StreamProcessor;
 import org.apache.samza.task.TaskFactory;
 import org.apache.samza.task.TaskFactoryUtil;
 import org.apache.samza.util.SamzaUncaughtExceptionHandler;
+import org.apache.samza.util.Util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -70,7 +68,9 @@ public class LocalStreamProcessorRunner {
 
             // create the StreamProcessors
             //config.put("containerId", containerId);
-            JobConfig jobConfig = new JobConfig(config);
+            HashMap x = new HashMap(config);
+            x.put("containerId", containerId);
+            JobConfig jobConfig = new JobConfig(new MapConfig(x));
             jobConfig.put("containerId", containerId);
             StreamProcessor processor = createStreamProcessor(jobConfig, appDesc,
                     sp -> new LocalStreamProcessorLifecycleListener(sp, jobConfig));
