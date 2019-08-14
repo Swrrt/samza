@@ -69,8 +69,9 @@ public class LocalStreamProcessorRunner {
 
 
             // create the StreamProcessors
-            config.put("containerId", containerId);
+            //config.put("containerId", containerId);
             JobConfig jobConfig = new JobConfig(config);
+            jobConfig.put("containerId", containerId);
             StreamProcessor processor = createStreamProcessor(jobConfig, appDesc,
                     sp -> new LocalStreamProcessorLifecycleListener(sp, jobConfig));
             processor.start();
