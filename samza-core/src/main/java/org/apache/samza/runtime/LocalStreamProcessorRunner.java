@@ -71,7 +71,6 @@ public class LocalStreamProcessorRunner {
             HashMap x = new HashMap(config);
             x.put("containerId", containerId);
             JobConfig jobConfig = new JobConfig(new MapConfig(x));
-            jobConfig.put("containerId", containerId);
             StreamProcessor processor = createStreamProcessor(jobConfig, appDesc,
                     sp -> new LocalStreamProcessorLifecycleListener(sp, jobConfig));
             processor.start();
