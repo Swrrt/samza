@@ -35,6 +35,7 @@ import org.apache.samza.metrics.JmxServer;
 import org.apache.samza.metrics.MetricsRegistryMap;
 import org.apache.samza.serializers.model.SamzaObjectMapper;
 import org.apache.samza.storage.ChangelogStreamManager;
+import org.apache.samza.streamswitch.StreamSwitchListener;
 import org.apache.samza.system.StreamMetadataCache;
 import org.apache.samza.system.SystemAdmins;
 import org.apache.samza.system.SystemStream;
@@ -51,7 +52,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class YarnApplicationMaster{
+public class YarnApplicationMaster implements StreamSwitchListener{
     private static final Logger log = LoggerFactory.getLogger(YarnApplicationMaster.class);
 
     private final Config config;
@@ -315,8 +316,9 @@ public class YarnApplicationMaster{
         leaderJobCoordinator.start();
     }
 
-    public void scaleToN(int n, JobModel jobModel){ //Method used by decision listener
-        if(jobModel.getContainers().size() < n){   //Scale out
+    @Override
+    public void scaling(int n, Map<String, String> taskToContainerMap){ //Method used by decision listener
+        if(this.jobModel.getContainers().size() < n){   //Scale out
             int numToScaleOut = n - jobModel.getContainers().size();
             for(int i=0;i<numToScaleOut;i++)containerProcessManager.scaleOut();
         }else if(jobModel.getContainers().size() > n){  //Scale in
