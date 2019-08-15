@@ -493,4 +493,5 @@ public class FollowerJobCoordinator implements JobCoordinator {
             throw new SamzaException(e);
         }
     }
+
 }

@@ -488,7 +488,7 @@ public class ContainerProcessManager implements ClusterResourceManager.Callback 
     For scaling out
     Request one extra container from YARN
    */
-  public void requestOneMore(){
+  public void scaleOut(){
     log.info("Requesting one container!");
     int containerCount = state.containerCount.addAndGet(1);
     state.neededContainers.addAndGet(1);

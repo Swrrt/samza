@@ -28,7 +28,8 @@ include \
   'samza-shell',
   'samza-sql',
   'samza-sql-shell',
-  'samza-tools'
+  'samza-tools',
+  'samza-streamswitch'
 
 def scalaModules = [
         'samza-core',
@@ -39,7 +40,8 @@ def scalaModules = [
         'samza-hdfs',
         'samza-yarn',
         'samza-test',
-        'samza-autoscaling'
+        'samza-autoscaling',
+        'samza-streamswitch'
 ] as HashSet
 
 scalaModules.each {

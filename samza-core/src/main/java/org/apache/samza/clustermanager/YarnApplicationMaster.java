@@ -25,8 +25,6 @@ import org.apache.samza.SamzaException;
 import org.apache.samza.checkpoint.CheckpointManager;
 import org.apache.samza.config.*;
 import org.apache.samza.container.TaskName;
-import org.apache.samza.coordinator.JobCoordinator;
-import org.apache.samza.coordinator.JobCoordinatorFactory;
 import org.apache.samza.coordinator.JobModelManager;
 import org.apache.samza.coordinator.StreamPartitionCountMonitor;
 import org.apache.samza.coordinator.stream.CoordinatorStreamManager;
@@ -167,6 +165,7 @@ public class YarnApplicationMaster{
 
         // build a container process Manager
         containerProcessManager = new ContainerProcessManager(config, state, metrics);
+
     }
 
     /**
@@ -217,7 +216,6 @@ public class YarnApplicationMaster{
             partitionMonitor.start();
             leaderJobCoordinator = createLeaderJobCoordinator(config);
             startLeader();
-
             boolean isInterrupted = false;
             long lastTime = System.currentTimeMillis();
             while (!containerProcessManager.shouldShutdown() && !checkAndThrowException() && !isInterrupted) {
@@ -226,7 +224,7 @@ public class YarnApplicationMaster{
                     long time = System.currentTimeMillis();
                     if(time - lastTime > 30000){
                         lastTime = time;
-                        containerProcessManager.requestOneMore();
+                        containerProcessManager.scaleOut();
                     }
                 } catch (InterruptedException e) {
                     isInterrupted = true;
@@ -316,6 +314,16 @@ public class YarnApplicationMaster{
     private void startLeader(){
         leaderJobCoordinator.start();
     }
+
+    public void scaleToN(int n, JobModel jobModel){ //Method used by decision listener
+        if(jobModel.getContainers().size() < n){   //Scale out
+            int numToScaleOut = n - jobModel.getContainers().size();
+            for(int i=0;i<numToScaleOut;i++)containerProcessManager.scaleOut();
+        }else if(jobModel.getContainers().size() > n){  //Scale in
+
+        }
+    }
+
     public static void main(String[] args) {
         Config coordinatorSystemConfig = null;
         final String coordinatorSystemEnv = System.getenv(ShellCommandConfig.ENV_COORDINATOR_SYSTEM_CONFIG());
