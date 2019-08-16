@@ -181,8 +181,7 @@ public class YarnApplicationMaster implements StreamSwitchListener{
     }
 
     private StreamSwitch createStreamSwitch(){
-        String streamSwitchFactoryClassName = new JobCoordinatorConfig(config).getJobCoordinatorFactoryClassName();
-        if(streamSwitchFactoryClassName == null)streamSwitchFactoryClassName = "org.apache.samza.streamswitch.DefaulStreamSwitchFactory";
+        String streamSwitchFactoryClassName = config.getOrDefault("job.streamswitch.factory", "org.apache.samza.streamswitch.DefaultStreamSwitchFactory");
         return Util.getObj(streamSwitchFactoryClassName, StreamSwitchFactory.class).getStreamSwitch(config);
     }
 

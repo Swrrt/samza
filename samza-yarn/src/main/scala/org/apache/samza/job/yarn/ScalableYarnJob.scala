@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory
  * Starts the application manager
  */
 class ScalableYarnJob(config: Config, hadoopConfig: Configuration) extends YarnJob(config, hadoopConfig) {
-  
+
   override def buildAmCmd() =  {
     // figure out if we have framework is deployed into a separate location
     val fwkPath = config.get(JobConfig.SAMZA_FWK_PATH, "")
