@@ -175,7 +175,6 @@ project(":samza-core_$scalaVersion") {
 
   dependencies {
     compile project(':samza-api')
-    compile project(":samza-streamswitch_$scalaVersion")
     compile("com.101tec:zkclient:$zkClientVersion") {
       exclude module: 'junit:junit'
     }
