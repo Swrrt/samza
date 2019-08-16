@@ -25,6 +25,8 @@ import org.apache.samza.SamzaException;
 import org.apache.samza.checkpoint.CheckpointManager;
 import org.apache.samza.config.*;
 import org.apache.samza.container.TaskName;
+import org.apache.samza.coordinator.JobCoordinator;
+import org.apache.samza.coordinator.JobCoordinatorFactory;
 import org.apache.samza.coordinator.JobModelManager;
 import org.apache.samza.coordinator.StreamPartitionCountMonitor;
 import org.apache.samza.coordinator.stream.CoordinatorStreamManager;
@@ -35,6 +37,8 @@ import org.apache.samza.metrics.JmxServer;
 import org.apache.samza.metrics.MetricsRegistryMap;
 import org.apache.samza.serializers.model.SamzaObjectMapper;
 import org.apache.samza.storage.ChangelogStreamManager;
+import org.apache.samza.streamswitch.StreamSwitch;
+import org.apache.samza.streamswitch.StreamSwitchFactory;
 import org.apache.samza.streamswitch.StreamSwitchListener;
 import org.apache.samza.system.StreamMetadataCache;
 import org.apache.samza.system.SystemAdmins;
@@ -130,6 +134,9 @@ public class YarnApplicationMaster implements StreamSwitchListener{
 
     private LeaderJobCoordinator leaderJobCoordinator = null;
 
+    private StreamSwitch streamSwitch = null;
+
+    private int numOfContainers = 0;
     /**
      * Creates a new ClusterBasedJobCoordinator instance from a config. Invoke run() to actually
      * run the jobcoordinator.
@@ -167,6 +174,16 @@ public class YarnApplicationMaster implements StreamSwitchListener{
         // build a container process Manager
         containerProcessManager = new ContainerProcessManager(config, state, metrics);
 
+        streamSwitch = createStreamSwitch();
+
+        numOfContainers = (new JobConfig(config)).getContainerCount();
+
+    }
+
+    private StreamSwitch createStreamSwitch(){
+        String streamSwitchFactoryClassName = new JobCoordinatorConfig(config).getJobCoordinatorFactoryClassName();
+        if(streamSwitchFactoryClassName == null)streamSwitchFactoryClassName = "org.apache.samza.streamswitch.DefaulStreamSwitchFactory";
+        return Util.getObj(streamSwitchFactoryClassName, StreamSwitchFactory.class).getStreamSwitch(config);
     }
 
     /**
@@ -217,16 +234,11 @@ public class YarnApplicationMaster implements StreamSwitchListener{
             partitionMonitor.start();
             leaderJobCoordinator = createLeaderJobCoordinator(config);
             startLeader();
+            streamSwitch.start();
             boolean isInterrupted = false;
-            long lastTime = System.currentTimeMillis();
             while (!containerProcessManager.shouldShutdown() && !checkAndThrowException() && !isInterrupted) {
                 try {
                     Thread.sleep(jobCoordinatorSleepInterval);
-                    long time = System.currentTimeMillis();
-                    if(time - lastTime > 30000){
-                        lastTime = time;
-                        containerProcessManager.scaleOut();
-                    }
                 } catch (InterruptedException e) {
                     isInterrupted = true;
                     log.error("Interrupted in job coordinator loop {} ", e);
@@ -317,13 +329,23 @@ public class YarnApplicationMaster implements StreamSwitchListener{
     }
 
     @Override
-    public void scaling(int n, Map<String, String> taskToContainerMap){ //Method used by decision listener
-        if(this.jobModel.getContainers().size() < n){   //Scale out
-            int numToScaleOut = n - jobModel.getContainers().size();
-            for(int i=0;i<numToScaleOut;i++)containerProcessManager.scaleOut();
-        }else if(jobModel.getContainers().size() > n){  //Scale in
-
+    public void scaling(int n, Object newJobModelObj){ //Method used by decision listener
+        /*if(!newJobModelObj.getClass().equals("JobModel")){
+            log.info("Parameter is not a JobModel, do nothing");
+            return ;
         }
+        JobModel newJobModel = (JobModel)newJobModelObj;*/
+        if(numOfContainers < n){   //Scale out
+            int numToScaleOut = n - numOfContainers;
+            for(int i=0;i<numToScaleOut;i++)containerProcessManager.scaleOut();
+            numOfContainers = n;
+        }else if(numOfContainers > n){  //Scale in
+            numOfContainers = n;
+        }
+    }
+    @Override
+    public void changeJobModel(Object newJobModelObj){
+
     }
 
     public static void main(String[] args) {
