@@ -879,3 +879,6 @@ project(":samza-streamswitch_$scalaVersion") {
     compile group: 'com.google.code.gson', name: 'gson', version: '2.8.2'
   }
 }
+
+apply plugin: 'java'
+compileJava.options.encoding = 'UTF-8'
