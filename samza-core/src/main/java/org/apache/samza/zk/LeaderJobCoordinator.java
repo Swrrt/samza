@@ -87,6 +87,8 @@ public class LeaderJobCoordinator implements JobCoordinator{
     private boolean hasCreatedStreams = false;
     private String cachedJobModelVersion = null;
 
+    private JobModel nextJobModel = null;
+
     @VisibleForTesting
     ScheduleAfterDebounceTime debounceTimer;
 
@@ -229,11 +231,16 @@ public class LeaderJobCoordinator implements JobCoordinator{
             LOG.info("Processors: {} has duplicates. Not generating JobModel.", currentProcessorIds);
             return;
         }
-
-        // Generate the JobModel
-        LOG.info("Generating new JobModel with processors: {}.", currentProcessorIds);
-        JobModel jobModel = generateNewJobModel(currentProcessorIds);
-
+        JobModel jobModel = nextJobModel;
+        if(nextJobModel == null) {
+            // Generate the JobModel
+            LOG.info("Generating new JobModel with processors: {}.", currentProcessorIds);
+            jobModel = generateNewJobModel(currentProcessorIds);
+        }else{
+            LOG.info("Try to deploy next JobModel");
+            if(tryToDeployNewJobModel(jobModel))nextJobModel = null;
+            return ;
+        }
         // Create checkpoint and changelog streams if they don't exist
         if (!hasCreatedStreams) {
             CheckpointManager checkpointManager = new TaskConfigJava(config).getCheckpointManager(metrics.getMetricsRegistry());
@@ -490,6 +497,58 @@ public class LeaderJobCoordinator implements JobCoordinator{
         return zkUtils;
     }
     private boolean amILeader(){
+        return true;
+    }
+
+    public void setNewJobModel(JobModel newJobModel){
+        LOG.info("Next JobModel to deploy: " + newJobModel);
+        nextJobModel = newJobModel;
+        if(tryToDeployNewJobModel(nextJobModel))nextJobModel = null;
+    }
+
+    private boolean tryToDeployNewJobModel(JobModel jobModel){
+
+        LOG.info("Try to deploy new JobModel...");
+        List<String> currentProcessorIds = zkUtils.getSortedActiveProcessorsIDs();
+        if(jobModel.getContainers().size() != currentProcessorIds.size()){
+            LOG.info("The number of online containers is different from JobModel");
+            return false;
+        }
+        for(String containerId: currentProcessorIds){
+            if(!jobModel.getContainers().containsKey(containerId)){
+                LOG.info("Container " + containerId + " is not in JobModel");
+                return false;
+            }
+        }
+        // Create checkpoint and changelog streams if they don't exist
+        if (!hasCreatedStreams) {
+            CheckpointManager checkpointManager = new TaskConfigJava(config).getCheckpointManager(metrics.getMetricsRegistry());
+            if (checkpointManager != null) {
+                checkpointManager.createResources();
+            }
+
+            // Pass in null Coordinator consumer and producer because ZK doesn't have coordinator streams.
+            ChangelogStreamManager.createChangelogStreams(config, jobModel.maxChangeLogStreamPartitions);
+            hasCreatedStreams = true;
+        }
+
+        // Assign the next version of JobModel
+        String currentJMVersion = zkUtils.getJobModelVersion();
+        String nextJMVersion = zkUtils.getNextJobModelVersion(currentJMVersion);
+        LOG.info("pid=" + processorId + "Generated new JobModel with version: " + nextJMVersion + " and processors: " + currentProcessorIds);
+
+        // Publish the new job model
+        zkUtils.publishJobModel(nextJMVersion, jobModel);
+
+        // Start the barrier for the job model update
+        barrier.create(nextJMVersion, currentProcessorIds);
+
+        // Notify all processors about the new JobModel by updating JobModel Version number
+        zkUtils.publishJobModelVersion(currentJMVersion, nextJMVersion);
+
+        LOG.info("pid=" + processorId + "Published new Job Model. Version = " + nextJMVersion);
+
+        debounceTimer.scheduleAfterDebounceTime(ON_ZK_CLEANUP, 0, () -> zkUtils.cleanupZK(NUM_VERSIONS_TO_LEAVE));
         return true;
     }
 }

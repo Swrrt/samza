@@ -329,22 +329,28 @@ public class YarnApplicationMaster implements StreamSwitchListener{
 
     @Override
     public void scaling(int n, Object newJobModelObj){ //Method used by decision listener
-        /*if(!newJobModelObj.getClass().equals("JobModel")){
-            log.info("Parameter is not a JobModel, do nothing");
-            return ;
-        }
-        JobModel newJobModel = (JobModel)newJobModelObj;*/
+        JobModel newJobModel = null;
+        if(!newJobModelObj.getClass().equals("JobModel")){
+            log.info("Parameter is not a JobModel, use auto-generated JobModel instead");
+        }else newJobModel = (JobModel)newJobModelObj;
         if(numOfContainers < n){   //Scale out
             int numToScaleOut = n - numOfContainers;
+            if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
             for(int i=0;i<numToScaleOut;i++)containerProcessManager.scaleOut();
             numOfContainers = n;
+
         }else if(numOfContainers > n){  //Scale in
+            if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
             numOfContainers = n;
         }
     }
     @Override
     public void changeJobModel(Object newJobModelObj){
-
+        JobModel newJobModel = null;
+        if(!newJobModelObj.getClass().equals("JobModel")){
+            log.info("Parameter is not a JobModel, use auto-generated JobModel instead");
+        }else newJobModel = (JobModel)newJobModelObj;
+        if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
     }
 
     public static void main(String[] args) {

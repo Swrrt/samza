@@ -1,15 +1,17 @@
+package StreamSwitch;
+
 import org.apache.samza.config.Config;
 import org.apache.samza.streamswitch.StreamSwitch;
 import org.apache.samza.streamswitch.StreamSwitchListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class DumbScaleOutStreamSwitch implements StreamSwitch{
-    private static final Logger LOG = LoggerFactory.getLogger(DumbScaleOutStreamSwitch.class);
+public class TestJobModelChangeStreamSwitch implements StreamSwitch{
+    private static final Logger LOG = LoggerFactory.getLogger(TestJobModelChangeStreamSwitch.class);
 
     StreamSwitchListener listener;
     Config config;
-    public DumbScaleOutStreamSwitch(Config config){
+    public TestJobModelChangeStreamSwitch(Config config){
         this.config = config;
     }
     public void init(StreamSwitchListener listener){
@@ -18,18 +20,18 @@ public class DumbScaleOutStreamSwitch implements StreamSwitch{
     public void start(){
         LOG.info("Start stream switch");
         while(true){
-            tryToScale();
+            tryToMove();
         }
     }
-    void tryToScale(){
-        int startNumber = 1;
-        for(int i=startNumber+1;i<=10;i++) {
+    void tryToMove(){
+        int moveTimes = 10;
+        for(int i=0;i<moveTimes;i++){
             try{
                 Thread.sleep(30000);
-                LOG.info("Try to scale out");
-                listener.scaling(i, null);
-            }catch(Exception e){
+            }catch (Exception e){
+
             }
+
         }
     }
 }
