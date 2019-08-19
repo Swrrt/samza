@@ -7,7 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class TestJobModelChangeStreamSwitchFactory implements StreamSwitchFactory{
-    private static final Logger LOG = LoggerFactory.getLogger(StreamSwitch.TestJobModelChangeStreamSwitchFactory.class);
+    private static final Logger LOG = LoggerFactory.getLogger(TestJobModelChangeStreamSwitchFactory.class);
 
     @Override
     public StreamSwitch getStreamSwitch(Config config){
