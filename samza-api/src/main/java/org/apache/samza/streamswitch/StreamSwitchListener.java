@@ -1,8 +1,9 @@
 package org.apache.samza.streamswitch;
 
+import java.util.List;
 import java.util.Map;
 
 public interface StreamSwitchListener {
-    void changeJobModel(Object jobModel);
-    void scaling(int parallelism, Object jobModel);
+    void changePartitionAssignment(Map<String, List<String>> partitionToExecutor);
+    void scaling(int parallelism, Map<String, List<String>> partitionToExecutor);
 }

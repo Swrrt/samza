@@ -6,6 +6,8 @@ import org.apache.samza.streamswitch.StreamSwitchListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+
 public class DumbScaleOutStreamSwitch implements StreamSwitch{
     private static final Logger LOG = LoggerFactory.getLogger(DumbScaleOutStreamSwitch.class);
 
@@ -14,9 +16,14 @@ public class DumbScaleOutStreamSwitch implements StreamSwitch{
     public DumbScaleOutStreamSwitch(Config config){
         this.config = config;
     }
+    @Override
     public void init(StreamSwitchListener listener){
         this.listener = listener;
     }
+    @Override
+    public void setPartitionsAndExecutors(List<String> partitions, List<String> executors){
+    }
+    @Override
     public void start(){
         LOG.info("Start stream switch");
         while(true){

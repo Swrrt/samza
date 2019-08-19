@@ -52,6 +52,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -328,29 +329,31 @@ public class YarnApplicationMaster implements StreamSwitchListener{
     }
 
     @Override
-    public void scaling(int n, Object newJobModelObj){ //Method used by decision listener
-        JobModel newJobModel = null;
-        if(!newJobModelObj.getClass().equals("JobModel")){
-            log.info("Parameter is not a JobModel, use auto-generated JobModel instead");
-        }else newJobModel = (JobModel)newJobModelObj;
+    public void scaling(int n, Map<String, List<String>> partitionToExecutor){ //Method used by decision listener
+        JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionToExecutor);
+        if(newJobModel == null){
+            log.info("No partition-executor mapping is given, use auto-generated JobModel instead");
+        }
         if(numOfContainers < n){   //Scale out
             int numToScaleOut = n - numOfContainers;
             if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
             for(int i=0;i<numToScaleOut;i++)containerProcessManager.scaleOut();
             numOfContainers = n;
-
         }else if(numOfContainers > n){  //Scale in
             if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
             numOfContainers = n;
         }
     }
     @Override
-    public void changeJobModel(Object newJobModelObj){
-        JobModel newJobModel = null;
-        if(!newJobModelObj.getClass().equals("JobModel")){
-            log.info("Parameter is not a JobModel, use auto-generated JobModel instead");
-        }else newJobModel = (JobModel)newJobModelObj;
-        if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
+    public void changePartitionAssignment(Map<String, List<String>> partitionToExecutor){
+        JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionToExecutor);
+        if(newJobModel == null){
+            log.info("No partition-executor mapping is given, use auto-generated JobModel instead");
+        }else leaderJobCoordinator.setNewJobModel(newJobModel);
+    }
+
+    private JobModel generateJobModelFromPartitionAssignment(Map<String, List<String>> partitionToExecutor){
+        return null;
     }
 
     public static void main(String[] args) {
