@@ -1,8 +1,6 @@
-package org.apache.samza.StreamSwitch;
+package org.apache.samza.controller;
 
 import org.apache.samza.config.Config;
-import org.apache.samza.controller.AbstractController;
-import org.apache.samza.controller.ControllerListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
