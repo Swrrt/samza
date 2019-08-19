@@ -77,7 +77,7 @@ public class TestJobModelChangeStreamSwitch implements StreamSwitch{
                 }
                 listener.changePartitionAssignment(partitionAssignment);
             }catch (Exception e){
-
+                LOG.info("Exception: " + e.toString());
             }
 
         }
