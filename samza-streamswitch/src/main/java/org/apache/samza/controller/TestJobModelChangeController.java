@@ -35,6 +35,7 @@ public class TestJobModelChangeController implements AbstractController {
         while(iterator.hasNext()){
             partitionAssignment.get(executor).add(iterator.next());
         }
+        LOG.info("Initial partitionAssignment: " + partitionAssignment);
     }
 
     @Override
@@ -73,7 +74,7 @@ public class TestJobModelChangeController implements AbstractController {
                 }
                 listener.changePartitionAssignment(partitionAssignment);
             }catch (Exception e){
-                LOG.info("Exception: " + e.getStackTrace().toString());
+                LOG.info(e.getMessage());
             }
 
         }
