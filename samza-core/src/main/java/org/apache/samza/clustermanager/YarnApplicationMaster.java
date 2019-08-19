@@ -138,6 +138,8 @@ public class YarnApplicationMaster implements StreamSwitchListener{
     private StreamSwitch streamSwitch = null;
 
     private int numOfContainers = 0;
+
+    private JobModel oldJobModel;
     /**
      * Creates a new ClusterBasedJobCoordinator instance from a config. Invoke run() to actually
      * run the jobcoordinator.
@@ -210,6 +212,7 @@ public class YarnApplicationMaster implements StreamSwitchListener{
 
             //create necessary checkpoint and changelog streams, if not created
             JobModel jobModel = jobModelManager.jobModel();
+            oldJobModel = jobModelManager.jobModel();
             CheckpointManager checkpointManager = new TaskConfigJava(config).getCheckpointManager(metrics);
             if (checkpointManager != null) {
                 checkpointManager.createResources();
@@ -232,9 +235,14 @@ public class YarnApplicationMaster implements StreamSwitchListener{
             containerProcessManager.start();
             systemAdmins.start();
             partitionMonitor.start();
+
+            //Start leader
             leaderJobCoordinator = createLeaderJobCoordinator(config);
             startLeader();
+
+            //Start StreamSwitch
             streamSwitch.start();
+
             boolean isInterrupted = false;
             while (!containerProcessManager.shouldShutdown() && !checkAndThrowException() && !isInterrupted) {
                 try {
@@ -346,14 +354,32 @@ public class YarnApplicationMaster implements StreamSwitchListener{
     }
     @Override
     public void changePartitionAssignment(Map<String, List<String>> partitionToExecutor){
+        log.info("Receive request to change partitionAssignment");
         JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionToExecutor);
+        log.info("New JobModel = " + newJobModel);
         if(newJobModel == null){
             log.info("No partition-executor mapping is given, use auto-generated JobModel instead");
         }else leaderJobCoordinator.setNewJobModel(newJobModel);
     }
 
-    private JobModel generateJobModelFromPartitionAssignment(Map<String, List<String>> partitionToExecutor){
-        return null;
+    private JobModel generateJobModelFromPartitionAssignment(Map<String, List<String>> partitionAssignment){
+        //Ignore locality manager?
+        Map<String, TaskModel> taskModels = new HashMap<>();
+        for(ContainerModel containerModel: oldJobModel.getContainers().values()){
+            for(Map.Entry<TaskName, TaskModel> entry: containerModel.getTasks().entrySet()){
+                taskModels.put(entry.getKey().getTaskName(), entry.getValue());
+            }
+        }
+        Map<String, ContainerModel> containers = new HashMap<>();
+        for(String containerId: partitionAssignment.keySet()){
+            Map<TaskName, TaskModel> tasks = new HashMap<>();
+            for(String taskId: partitionAssignment.get(containerId)){
+                tasks.put(new TaskName(taskId), taskModels.get(taskId));
+            }
+            containers.put(containerId, new ContainerModel(containerId, tasks));
+        }
+
+        return new JobModel(config, containers);
     }
 
     public static void main(String[] args) {
