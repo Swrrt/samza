@@ -25,8 +25,6 @@ import org.apache.samza.SamzaException;
 import org.apache.samza.checkpoint.CheckpointManager;
 import org.apache.samza.config.*;
 import org.apache.samza.container.TaskName;
-import org.apache.samza.coordinator.JobCoordinator;
-import org.apache.samza.coordinator.JobCoordinatorFactory;
 import org.apache.samza.coordinator.JobModelManager;
 import org.apache.samza.coordinator.StreamPartitionCountMonitor;
 import org.apache.samza.coordinator.stream.CoordinatorStreamManager;
@@ -37,9 +35,9 @@ import org.apache.samza.metrics.JmxServer;
 import org.apache.samza.metrics.MetricsRegistryMap;
 import org.apache.samza.serializers.model.SamzaObjectMapper;
 import org.apache.samza.storage.ChangelogStreamManager;
-import org.apache.samza.streamswitch.StreamSwitch;
-import org.apache.samza.streamswitch.StreamSwitchFactory;
-import org.apache.samza.streamswitch.StreamSwitchListener;
+import org.apache.samza.controller.AbstractController;
+import org.apache.samza.controller.ControllerFactory;
+import org.apache.samza.controller.ControllerListener;
 import org.apache.samza.system.StreamMetadataCache;
 import org.apache.samza.system.SystemAdmins;
 import org.apache.samza.system.SystemStream;
@@ -51,13 +49,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class YarnApplicationMaster implements StreamSwitchListener{
+public class YarnApplicationMaster implements ControllerListener {
     private static final Logger log = LoggerFactory.getLogger(YarnApplicationMaster.class);
 
     private final Config config;
@@ -135,7 +130,7 @@ public class YarnApplicationMaster implements StreamSwitchListener{
 
     private LeaderJobCoordinator leaderJobCoordinator = null;
 
-    private StreamSwitch streamSwitch = null;
+    private AbstractController controller = null;
 
     private int numOfContainers = 0;
 
@@ -177,15 +172,15 @@ public class YarnApplicationMaster implements StreamSwitchListener{
         // build a container process Manager
         containerProcessManager = new ContainerProcessManager(config, state, metrics);
 
-        streamSwitch = createStreamSwitch();
+        controller = createController();
 
         numOfContainers = (new JobConfig(config)).getContainerCount();
 
     }
 
-    private StreamSwitch createStreamSwitch(){
-        String streamSwitchFactoryClassName = config.getOrDefault("job.streamswitch.factory", "org.apache.samza.streamswitch.DefaultStreamSwitchFactory");
-        return Util.getObj(streamSwitchFactoryClassName, StreamSwitchFactory.class).getStreamSwitch(config);
+    private AbstractController createController(){
+        String controllerFactoryClassName = config.getOrDefault("job.controller.factory", "org.apache.samza.controller.DefaultControllerFactory");
+        return Util.getObj(controllerFactoryClassName, ControllerFactory.class).getController(config);
     }
 
     /**
@@ -240,8 +235,8 @@ public class YarnApplicationMaster implements StreamSwitchListener{
             leaderJobCoordinator = createLeaderJobCoordinator(config);
             startLeader();
 
-            //Start StreamSwitch
-            streamSwitch.start();
+            //Start AbstractController
+            startController();
 
             boolean isInterrupted = false;
             while (!containerProcessManager.shouldShutdown() && !checkAndThrowException() && !isInterrupted) {
@@ -334,6 +329,21 @@ public class YarnApplicationMaster implements StreamSwitchListener{
     }
     private void startLeader(){
         leaderJobCoordinator.start();
+    }
+
+    private void startController(){
+        List<String> containers, tasks;
+        containers = new LinkedList<>();
+        tasks = new LinkedList<>();
+        for(Map.Entry<String, ContainerModel> centry: jobModelManager.jobModel().getContainers().entrySet()){
+            containers.add(centry.getKey());
+            for(Map.Entry<TaskName, TaskModel> entry: centry.getValue().getTasks().entrySet()){
+                tasks.add(entry.getKey().getTaskName());
+            }
+        }
+        controller.init(this, containers, tasks);
+        containers.clear();
+        tasks.clear();
     }
 
     @Override

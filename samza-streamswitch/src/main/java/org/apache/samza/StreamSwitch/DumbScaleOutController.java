@@ -1,27 +1,24 @@
 package org.apache.samza.StreamSwitch;
 
 import org.apache.samza.config.Config;
-import org.apache.samza.streamswitch.StreamSwitch;
-import org.apache.samza.streamswitch.StreamSwitchListener;
+import org.apache.samza.controller.AbstractController;
+import org.apache.samza.controller.ControllerListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
-public class DumbScaleOutStreamSwitch implements StreamSwitch{
-    private static final Logger LOG = LoggerFactory.getLogger(DumbScaleOutStreamSwitch.class);
+public class DumbScaleOutController implements AbstractController {
+    private static final Logger LOG = LoggerFactory.getLogger(DumbScaleOutController.class);
 
-    StreamSwitchListener listener;
+    ControllerListener listener;
     Config config;
-    public DumbScaleOutStreamSwitch(Config config){
+    public DumbScaleOutController(Config config){
         this.config = config;
     }
     @Override
-    public void init(StreamSwitchListener listener){
+    public void init(ControllerListener listener, List<String> partitions, List<String> executors){
         this.listener = listener;
-    }
-    @Override
-    public void setPartitionsAndExecutors(List<String> partitions, List<String> executors){
     }
     @Override
     public void start(){

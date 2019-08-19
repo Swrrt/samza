@@ -2,29 +2,26 @@ package org.apache.samza.StreamSwitch;
 
 import org.apache.commons.collections.map.HashedMap;
 import org.apache.samza.config.Config;
-import org.apache.samza.streamswitch.StreamSwitch;
-import org.apache.samza.streamswitch.StreamSwitchListener;
+import org.apache.samza.controller.AbstractController;
+import org.apache.samza.controller.ControllerListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
 // Under development
-public class TestJobModelChangeStreamSwitch implements StreamSwitch{
-    private static final Logger LOG = LoggerFactory.getLogger(TestJobModelChangeStreamSwitch.class);
+public class TestJobModelChangeController implements AbstractController {
+    private static final Logger LOG = LoggerFactory.getLogger(TestJobModelChangeController.class);
 
-    StreamSwitchListener listener;
+    ControllerListener listener;
     Config config;
     Map<String, List<String>> partitionAssignment;
-    public TestJobModelChangeStreamSwitch(Config config){
+    public TestJobModelChangeController(Config config){
         this.config = config;
     }
     @Override
-    public void init(StreamSwitchListener listener){
+    public void init(ControllerListener listener, List<String> partitions, List<String> executors){
         this.listener = listener;
-    }
-    @Override
-    public void setPartitionsAndExecutors(List<String> partitions, List<String> executors){
         partitionAssignment = new HashedMap();
         Iterator<String> iterator = partitions.iterator();
         int times = partitions.size() / executors.size();
@@ -41,6 +38,7 @@ public class TestJobModelChangeStreamSwitch implements StreamSwitch{
             partitionAssignment.get(executor).add(iterator.next());
         }
     }
+
     @Override
     public void start(){
         LOG.info("Start stream switch");
@@ -77,7 +75,7 @@ public class TestJobModelChangeStreamSwitch implements StreamSwitch{
                 }
                 listener.changePartitionAssignment(partitionAssignment);
             }catch (Exception e){
-                LOG.info("Exception: " + e.toString());
+                LOG.info("Exception: " + e.getStackTrace().toString());
             }
 
         }
