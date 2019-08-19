@@ -342,6 +342,7 @@ public class YarnApplicationMaster implements ControllerListener {
             }
         }
         controller.init(this, containers, tasks);
+        controller.start();
         containers.clear();
         tasks.clear();
     }
