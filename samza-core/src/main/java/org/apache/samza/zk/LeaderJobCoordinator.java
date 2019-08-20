@@ -80,6 +80,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
     private final StreamMetadataCache streamMetadataCache;
     private final SystemAdmins systemAdmins;
     private final int debounceTimeMs;
+    private final int initialWaitTime;
     private final Map<TaskName, Integer> changeLogPartitionMap = new HashMap<>();
 
     private JobCoordinatorListener coordinatorListener = null;
@@ -106,6 +107,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
         zkUtils.validatePaths(new String[]{zkUtils.getKeyBuilder().getProcessorsPath()});
         //leaderElector.setLeaderElectorListener(new LeaderJobCoordinator.LeaderElectorListenerImpl());
         this.debounceTimeMs = 0;//new JobConfig(config).getDebounceTimeMs();
+        this.initialWaitTime = 20000;
         this.reporters = MetricsReporterLoader.getMetricsReporters(new MetricsConfig(config), processorId);
         debounceTimer = new ScheduleAfterDebounceTime(processorId);
         debounceTimer.setScheduledTaskCallback(throwable -> {
@@ -226,6 +228,16 @@ public class LeaderJobCoordinator implements JobCoordinator{
         // TODO: Handle empty currentProcessorIds.
         List<String> currentProcessorIds = zkUtils.getSortedActiveProcessorsIDs();
         Set<String> uniqueProcessorIds = new HashSet<>(currentProcessorIds);
+
+        //To avoid at the beginning, all executors are not online
+        if(currentProcessorIds.size() == 0){
+            LOG.info("Need to wait for at least one executor online");
+            try{
+                Thread.sleep(initialWaitTime);
+            }catch (Exception e){};
+            currentProcessorIds = zkUtils.getSortedActiveProcessorsIDs();
+            uniqueProcessorIds = new HashSet<>(currentProcessorIds);
+        }
 
         if (currentProcessorIds.size() != uniqueProcessorIds.size()) {
             LOG.info("Processors: {} has duplicates. Not generating JobModel.", currentProcessorIds);
