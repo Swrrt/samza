@@ -335,8 +335,9 @@ public class YarnApplicationMaster implements ControllerListener {
         List<String> container, tasks;
         container = new LinkedList<>();
         tasks = new LinkedList<>();
+        int count = 0;
         for(Map.Entry<String, ContainerModel> centry: containers.entrySet()){
-            container.add(centry.getKey());
+            container.add(String.format("%06d", count + 2));
             for(Map.Entry<TaskName, TaskModel> entry: centry.getValue().getTasks().entrySet()){
                 tasks.add(entry.getKey().getTaskName());
             }
