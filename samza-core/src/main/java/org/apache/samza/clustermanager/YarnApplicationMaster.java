@@ -236,7 +236,7 @@ public class YarnApplicationMaster implements ControllerListener {
             startLeader();
 
             //Start AbstractController
-            startController();
+            startController(containers);
 
             boolean isInterrupted = false;
             while (!containerProcessManager.shouldShutdown() && !checkAndThrowException() && !isInterrupted) {
@@ -331,19 +331,20 @@ public class YarnApplicationMaster implements ControllerListener {
         leaderJobCoordinator.start();
     }
 
-    private void startController(){
-        List<String> containers, tasks;
-        containers = new LinkedList<>();
+    private void startController(Map<String, ContainerModel> containers){
+        List<String> container, tasks;
+        container = new LinkedList<>();
         tasks = new LinkedList<>();
-        for(Map.Entry<String, ContainerModel> centry: jobModelManager.jobModel().getContainers().entrySet()){
-            containers.add(centry.getKey());
+        for(Map.Entry<String, ContainerModel> centry: containers.entrySet()){
+            container.add(centry.getKey());
             for(Map.Entry<TaskName, TaskModel> entry: centry.getValue().getTasks().entrySet()){
                 tasks.add(entry.getKey().getTaskName());
             }
         }
-        controller.init(this, containers, tasks);
+        log.info("Current jobModel is : " + jobModelManager.jobModel());
+        controller.init(this, container, tasks);
         controller.start();
-        containers.clear();
+        container.clear();
         tasks.clear();
     }
 
