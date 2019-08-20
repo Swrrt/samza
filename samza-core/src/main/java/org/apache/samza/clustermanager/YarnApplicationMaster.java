@@ -337,12 +337,14 @@ public class YarnApplicationMaster implements ControllerListener {
         tasks = new LinkedList<>();
         int count = 0;
         for(Map.Entry<String, ContainerModel> centry: containers.entrySet()){
-            container.add(String.format("%06d", count + 2));
+            if(centry.getKey().length() < 6)
+                container.add(String.format("%06d", Integer.parseInt(centry.getKey()) + 2));
+            else container.add(centry.getKey());
             for(Map.Entry<TaskName, TaskModel> entry: centry.getValue().getTasks().entrySet()){
                 tasks.add(entry.getKey().getTaskName());
             }
         }
-        log.info("Current jobModel is : " + jobModelManager.jobModel());
+        //log.info("Current jobModel is : " + jobModelManager.jobModel());
         controller.init(this, container, tasks);
         controller.start();
         container.clear();

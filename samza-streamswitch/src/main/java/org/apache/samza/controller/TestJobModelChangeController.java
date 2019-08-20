@@ -19,6 +19,7 @@ public class TestJobModelChangeController implements AbstractController {
     }
     @Override
     public void init(ControllerListener listener, List<String> executors, List<String> partitions){
+        LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
         this.listener = listener;
         partitionAssignment = new HashedMap();
         Iterator<String> iterator = partitions.iterator();

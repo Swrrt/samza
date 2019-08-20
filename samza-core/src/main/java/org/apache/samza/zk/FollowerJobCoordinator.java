@@ -100,7 +100,10 @@ public class FollowerJobCoordinator implements JobCoordinator {
 
         this.metrics = new ZkJobCoordinatorMetrics(metricsRegistry);
 
-        this.processorId = containerId;
+        if(containerId.length() < 6){
+            this.processorId = String.format("%06d", Integer.parseInt(containerId) + 2);
+        }else this.processorId = containerId;
+
         this.zkUtils = zkUtils;
         // setup a listener for a session state change
         // we are mostly interested in "session closed" and "new session created" events
