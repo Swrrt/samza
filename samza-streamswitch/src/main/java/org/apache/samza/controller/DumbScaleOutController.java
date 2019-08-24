@@ -36,4 +36,7 @@ public class DumbScaleOutController implements AbstractController {
             }
         }
     }
+    @Override
+    public void lastChangeImplemented(){
+    }
 }

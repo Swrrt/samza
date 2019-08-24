@@ -347,8 +347,8 @@ public class YarnApplicationMaster implements ControllerListener {
         //log.info("Current jobModel is : " + jobModelManager.jobModel());
         controller.init(this, container, tasks);
         controller.start();
-        container.clear();
-        tasks.clear();
+        //container.clear();
+        //tasks.clear();
     }
 
     @Override
@@ -395,6 +395,11 @@ public class YarnApplicationMaster implements ControllerListener {
         }
 
         return new JobModel(config, containers);
+    }
+
+    @VisibleForTesting
+    private void showJobModel(JobModel jobModel){
+
     }
 
     public static void main(String[] args) {

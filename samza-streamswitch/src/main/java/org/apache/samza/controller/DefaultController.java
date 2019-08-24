@@ -23,4 +23,8 @@ public class DefaultController implements AbstractController {
 
         LOG.info("DefaultController does nothing, quit");
     }
+
+    @Override
+    public void lastChangeImplemented(){
+    }
 }

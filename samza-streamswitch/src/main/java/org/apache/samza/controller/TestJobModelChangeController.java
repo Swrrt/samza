@@ -80,4 +80,7 @@ public class TestJobModelChangeController implements AbstractController {
 
         }
     }
+    @Override
+    public void lastChangeImplemented(){
+    }
 }
