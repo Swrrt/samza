@@ -1,11 +1,8 @@
 package org.apache.samza.controller.streamswitch;
 
-import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 import org.apache.samza.config.Config;
-import org.apache.samza.controller.AbstractController;
-import org.apache.samza.controller.ControllerFactory;
-import org.apache.samza.controller.ControllerListener;
-import org.apache.samza.controller.DefaultController;
+import org.apache.samza.controller.JobController;
+import org.apache.samza.controller.JobControllerListener;
 import org.apache.samza.util.Util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,36 +10,23 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 
-//Under development
-
-public class StreamSwitch implements AbstractController {
+public abstract class StreamSwitch implements JobController {
     private static final Logger LOG = LoggerFactory.getLogger(StreamSwitch.class);
     Config config;
-    ControllerListener listener;
-    StreamSwitchModel model;
+    JobControllerListener listener;
     StreamSwitchMetricsRetriever retriever;
     boolean waitForMigrationDeployed;
-
     public StreamSwitch(Config config){
         this.config = config;
     }
     @Override
-    public void init(ControllerListener listener, List<String> executors, List<String> partitions){
+    public void init(JobControllerListener listener, List<String> executors, List<String> partitions){
         this.listener = listener;
-        this.retriever = createRetriever();
+        this.retriever = createMetricsRetriever();
         this.retriever.init();
-        this.model = createModel();
-        this.model.init(this, listener, executors, partitions);
-
     }
 
-
-
-    private StreamSwitchModel createModel(){
-        String modelFactoryClassName = config.getOrDefault("streamswitch.model.factory", "org.apache.samza.controller.streamswitch.DefaultModelFactory");
-        return Util.getObj(modelFactoryClassName, StreamSwitchModelFactory.class).getModel(config);
-    }
-    private StreamSwitchMetricsRetriever createRetriever(){
+    private StreamSwitchMetricsRetriever createMetricsRetriever(){
         String retrieverFactoryClassName = config.getOrDefault("streamswitch.metrics.factory", "org.apache.samza.controller.streamswitch.DefaultRetrieverFactory");
         return Util.getObj(retrieverFactoryClassName, StreamSwitchMetricsRetrieverFactory.class).getRetriever(config);
 
@@ -65,7 +49,7 @@ public class StreamSwitch implements AbstractController {
 
                 //To prevent migration deployment during update process, use synchronization lock.
                 synchronized (this) {
-                    if (model.updateMetrics(metrics)) {
+                    if (updateModel(metrics)) {
                         if (!waitForMigrationDeployed) waitForMigrationDeployed = true;
                         else {
                             LOG.info("Waring: new migration before last migration is deployed! Ignore new migration");
@@ -81,10 +65,14 @@ public class StreamSwitch implements AbstractController {
     }
 
     @Override
-    public synchronized void lastChangeImplemented(){
+    public synchronized void onLastChangeImplemented(){
         if(waitForMigrationDeployed){
-            model.migrationDeployed();
+
             waitForMigrationDeployed = false;
         }
     }
+    //Need extend class to implement
+    protected boolean updateModel(Map<String, Object> metrics){
+        return false;
+    };
 }

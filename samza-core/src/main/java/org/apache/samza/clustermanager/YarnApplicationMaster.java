@@ -35,9 +35,9 @@ import org.apache.samza.metrics.JmxServer;
 import org.apache.samza.metrics.MetricsRegistryMap;
 import org.apache.samza.serializers.model.SamzaObjectMapper;
 import org.apache.samza.storage.ChangelogStreamManager;
-import org.apache.samza.controller.AbstractController;
-import org.apache.samza.controller.ControllerFactory;
-import org.apache.samza.controller.ControllerListener;
+import org.apache.samza.controller.JobController;
+import org.apache.samza.controller.JobControllerFactory;
+import org.apache.samza.controller.JobControllerListener;
 import org.apache.samza.system.StreamMetadataCache;
 import org.apache.samza.system.SystemAdmins;
 import org.apache.samza.system.SystemStream;
@@ -52,7 +52,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class YarnApplicationMaster implements ControllerListener {
+public class YarnApplicationMaster implements JobControllerListener {
     private static final Logger log = LoggerFactory.getLogger(YarnApplicationMaster.class);
 
     private final Config config;
@@ -130,7 +130,7 @@ public class YarnApplicationMaster implements ControllerListener {
 
     private LeaderJobCoordinator leaderJobCoordinator = null;
 
-    private AbstractController controller = null;
+    private JobController controller = null;
 
     private int numOfContainers = 0;
 
@@ -178,9 +178,9 @@ public class YarnApplicationMaster implements ControllerListener {
 
     }
 
-    private AbstractController createController(){
+    private JobController createController(){
         String controllerFactoryClassName = config.getOrDefault("job.controller.factory", "org.apache.samza.controller.DefaultControllerFactory");
-        return Util.getObj(controllerFactoryClassName, ControllerFactory.class).getController(config);
+        return Util.getObj(controllerFactoryClassName, JobControllerFactory.class).getController(config);
     }
 
     /**
@@ -235,7 +235,7 @@ public class YarnApplicationMaster implements ControllerListener {
             leaderJobCoordinator = createLeaderJobCoordinator(config);
             startLeader();
 
-            //Start AbstractController
+            //Start JobController
             startController(containers);
 
             boolean isInterrupted = false;

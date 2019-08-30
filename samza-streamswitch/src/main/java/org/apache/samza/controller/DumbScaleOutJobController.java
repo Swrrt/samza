@@ -6,16 +6,16 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
-public class DumbScaleOutController implements AbstractController {
-    private static final Logger LOG = LoggerFactory.getLogger(DumbScaleOutController.class);
+public class DumbScaleOutJobController implements JobController {
+    private static final Logger LOG = LoggerFactory.getLogger(DumbScaleOutJobController.class);
 
-    ControllerListener listener;
+    JobControllerListener listener;
     Config config;
-    public DumbScaleOutController(Config config){
+    public DumbScaleOutJobController(Config config){
         this.config = config;
     }
     @Override
-    public void init(ControllerListener listener, List<String> partitions, List<String> executors){
+    public void init(JobControllerListener listener, List<String> partitions, List<String> executors){
         this.listener = listener;
     }
     @Override
@@ -37,6 +37,6 @@ public class DumbScaleOutController implements AbstractController {
         }
     }
     @Override
-    public void lastChangeImplemented(){
+    public void onLastChangeImplemented(){
     }
 }

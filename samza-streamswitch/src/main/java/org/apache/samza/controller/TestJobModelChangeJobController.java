@@ -8,17 +8,17 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 // Under development
-public class TestJobModelChangeController implements AbstractController {
-    private static final Logger LOG = LoggerFactory.getLogger(TestJobModelChangeController.class);
+public class TestJobModelChangeJobController implements JobController {
+    private static final Logger LOG = LoggerFactory.getLogger(TestJobModelChangeJobController.class);
 
-    ControllerListener listener;
+    JobControllerListener listener;
     Config config;
     Map<String, List<String>> partitionAssignment;
-    public TestJobModelChangeController(Config config){
+    public TestJobModelChangeJobController(Config config){
         this.config = config;
     }
     @Override
-    public void init(ControllerListener listener, List<String> executors, List<String> partitions){
+    public void init(JobControllerListener listener, List<String> executors, List<String> partitions){
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
         this.listener = listener;
         partitionAssignment = new HashedMap();
@@ -81,6 +81,6 @@ public class TestJobModelChangeController implements AbstractController {
         }
     }
     @Override
-    public void lastChangeImplemented(){
+    public void onLastChangeImplemented(){
     }
 }
