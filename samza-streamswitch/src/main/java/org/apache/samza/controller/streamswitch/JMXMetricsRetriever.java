@@ -63,7 +63,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 while(scanner.hasNext()){
                     String content = scanner.next().trim();
                     String [] contents = content.split(",");
-                    if(contents.length == 4 && contents[0].startsWith("\"<a href='")){
+                    if(contents.length >= 4 && contents[0].startsWith("[\"<a href='")){
                         String address = contents[3].split("'")[1];
                         containerAddress.add(address);
                     }
