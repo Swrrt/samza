@@ -31,4 +31,4 @@ elif [[ -n $(find "$base_dir/lib" -regex ".*samza-log4j.*.jar*") ]]; then
     [[ $JAVA_OPTS != *-Dlog4j.configuration* ]] && export JAVA_OPTS="$JAVA_OPTS -Dlog4j.configuration=file:$(dirname $0)/log4j-console.xml"
 fi
 
-exec $(dirname $0)/run-class.sh org.apache.samza.controller.JMXMetricsRetriever "$@"
+exec $(dirname $0)/run-class.sh org.apache.samza.controller.streamswitch.JMXMetricsRetriever "$@"
