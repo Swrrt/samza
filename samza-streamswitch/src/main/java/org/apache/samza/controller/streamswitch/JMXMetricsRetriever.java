@@ -89,7 +89,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             if(in != -1){
                                 int ind = content.indexOf(".log", in);
                                 if(NumberUtils.isNumber(content.substring(in + 16, ind))){
-                                    String caddress = address + content.substring(in, ind) + ".log/?start=0";
+                                    String caddress = address +"/" + content.substring(in, ind) + ".log/?start=0";
                                     Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
                                     containerJMX.put(ret.getKey(), ret.getValue());
                                 }
