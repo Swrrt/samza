@@ -54,7 +54,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
         protected List<String> retrieveContainersAddress(String YARNHomePage, String appId){
             List<String> containerAddress = new LinkedList<>();
-            String url = "http://" + YARNHomePage + "/cluster/appsattempt/appattempt_" + appId + "_000001";
+            String url = "http://" + YARNHomePage + "/cluster/appattempt/appattempt_" + appId + "_000001";
             try{
                 LOG.info("Try to retrieve containers' address from : " + url);
                 URLConnection connection = new URL(url).openConnection();
