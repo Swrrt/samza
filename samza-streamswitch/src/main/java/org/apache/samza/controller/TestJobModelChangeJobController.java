@@ -49,7 +49,7 @@ public class TestJobModelChangeJobController implements JobController {
 
     void tryToMove(){
         int moveTimes = 10;
-        long warmUp = 100000;
+        long warmUp = 30000;
         try{
             LOG.info("Waiting " + warmUp + "ms for initilization...");
             Thread.sleep(warmUp);

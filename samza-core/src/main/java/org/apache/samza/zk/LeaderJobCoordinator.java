@@ -106,7 +106,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
         //leaderElector = new ZkLeaderElector(processorId, zkUtils);
         zkUtils.validatePaths(new String[]{zkUtils.getKeyBuilder().getProcessorsPath()});
         //leaderElector.setLeaderElectorListener(new LeaderJobCoordinator.LeaderElectorListenerImpl());
-        this.debounceTimeMs = 0;//new JobConfig(config).getDebounceTimeMs();
+        this.debounceTimeMs = 1000;//new JobConfig(config).getDebounceTimeMs();
         this.initialWaitTime = 20000;
         this.reporters = MetricsReporterLoader.getMetricsReporters(new MetricsConfig(config), processorId);
         debounceTimer = new ScheduleAfterDebounceTime(processorId);
