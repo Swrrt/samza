@@ -92,7 +92,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                     String caddress = address +"/" + content.substring(in, ind) + ".log/?start=0";
                                     Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
                                     LOG.info("container's JMX: " + ret);
-                                    String host = url.split("[\\:]")[1].substring(6);
+                                    String host = url.split("[\\:]")[1].substring(2);
                                     String jmxRMI = ret.getValue().replaceAll("localhost", host);
                                     containerJMX.put(ret.getKey(), jmxRMI);
                                 }
@@ -130,6 +130,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }catch (Exception e){
                 LOG.info("Exception happened when retrieve container's address : " + e);
             }
+            LOG.info("Warning, cannot find container's JMXRMI");
             return null;
         }
     }
