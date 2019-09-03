@@ -7,6 +7,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.management.JMX;
+import javax.management.MBeanServerConnection;
+import javax.management.ObjectName;
+import javax.management.remote.JMXConnector;
+import javax.management.remote.JMXConnectorFactory;
+import javax.management.remote.JMXServiceURL;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
@@ -91,7 +96,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 if(NumberUtils.isNumber(content.substring(in + 16, ind))){
                                     String caddress = address +"/" + content.substring(in, ind) + ".log/?start=0";
                                     Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
-                                    LOG.info("container's JMX: " + ret);
+                                    //LOG.info("container's JMX: " + ret);
                                     String host = url.split("[\\:]")[1].substring(2);
                                     String jmxRMI = ret.getValue().replaceAll("localhost", host);
                                     containerJMX.put(ret.getKey(), jmxRMI);
@@ -134,6 +139,23 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             return null;
         }
     }
+    static class JMXclient{
+        protected Map<String, String> retrieveMetrics(String url){
+            Map<String, String> metrics = new HashMap<>();
+            LOG.info("Try to retrieve metrics from " + url);
+            try{
+                JMXServiceURL jmxServiceURL = new JMXServiceURL(url);
+                LOG.info("Connecting JMX server...");
+                JMXConnector jmxc = JMXConnectorFactory.connect(jmxServiceURL, null);
+                MBeanServerConnection mbsc = jmxc.getMBeanServerConnection();
+                //mbsc.getObjectInstance()
+                ObjectName name = new ObjectName("org.apache.samza.container.TaskInstanceMetrics.messages-actually-processed");
+            }catch (Exception e){
+                LOG.info("Exception when retrieve metrics from " + url + " : " + e);
+            }
+            return metrics;
+        }
+    }
     Config config;
     Map<String, String> containerRMI;
     public JMXMetricsRetriever(Config config){
@@ -164,7 +186,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         System.out.println("Retrieved containers' address : " + containerAddress);
         Map<String, String> containerRMI = yarnLogRetriever.retrieveContainerJMX(containerAddress);
         System.out.println("Retrieved containers' RMI url : " + containerRMI);
-        //TODO: translate localhost to actual address.
+        //TODO: connect to JMX
 
         return ;
     }
