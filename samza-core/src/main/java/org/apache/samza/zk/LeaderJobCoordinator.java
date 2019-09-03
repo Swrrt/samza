@@ -249,7 +249,6 @@ public class LeaderJobCoordinator implements JobCoordinator{
             //LOG.info("No next JobModel, waiting for controller");
             LOG.info("Generating new JobModel with processors: {}.", currentProcessorIds);
             jobModel = generateNewJobModel(currentProcessorIds);
-            return ;
         }else{
             LOG.info("Try to deploy next JobModel");
             if(tryToDeployNewJobModel(jobModel))nextJobModel = null;
