@@ -106,7 +106,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
         //leaderElector = new ZkLeaderElector(processorId, zkUtils);
         zkUtils.validatePaths(new String[]{zkUtils.getKeyBuilder().getProcessorsPath()});
         //leaderElector.setLeaderElectorListener(new LeaderJobCoordinator.LeaderElectorListenerImpl());
-        this.debounceTimeMs = 1000;//new JobConfig(config).getDebounceTimeMs();
+        this.debounceTimeMs = 5000;//new JobConfig(config).getDebounceTimeMs();
         this.initialWaitTime = 20000;
         this.reporters = MetricsReporterLoader.getMetricsReporters(new MetricsConfig(config), processorId);
         debounceTimer = new ScheduleAfterDebounceTime(processorId);
@@ -246,8 +246,10 @@ public class LeaderJobCoordinator implements JobCoordinator{
         JobModel jobModel = nextJobModel;
         if(nextJobModel == null) {
             // Generate the JobModel
+            //LOG.info("No next JobModel, waiting for controller");
             LOG.info("Generating new JobModel with processors: {}.", currentProcessorIds);
             jobModel = generateNewJobModel(currentProcessorIds);
+            return ;
         }else{
             LOG.info("Try to deploy next JobModel");
             if(tryToDeployNewJobModel(jobModel))nextJobModel = null;
@@ -282,6 +284,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
         LOG.info("pid=" + processorId + "Published new Job Model. Version = " + nextJMVersion);
 
         debounceTimer.scheduleAfterDebounceTime(ON_ZK_CLEANUP, 0, () -> zkUtils.cleanupZK(NUM_VERSIONS_TO_LEAVE));
+
     }
 
     private String createProcessorId(Config config) {
