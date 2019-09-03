@@ -91,7 +91,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 if(NumberUtils.isNumber(content.substring(in + 16, ind))){
                                     String caddress = address +"/" + content.substring(in, ind) + ".log/?start=0";
                                     Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
-                                    containerJMX.put(ret.getKey(), ret.getValue());
+                                    String host = url.split(":")[0];
+                                    String jmxRMI = ret.getValue().replaceAll("localhost", host);
+                                    containerJMX.put(ret.getKey(), jmxRMI);
                                 }
                             }
                         }
@@ -160,6 +162,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         System.out.println("Retrieved containers' address : " + containerAddress);
         Map<String, String> containerRMI = yarnLogRetriever.retrieveContainerJMX(containerAddress);
         System.out.println("Retrieved containers' RMI url : " + containerRMI);
+        //TODO: translate localhost to actual address.
+
         return ;
     }
 }
