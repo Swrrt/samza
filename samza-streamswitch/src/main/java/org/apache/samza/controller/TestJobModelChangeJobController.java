@@ -37,6 +37,7 @@ public class TestJobModelChangeJobController implements JobController {
             partitionAssignment.get(executor).add(iterator.next());
         }
         LOG.info("Initial partitionAssignment: " + partitionAssignment);
+        listener.changePartitionAssignment(partitionAssignment);
     }
 
     @Override
