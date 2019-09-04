@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.management.JMX;
 import javax.management.MBeanServerConnection;
+import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
@@ -149,7 +150,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 JMXConnector jmxc = JMXConnectorFactory.connect(jmxServiceURL, null);
                 MBeanServerConnection mbsc = jmxc.getMBeanServerConnection();
                 //mbsc.getObjectInstance()
-                ObjectName name = new ObjectName("org.apache.samza.container.TaskInstanceMetrics.messages-actually-processed");
+                ObjectName name = new ObjectName("org.apache.samza.container.TaskInstanceMetrics");
+                ObjectInstance instance = mbsc.getObjectInstance(name);
+                LOG.info("Task instance metrics: " + instance);
+                metrics.put("task", instance.toString());
             }catch (Exception e){
                 LOG.info("Exception when retrieve metrics from " + url + " : " + e);
             }
@@ -187,6 +191,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         Map<String, String> containerRMI = yarnLogRetriever.retrieveContainerJMX(containerAddress);
         System.out.println("Retrieved containers' RMI url : " + containerRMI);
         //TODO: connect to JMX
+        JMXclient jmXclient = new JMXclient();
+        for(Map.Entry<String, String> entry: containerRMI.entrySet()){
+            String containerId = entry.getKey();
+            Map<String, String> metrics = jmXclient.retrieveMetrics(entry.getValue());
+            System.out.println("Container " + containerId + " metrics: " + metrics);
+        }
 
         return ;
     }
