@@ -129,12 +129,15 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         int i = content.indexOf("url=") + 4;
                         JMXaddress = content.substring(i);
                     }
-                    if(containerId!=null && JMXaddress != null){
+                    /*if(containerId!=null && JMXaddress != null){
                         return new DefaultMapEntry(containerId, JMXaddress);
-                    }
+                    }*/
                 }
             }catch (Exception e){
                 LOG.info("Exception happened when retrieve container's address : " + e);
+            }
+            if(containerId != null && JMXaddress != null){
+                return new DefaultMapEntry(containerId, JMXaddress);
             }
             LOG.info("Warning, cannot find container's JMXRMI");
             return null;
