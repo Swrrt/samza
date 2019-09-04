@@ -246,15 +246,15 @@ public class LeaderJobCoordinator implements JobCoordinator{
         JobModel jobModel = nextJobModel;
         if(nextJobModel == null) {
             // Generate the JobModel
-            //LOG.info("No next JobModel, waiting for controller");
-            LOG.info("Generating new JobModel with processors: {}.", currentProcessorIds);
-            jobModel = generateNewJobModel(currentProcessorIds);
+            LOG.info("No next JobModel, waiting for controller");
+            /*LOG.info("Generating new JobModel with processors: {}.", currentProcessorIds);
+            jobModel = generateNewJobModel(currentProcessorIds);*/
         }else{
             LOG.info("Try to deploy next JobModel");
             if(tryToDeployNewJobModel(jobModel))nextJobModel = null;
             return ;
         }
-        // Create checkpoint and changelog streams if they don't exist
+        /*// Create checkpoint and changelog streams if they don't exist
         if (!hasCreatedStreams) {
             CheckpointManager checkpointManager = new TaskConfigJava(config).getCheckpointManager(metrics.getMetricsRegistry());
             if (checkpointManager != null) {
@@ -283,7 +283,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
         LOG.info("pid=" + processorId + "Published new Job Model. Version = " + nextJMVersion);
 
         debounceTimer.scheduleAfterDebounceTime(ON_ZK_CLEANUP, 0, () -> zkUtils.cleanupZK(NUM_VERSIONS_TO_LEAVE));
-
+*/
     }
 
     private String createProcessorId(Config config) {
