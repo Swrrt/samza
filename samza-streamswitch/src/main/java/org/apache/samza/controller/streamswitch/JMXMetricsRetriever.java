@@ -156,15 +156,18 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 LOG.info("MBean objects: ");
                 for(Object mbean : mbeans){
                     ObjectName name = (ObjectName)mbean;
-                    if(name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics")){
+                    if(name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getCanonicalName().equals("messages-actually-processed")){
                         LOG.info(((ObjectName)mbean).toString());
+                        ObjectInstance instance = mbsc.getObjectInstance(name);
+                        String ok = mbsc.getAttribute(name, null).toString();
+                        LOG.info("Retrieved: " + ok);
                     }
                 }
                 //mbsc.getObjectInstance()
-                ObjectName name = new ObjectName("org.apache.samza.container.TaskInstanceMetrics");
+                /*ObjectName name = new ObjectName("org.apache.samza.container.TaskInstanceMetrics");
                 ObjectInstance instance = mbsc.getObjectInstance(name);
                 LOG.info("Task instance metrics: " + instance);
-                metrics.put("task", instance.toString());
+                metrics.put("task", instance.toString());*/
             }catch (Exception e){
                 LOG.info("Exception when retrieve metrics from " + url + " : " + e);
             }
