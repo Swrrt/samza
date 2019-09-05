@@ -2,6 +2,7 @@ package org.apache.samza.controller.streamswitch;
 
 import org.apache.commons.collections.keyvalue.DefaultMapEntry;
 import org.apache.commons.lang.math.NumberUtils;
+import org.apache.hadoop.util.hash.Hash;
 import org.apache.samza.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,8 +145,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
     }
     static class JMXclient{
-        protected Map<String, String> retrieveMetrics(String url){
-            Map<String, String> metrics = new HashMap<>();
+        protected Map<String, Object> retrieveMetrics(String url){
+            Map<String, Object> metrics = new HashMap<>();
             LOG.info("Try to retrieve metrics from " + url);
             try{
                 JMXServiceURL jmxServiceURL = new JMXServiceURL(url);
@@ -158,16 +159,16 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     ObjectName name = (ObjectName)mbean;
                     if(name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed")){
                         LOG.info(((ObjectName)mbean).toString());
-                        ObjectInstance instance = mbsc.getObjectInstance(name);
                         String ok = mbsc.getAttribute(name, "Count").toString();
+                        String paritionId = name.getKeyProperty("type");
+                        paritionId = paritionId.substring(paritionId.indexOf("Partition"));
                         LOG.info("Retrieved: " + ok);
+                        if(!metrics.containsKey("PartitionProcessed")){
+                            metrics.put("PartitionProcessed", new HashMap<String, String>());
+                        }
+                        ((HashMap<String, String>) (metrics.get("PartitionProcessed"))).put(paritionId, ok);
                     }
                 }
-                //mbsc.getObjectInstance()
-                /*ObjectName name = new ObjectName("org.apache.samza.container.TaskInstanceMetrics");
-                ObjectInstance instance = mbsc.getObjectInstance(name);
-                LOG.info("Task instance metrics: " + instance);
-                metrics.put("task", instance.toString());*/
             }catch (Exception e){
                 LOG.info("Exception when retrieve metrics from " + url + " : " + e);
             }
@@ -208,7 +209,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         JMXclient jmXclient = new JMXclient();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
-            Map<String, String> metrics = jmXclient.retrieveMetrics(entry.getValue());
+            Map<String, Object> metrics = jmXclient.retrieveMetrics(entry.getValue());
             System.out.println("Container " + containerId + " metrics: " + metrics);
         }
 
