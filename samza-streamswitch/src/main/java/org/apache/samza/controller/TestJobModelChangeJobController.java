@@ -59,7 +59,7 @@ public class TestJobModelChangeJobController implements JobController {
         }
         for(int i=0;i<moveTimes;i++){
             try{
-                Thread.sleep(30000);
+                Thread.sleep(75000);
                 Random rand = new Random();
                 int x = rand.nextInt(partitionAssignment.size());
                 LOG.info("Try to migrate one partition");
