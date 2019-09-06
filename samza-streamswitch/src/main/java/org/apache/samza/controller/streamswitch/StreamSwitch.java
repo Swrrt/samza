@@ -15,6 +15,7 @@ public abstract class StreamSwitch implements JobController {
     Config config;
     JobControllerListener listener;
     StreamSwitchMetricsRetriever retriever;
+    Map<String, List<String>> partitionAssignment;
     boolean waitForMigrationDeployed;
     public StreamSwitch(Config config){
         this.config = config;
@@ -46,10 +47,9 @@ public abstract class StreamSwitch implements JobController {
             if (time - startTime > warmupTime) isWarmup = false;
             if (!isWarmup) {
                 Map<String, Object> metrics = retriever.retrieveMetrics();
-
                 //To prevent migration deployment during update process, use synchronization lock.
                 synchronized (this) {
-                    if (updateModel(metrics)) {
+                    if (updateModel(time, metrics)) {
                         if (!waitForMigrationDeployed) waitForMigrationDeployed = true;
                         else {
                             LOG.info("Waring: new migration before last migration is deployed! Ignore new migration");
@@ -65,14 +65,14 @@ public abstract class StreamSwitch implements JobController {
     }
 
     @Override
-    public synchronized void onLastChangeImplemented(){
+    public synchronized void onChangeImplemented(){
         if(waitForMigrationDeployed){
 
             waitForMigrationDeployed = false;
         }
     }
     //Need extend class to implement
-    protected boolean updateModel(Map<String, Object> metrics){
+    protected boolean updateModel(long time, Map<String, Object> metrics){
         return false;
     };
 }

@@ -25,6 +25,6 @@ public class DefaultJobController implements JobController {
     }
 
     @Override
-    public void onLastChangeImplemented(){
+    public void onChangeImplemented(){
     }
 }

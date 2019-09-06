@@ -37,6 +37,6 @@ public class DumbScaleOutJobController implements JobController {
         }
     }
     @Override
-    public void onLastChangeImplemented(){
+    public void onChangeImplemented(){
     }
 }

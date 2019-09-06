@@ -89,6 +89,6 @@ public class TestJobModelChangeJobController implements JobController {
         }
     }
     @Override
-    public void onLastChangeImplemented(){
+    public void onChangeImplemented(){
     }
 }
