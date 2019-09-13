@@ -2,7 +2,6 @@ package org.apache.samza.controller.streamswitch;
 
 import org.apache.commons.collections.keyvalue.DefaultMapEntry;
 import org.apache.commons.lang.math.NumberUtils;
-import org.apache.hadoop.util.hash.Hash;
 import org.apache.samza.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -157,6 +156,20 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 LOG.info("MBean objects: ");
                 for(Object mbean : mbeans){
                     ObjectName name = (ObjectName)mbean;
+                    //Partition arrived
+                    // TODO
+                    if(name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed")){
+                        LOG.info(((ObjectName)mbean).toString());
+                        String ok = mbsc.getAttribute(name, "Count").toString();
+                        String paritionId = name.getKeyProperty("type");
+                        paritionId = paritionId.substring(paritionId.indexOf("Partition"));
+                        LOG.info("Retrieved: " + ok);
+                        if(!metrics.containsKey("PartitionProcessed")){
+                            metrics.put("PartitionProcessed", new HashMap<String, String>());
+                        }
+                        ((HashMap<String, String>) (metrics.get("PartitionArrived"))).put(paritionId, ok);
+                    }
+                    //Partition Processed
                     if(name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed")){
                         LOG.info(((ObjectName)mbean).toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
@@ -167,6 +180,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             metrics.put("PartitionProcessed", new HashMap<String, String>());
                         }
                         ((HashMap<String, String>) (metrics.get("PartitionProcessed"))).put(paritionId, ok);
+                    }
+                    //Executor Utilization
+                    if(name.getDomain().equals("")){
+                        //TODO
                     }
                 }
             }catch (Exception e){
@@ -205,8 +222,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         System.out.println("Retrieved containers' address : " + containerAddress);
         Map<String, String> containerRMI = yarnLogRetriever.retrieveContainerJMX(containerAddress);
         System.out.println("Retrieved containers' RMI url : " + containerRMI);
-        //TODO: connect to JMX
         JMXclient jmXclient = new JMXclient();
+
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             Map<String, Object> metrics = jmXclient.retrieveMetrics(entry.getValue());

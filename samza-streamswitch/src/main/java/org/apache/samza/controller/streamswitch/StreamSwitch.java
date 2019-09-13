@@ -17,6 +17,7 @@ public abstract class StreamSwitch implements JobController {
     StreamSwitchMetricsRetriever retriever;
     Map<String, List<String>> partitionAssignment;
     boolean waitForMigrationDeployed;
+    long startTime = 0;
     public StreamSwitch(Config config){
         this.config = config;
     }
@@ -37,14 +38,14 @@ public abstract class StreamSwitch implements JobController {
     public void start(){
         int metricsRetreiveInterval = config.getInt("streamswitch.metrics.interval", 200);
         int triggerInterval = config.getInt("streamswitch.trigger.interval", 200);
-        int warmupTime = config.getInt("streamswitch.warmup.time", 60000);
+        int metricsWarmupTime = config.getInt("streamswitch.metrics.warmup.time", 60000);
         boolean isWarmup = true;
         waitForMigrationDeployed = false;
-        long startTime = System.currentTimeMillis();
+        startTime = System.currentTimeMillis();
         while(true) {
 
             long time = System.currentTimeMillis();
-            if (time - startTime > warmupTime) isWarmup = false;
+            if (time - startTime > metricsWarmupTime) isWarmup = false;
             if (!isWarmup) {
                 Map<String, Object> metrics = retriever.retrieveMetrics();
                 //To prevent migration deployment during update process, use synchronization lock.
@@ -52,7 +53,8 @@ public abstract class StreamSwitch implements JobController {
                     if (updateModel(time, metrics)) {
                         if (!waitForMigrationDeployed) waitForMigrationDeployed = true;
                         else {
-                            LOG.info("Waring: new migration before last migration is deployed! Ignore new migration");
+                            LOG.info("Waring: new migration before last migration is deployed! Ignore old migration");
+                            //TODO: throw an error?
                         }
                     }
                 }
@@ -72,6 +74,7 @@ public abstract class StreamSwitch implements JobController {
         }
     }
     //Need extend class to implement
+    //Return true if migration is triggered
     protected boolean updateModel(long time, Map<String, Object> metrics){
         return false;
     };
