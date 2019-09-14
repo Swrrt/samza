@@ -176,7 +176,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         partitionId = partitionId.substring(partitionId.length() - 6);
                         LOG.info("Next offset: " + ok);
                         if(!metrics.containsKey("PartitionNextOffset")){
-                            metrics.put("PartitionNextOffSet", new HashMap<String, String>());
+                            metrics.put("PartitionNextOffset", new HashMap<String, String>());
                         }
                         ((HashMap<String, String>) (metrics.get("PartitionNextOffset"))).put(partitionId, ok);
                     }
