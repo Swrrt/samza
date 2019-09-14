@@ -485,17 +485,20 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
     /* Algorithm: Iterate through pairs of executors, and search through all possible set of partitions,
         to find the minimal expected delay way to migrate.
+        TODO:
     */
     private boolean tryToMigrate(){
         LOG.info("Try to migrate");
-        
+
         return false;
     }
 
+    //TODO
     private boolean tryToScaleOut(){
         return false;
     }
 
+    //TODO
     private boolean tryToScaleIn(){
         return false;
     }

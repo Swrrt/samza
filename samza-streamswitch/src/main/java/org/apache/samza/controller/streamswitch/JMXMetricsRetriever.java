@@ -156,34 +156,47 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 LOG.info("MBean objects: ");
                 for(Object mbean : mbeans){
                     ObjectName name = (ObjectName)mbean;
-                    //Partition arrived
-                    // TODO
-                    if(name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed")){
-                        LOG.info(((ObjectName)mbean).toString());
-                        String ok = mbsc.getAttribute(name, "Count").toString();
-                        String paritionId = name.getKeyProperty("type");
-                        paritionId = paritionId.substring(paritionId.indexOf("Partition"));
-                        LOG.info("Retrieved: " + ok);
-                        if(!metrics.containsKey("PartitionProcessed")){
-                            metrics.put("PartitionProcessed", new HashMap<String, String>());
+                    //Partition WaterMark
+                    if(name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")){
+                        LOG.info(mbean.toString());
+                        String ok = mbsc.getAttribute(name, "Gauge").toString();
+                        String partitionId = name.getKeyProperty("type");
+                        LOG.info("Watermark: " + ok);
+                        if(metrics.containsKey("PartitionWaterMark")){
+                            metrics.put("PartitionWaterMark", new HashMap<String, String>());
                         }
-                        ((HashMap<String, String>) (metrics.get("PartitionArrived"))).put(paritionId, ok);
+                        ((HashMap<String, String>) (metrics.get("PartitionWaterMark"))).put(partitionId, ok);
+                    }
+                    //Partition next offset
+                    if(name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-offset-change")){
+                        LOG.info(mbean.toString());
+                        String ok = mbsc.getAttribute(name, "Gauge").toString();
+                        String partitionId = name.getKeyProperty("type");
+                        LOG.info("Next offset: " + ok);
+                        if(metrics.containsKey("PartitionNextOffset")){
+                            metrics.put("PartitionNextOffSet", new HashMap<String, String>());
+                        }
+                        ((HashMap<String, String>) (metrics.get("PartitionWaterMark"))).put(partitionId, ok);
                     }
                     //Partition Processed
                     if(name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed")){
                         LOG.info(((ObjectName)mbean).toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
-                        String paritionId = name.getKeyProperty("type");
-                        paritionId = paritionId.substring(paritionId.indexOf("Partition"));
+                        String partitionId = name.getKeyProperty("type");
+                        partitionId = partitionId.substring(partitionId.indexOf("Partition"));
                         LOG.info("Retrieved: " + ok);
                         if(!metrics.containsKey("PartitionProcessed")){
                             metrics.put("PartitionProcessed", new HashMap<String, String>());
                         }
-                        ((HashMap<String, String>) (metrics.get("PartitionProcessed"))).put(paritionId, ok);
+                        ((HashMap<String, String>) (metrics.get("PartitionProcessed"))).put(partitionId, ok);
                     }
                     //Executor Utilization
-                    if(name.getDomain().equals("")){
+                    if(name.getDomain().equals("JvmMetrics") && name.getKeyProperty("name").equals("process-cpu-usage")){
                         //TODO
+                        LOG.info(((ObjectName)mbean).toString());
+                        String ok = mbsc.getAttribute(name, "Gauge").toString();
+                        LOG.info("CPU Usage:" + ok);
+                        metrics.put("CPUUsage", ok);
                     }
                 }
             }catch (Exception e){
