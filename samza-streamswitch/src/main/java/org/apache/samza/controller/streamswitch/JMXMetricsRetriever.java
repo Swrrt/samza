@@ -176,7 +176,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         if(metrics.containsKey("PartitionNextOffset")){
                             metrics.put("PartitionNextOffSet", new HashMap<String, String>());
                         }
-                        ((HashMap<String, String>) (metrics.get("PartitionWaterMark"))).put(partitionId, ok);
+                        ((HashMap<String, String>) (metrics.get("PartitionNextOffset"))).put(partitionId, ok);
                     }
                     //Partition Processed
                     if(name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed")){
