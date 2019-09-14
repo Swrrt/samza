@@ -170,7 +170,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     //Partition next offset
                     if(name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-offset-change")){
                         LOG.info(mbean.toString());
-                        String ok = mbsc.getAttribute(name, "Value").toString();
+                        String ok = mbsc.getAttribute(name, "Count").toString();
                         String partitionId = name.getKeyProperty("type");
                         LOG.info("Next offset: " + ok);
                         if(metrics.containsKey("PartitionNextOffset")){
