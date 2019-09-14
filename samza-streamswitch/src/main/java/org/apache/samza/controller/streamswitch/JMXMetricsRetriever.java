@@ -185,7 +185,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         LOG.info(((ObjectName)mbean).toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
                         String partitionId = name.getKeyProperty("type");
-                        partitionId = partitionId.substring(partitionId.indexOf("Partition") + 9);
+                        partitionId = partitionId.substring(partitionId.indexOf("Partition") + 10);
                         LOG.info("Retrieved: " + ok);
                         if(!metrics.containsKey("PartitionProcessed")){
                             metrics.put("PartitionProcessed", new HashMap<String, String>());
