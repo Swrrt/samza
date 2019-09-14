@@ -160,8 +160,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     if(name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")){
                         LOG.info(mbean.toString());
                         String ok = mbsc.getAttribute(name, "Value").toString();
-                        String partitionId = name.getKeyProperty("type");
-                        partitionId = partitionId.substring(partitionId.length() - 6);
+                        String partitionId = name.getKeyProperty("name");
+                        int i = partitionId.indexOf('-', 6);
+                        i++;
+                        int j = partitionId.indexOf('-', i);
+                        partitionId = partitionId.substring(i, j);
                         LOG.info("Watermark: " + ok);
                         if(!metrics.containsKey("PartitionWaterMark")){
                             metrics.put("PartitionWaterMark", new HashMap<String, String>());
@@ -172,8 +175,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     if(name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-offset-change")){
                         LOG.info(mbean.toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
-                        String partitionId = name.getKeyProperty("type");
-                        partitionId = partitionId.substring(partitionId.length() - 6);
+                        String partitionId = name.getKeyProperty("name");
+                        int i = partitionId.indexOf('-', 6);
+                        i++;
+                        int j = partitionId.indexOf('-', i);
+                        partitionId = partitionId.substring(i, j);
                         LOG.info("Next offset: " + ok);
                         if(!metrics.containsKey("PartitionNextOffset")){
                             metrics.put("PartitionNextOffset", new HashMap<String, String>());
