@@ -161,8 +161,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         LOG.info(mbean.toString());
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("type");
+                        partitionId = partitionId.substring(partitionId.length() - 6);
                         LOG.info("Watermark: " + ok);
-                        if(metrics.containsKey("PartitionWaterMark")){
+                        if(!metrics.containsKey("PartitionWaterMark")){
                             metrics.put("PartitionWaterMark", new HashMap<String, String>());
                         }
                         ((HashMap<String, String>) (metrics.get("PartitionWaterMark"))).put(partitionId, ok);
@@ -173,7 +174,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         String ok = mbsc.getAttribute(name, "Count").toString();
                         String partitionId = name.getKeyProperty("type");
                         LOG.info("Next offset: " + ok);
-                        if(metrics.containsKey("PartitionNextOffset")){
+                        if(!metrics.containsKey("PartitionNextOffset")){
                             metrics.put("PartitionNextOffSet", new HashMap<String, String>());
                         }
                         ((HashMap<String, String>) (metrics.get("PartitionNextOffset"))).put(partitionId, ok);
