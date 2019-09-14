@@ -159,7 +159,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     //Partition WaterMark
                     if(name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")){
                         LOG.info(mbean.toString());
-                        String ok = mbsc.getAttribute(name, "Gauge").toString();
+                        String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("type");
                         LOG.info("Watermark: " + ok);
                         if(metrics.containsKey("PartitionWaterMark")){
@@ -170,7 +170,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     //Partition next offset
                     if(name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-offset-change")){
                         LOG.info(mbean.toString());
-                        String ok = mbsc.getAttribute(name, "Gauge").toString();
+                        String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("type");
                         LOG.info("Next offset: " + ok);
                         if(metrics.containsKey("PartitionNextOffset")){
@@ -194,7 +194,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     if(name.getDomain().equals("JvmMetrics") && name.getKeyProperty("name").equals("process-cpu-usage")){
                         //TODO
                         LOG.info(((ObjectName)mbean).toString());
-                        String ok = mbsc.getAttribute(name, "Gauge").toString();
+                        String ok = mbsc.getAttribute(name, "Value").toString();
                         LOG.info("CPU Usage:" + ok);
                         metrics.put("CPUUsage", ok);
                     }
