@@ -16,9 +16,6 @@ import java.util.*;
 
 public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(DelayGuaranteeStreamSwitch.class);
-    class MigrationContext{
-        Map<String, String> partitionToMove;
-    }
     class NetworkCalculusModel{
         private class PartitionState{
             Map<Long, Long> arrived, completed;
@@ -463,6 +460,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             LOG.info("Partition arrival rate:");
         }
     }
+
+    class DFSState{
+
+    }
+
     NetworkCalculusModel networkCalculusModel;
     DelayEstimateModel delayEstimateModel;
     long migrationWarmupTime, migrationInterval, lastTime;
@@ -633,6 +635,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
     }
 
+    //TODO
     @Override
     public synchronized void onChangeImplemented(){
         if(waitForMigrationDeployed){
