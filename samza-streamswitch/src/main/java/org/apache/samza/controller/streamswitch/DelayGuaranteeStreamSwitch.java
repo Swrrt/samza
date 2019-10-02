@@ -215,8 +215,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             return delay;
         }
         public void migration(long time, String srcExecutorId, String tgtExecutorId, String partionId){
-            //TODO:
-            //Reduce source containers' backlog
             for(int i = timePoints.size() - 1; i >= 0;i--){
                 if(time >= timePoints.get(i)){
                     time = timePoints.get(i);
@@ -461,10 +459,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
     }
 
-    class DFSState{
-
-    }
-
     NetworkCalculusModel networkCalculusModel;
     DelayEstimateModel delayEstimateModel;
     long migrationWarmupTime, migrationInterval, lastTime;
@@ -487,22 +481,89 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
     /* Algorithm: Iterate through pairs of executors, and search through all possible set of partitions,
         to find the minimal expected delay way to migrate.
-        TODO:
+        TODO
+
     */
-    private boolean tryToMigrate(){
+    private static final String MIGRATION_FAIL= "FAIL", MIGRATION_SUCCEED = "SUCCEED", MIGRATION_NEEDSCALEOUT = "NEED_SCALE_OUT";
+
+    class MigrationResult{
+        Map<String, Pair<String,String>> migratingPartitions;
+        String resultCode;
+        MigrationResult(){
+            migratingPartitions = null;
+            resultCode = MIGRATION_FAIL;
+        }
+        MigrationResult(String code, Map<String, Pair<String, String>> migratingPartitions){
+            resultCode = code;
+            this.migratingPartitions = migratingPartitions;
+        }
+    }
+    private MigrationResult tryToMigrate(){
         LOG.info("Try to migrate");
 
-        return false;
+
+        return new MigrationResult();
     }
 
     //TODO
-    private boolean tryToScaleOut(){
-        return false;
+    private MigrationResult tryToScaleOut(){
+        return new MigrationResult();
     }
 
+    private double estimateLongtermDelay(double arrivalRate, double serviceRate) {
+        if(serviceRate < arrivalRate + 1e-15)return 1e100;
+        return 1.0/(serviceRate - arrivalRate);
+    }
     //TODO
-    private boolean tryToScaleIn(){
-        return false;
+    private MigrationResult tryToScaleIn(){
+        LOG.info("Try to scale in");
+        long time = delayEstimateModel.getCurrentTime();
+        if(partitionAssignment.size() <= 1){
+            LOG.info("Not enough executor to merge");
+            return new MigrationResult();
+        }
+        for(String src: partitionAssignment.keySet()){
+            double srcArrival = delayEstimateModel.getExecutorArrivalRate(src, time);
+            for(String tgt: partitionAssignment.keySet())
+                if(!src.equals(tgt)){
+                    double tgtArrival = delayEstimateModel.getExecutorArrivalRate(tgt, time);
+                    double tgtService = delayEstimateModel.getExecutorServiceRate(tgt, time);
+                    double tgtInstantDelay = delayEstimateModel.getAvgDelay(tgt, time);
+                    if(tgtInstantDelay < instantaneousThreshold && srcArrival + tgtArrival < tgtService){
+                        double estimatedLongtermDelay = estimateLongtermDelay(srcArrival + tgtArrival, tgtService);
+                        //Scale In
+                        if(estimatedLongtermDelay < longTermThreshold){
+                            Map<String, Pair<String, String>> migratingPartitions = new HashMap<>();
+                            for(String partition: partitionAssignment.get(src)){
+                                migratingPartitions.put(partition, new Pair<>(src, tgt));
+                            }
+                            LOG.info("Scale in! from " + src + " to " + tgt);
+                            LOG.info("Migrating partitions: " + migratingPartitions.keySet());
+                            return new MigrationResult(MIGRATION_SUCCEED, migratingPartitions);
+                        }
+                    }
+                }
+        }
+        LOG.info("Cannot find any scale in");
+        return new MigrationResult();
+    }
+
+    MigrationResult lastResult;
+    Map<String, List<String>> generatePartitionAssignmentWhenMigrating(Map<String, List<String>> oldAssignment, Map<String, Pair<String, String>> migratingPartitions){
+        Map<String, List<String>> newAssignment = new HashMap<>();
+        for(String executor: oldAssignment.keySet()){
+            for(String partition: oldAssignment.get(executor)){
+                if(!migratingPartitions.containsKey(partition)){
+                    if(!newAssignment.containsKey(executor))newAssignment.put(executor, new LinkedList<>());
+                    newAssignment.get(executor).add(partition);
+                }else{
+                    String tgt = migratingPartitions.get(partition).getValue();
+                    if(!newAssignment.containsKey(tgt))newAssignment.put(tgt, new LinkedList<>());
+                    newAssignment.get(tgt).add(partition);
+                }
+            }
+        }
+        return newAssignment;
     }
 
     @Override
@@ -527,18 +588,37 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             LOG.info("Check delay guarantee is followed");
             if(!checkDelayGuarantee()){
                 //TODO: try to migrate
-                if(tryToMigrate()){
+                MigrationResult result = tryToMigrate();
+                if(result.resultCode.equals(MIGRATION_SUCCEED)){
                     LOG.info("OK to migrate");
-                }else{
+                    lastResult = result;
+                    Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
+                    listener.changePartitionAssignment(newAssignment);
+                    waitForMigrationDeployed = true;
+                }else if(result.resultCode.equals(MIGRATION_NEEDSCALEOUT)){
                     //TODO: try to scaling
-                    if(tryToScaleOut()){
-
+                    result = tryToScaleOut();
+                    if(result.resultCode.equals(MIGRATION_SUCCEED)){
+                        LOG.info("OK to scale out!");
+                        lastResult = result;
+                        Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
+                        listener.scaling(newAssignment.size(), newAssignment);
+                        waitForMigrationDeployed = true;
                     }
+                }else{
+                    LOG.info("Error, some thing wrong with migration algorithm");
                 }
             }else{
                 LOG.info("Delay guarantee is not violated, try to scaleIn");
-                if(tryToScaleIn()){
-
+                MigrationResult result = tryToScaleIn();
+                if(result.equals(MIGRATION_SUCCEED)){
+                    LOG.info("OK to scale in");
+                    lastResult = result;
+                    Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
+                    listener.scaling(newAssignment.size(), newAssignment);
+                    waitForMigrationDeployed = true;
+                }else{
+                    LOG.info("Cannot scale in, do nothing");
                 }
             }
         }
@@ -639,8 +719,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     @Override
     public synchronized void onChangeImplemented(){
         if(waitForMigrationDeployed){
-
             waitForMigrationDeployed = false;
+            partitionAssignment = lastResult.assignment;
+            long time = System.currentTimeMillis();
+            networkCalculusModel.migration(time, );
+
+            lastResult = new MigrationResult();
         }
     }
 
