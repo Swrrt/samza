@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 //Under development
 
@@ -462,6 +463,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     NetworkCalculusModel networkCalculusModel;
     DelayEstimateModel delayEstimateModel;
     long migrationWarmupTime, migrationInterval, lastTime;
+    AtomicLong nextExecutorID;
     double instantaneousThreshold, longTermThreshold;
 
     public DelayGuaranteeStreamSwitch(Config config){
@@ -505,9 +507,80 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         return new MigrationResult();
     }
 
-    //TODO
+    //Return false if both instantaneous and long-term thresholds are violated
+    public boolean checkDelay(String containerId){
+        double delay = delayEstimateModel.getAvgDelay(containerId, delayEstimateModel.getCurrentTime());
+        double longTermDelay = delayEstimateModel.getLongTermDelay(containerId, delayEstimateModel.getCurrentTime());
+        if(delay > instantaneousThreshold && longTermDelay > longTermThreshold){
+            return false;
+        }
+        return true;
+    }
+
+    private long getNextExecutorID(){
+        return nextExecutorID.get();
+    }
+
+    private void setNextExecutorId(long id){
+        if(id > nextExecutorID.get()){
+            nextExecutorID.set(id);
+        }
+    }
+
+    private Pair<String, Double> findMaxInstantaneousDelay(Map<String, List<String>> partitionAssignment, long time){
+        double initialDelay = -1.0;
+        String maxExecutor = "";
+        for (String executor : partitionAssignment.keySet()) {
+            double delay = delayEstimateModel.getAvgDelay(executor, time);
+            if (delay > initialDelay && !checkDelay(executor)) {
+                initialDelay = delay;
+                maxExecutor = executor;
+            }
+        }
+        return new Pair(maxExecutor, initialDelay);
+    }
+
+    private Pair<String, Double> findMaxLongtermDelayExecutor(Map<String, List<String>> partitionAssignment, long time){
+        double initialDelay = -1.0;
+        String maxExecutor = "";
+        for (String executor : partitionAssignment.keySet()) {
+            double longtermDelay = delayEstimateModel.getLongTermDelay(executor, time);
+            if (longtermDelay > initialDelay && !checkDelay(executor)) {
+                initialDelay = longtermDelay;
+                maxExecutor = executor;
+            }
+        }
+        return new Pair(maxExecutor, initialDelay);
+    }
+
     private MigrationResult tryToScaleOut(){
-        return new MigrationResult();
+        LOG.info("Scale out by one container");
+
+        if(partitionAssignment.size() <= 0){
+            LOG.info("No executor to move");
+            return new MigrationResult();
+        }
+        long time = delayEstimateModel.getCurrentTime();
+        Pair<String, Double> a = findMaxLongtermDelayExecutor(partitionAssignment, time);
+        String srcExecutor = a.getKey();
+        double initialDelay = a.getValue();
+        if(srcExecutor == null || srcExecutor.equals("") || partitionAssignment.get(srcExecutor).size() <=1){
+            LOG.info("Cannot scale out: insufficient partition to migrate");
+            return new MigrationResult();
+        }
+
+        Map<String, Pair<String, String>> migratingPartitions = new HashMap<>();
+        long newExecutorId = getNextExecutorID();
+        String tgtExecutor = String.format("%06d", newExecutorId);
+        int numToMigrate = partitionAssignment.get(srcExecutor).size()/2;
+        for(String partition: partitionAssignment.get(srcExecutor)){
+            if(numToMigrate > 0){
+                migratingPartitions.put(partition, new Pair(srcExecutor, tgtExecutor));
+                numToMigrate--;
+            }
+        }
+        setNextExecutorId(newExecutorId + 1);
+        return new MigrationResult("Succeed", migratingPartitions);
     }
 
     private double estimateLongtermDelay(double arrivalRate, double serviceRate) {
@@ -718,12 +791,15 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     //TODO
     @Override
     public synchronized void onChangeImplemented(){
+        LOG.info("Migration actually deployed");
         if(waitForMigrationDeployed){
+            LOG.info("Update mapping and models");
             waitForMigrationDeployed = false;
-            partitionAssignment = lastResult.assignment;
+            partitionAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, lastResult.migratingPartitions);
             long time = System.currentTimeMillis();
-            networkCalculusModel.migration(time, );
-
+            for(String partition: lastResult.migratingPartitions.keySet()){
+                networkCalculusModel.migration(time, lastResult.migratingPartitions.get(partition).getKey(), lastResult.migratingPartitions.get(partition).getValue(), partition);
+            }
             lastResult = new MigrationResult();
         }
     }
