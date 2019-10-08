@@ -29,7 +29,7 @@ public abstract class StreamSwitch implements JobController {
     }
 
     private StreamSwitchMetricsRetriever createMetricsRetriever(){
-        String retrieverFactoryClassName = config.getOrDefault("streamswitch.metrics.factory", "org.apache.samza.controller.streamswitch.DefaultRetrieverFactory");
+        String retrieverFactoryClassName = config.getOrDefault("streamswitch.metrics.factory", "org.apache.samza.controller.streamswitch.JMXMetricsRetrieverFactory");
         return Util.getObj(retrieverFactoryClassName, StreamSwitchMetricsRetrieverFactory.class).getRetriever(config);
 
     }
