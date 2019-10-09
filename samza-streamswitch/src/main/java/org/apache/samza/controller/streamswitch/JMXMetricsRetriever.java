@@ -97,16 +97,20 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 if(NumberUtils.isNumber(content.substring(in + 16, ind))){
                                     String caddress = address +"/" + content.substring(in, ind) + ".log/?start=0";
                                     Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
-                                    //LOG.info("container's JMX: " + ret);
-                                    String host = url.split("[\\:]")[1].substring(2);
-                                    String jmxRMI = ret.getValue().replaceAll("localhost", host);
-                                    containerJMX.put(ret.getKey(), jmxRMI);
+                                    if(ret == null){ //Cannot retrieve JMXRMI for some reason
+                                        LOG.info("Cannot retrieve container's JMX, report error");
+                                    }else {
+                                        //LOG.info("container's JMX: " + ret);
+                                        String host = url.split("[\\:]")[1].substring(2);
+                                        String jmxRMI = ret.getValue().replaceAll("localhost", host);
+                                        containerJMX.put(ret.getKey(), jmxRMI);
+                                    }
                                 }
                             }
                         }
                     }
                 }catch (Exception e){
-                    LOG.info("Exception happened when retrieve containers JMX address : " + e);
+                    LOG.info("Exception happened when retrieve containers' JMX address : " + e);
                 }
             }
             return containerJMX;
