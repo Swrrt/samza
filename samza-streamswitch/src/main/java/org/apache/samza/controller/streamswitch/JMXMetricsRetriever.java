@@ -54,7 +54,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 }
                 LOG.info("Retrieved newest AppId is : " + newestAppId);
             }catch (Exception e){
-                LOG.info("Exception happened when retrieve AppId : " + e.getCause());
+                LOG.info("Exception happened when retrieve AppIds, exception : " + e);
             }
             return newestAppId;
         }
@@ -220,16 +220,20 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     }
     @Override
     public void init(){
+    }
+    @Override
+    public Map<String, Object> retrieveMetrics(){
         YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
         String YarnHomePage = config.get("yarn.web.address");
         String appId =yarnLogRetriever.retrieveAppId(YarnHomePage);
         List<String> containers = yarnLogRetriever.retrieveContainersAddress(YarnHomePage, appId);
         containerRMI = yarnLogRetriever.retrieveContainerJMX(containers);
-    }
-    @Override
-    public Map<String, Object> retrieveMetrics(){
         Map<String, Object> metrics = new HashMap<>();
-
+        JMXclient jmxClient = new JMXclient();
+        for(Map.Entry<String, String> entry: containerRMI.entrySet()){
+            String containerId = entry.getKey();
+            metrics.put(containerId, jmxClient.retrieveMetrics(entry.getValue()));
+        }
         return metrics;
     }
 
@@ -243,11 +247,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         System.out.println("Retrieved containers' address : " + containerAddress);
         Map<String, String> containerRMI = yarnLogRetriever.retrieveContainerJMX(containerAddress);
         System.out.println("Retrieved containers' RMI url : " + containerRMI);
-        JMXclient jmXclient = new JMXclient();
+        JMXclient jmxClient = new JMXclient();
 
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
-            Map<String, Object> metrics = jmXclient.retrieveMetrics(entry.getValue());
+            Map<String, Object> metrics = jmxClient.retrieveMetrics(entry.getValue());
             System.out.println("Container " + containerId + " metrics: " + metrics);
         }
 
