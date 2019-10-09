@@ -230,9 +230,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         containerRMI = yarnLogRetriever.retrieveContainerJMX(containers);
         Map<String, Object> metrics = new HashMap<>();
         JMXclient jmxClient = new JMXclient();
+        LOG.info("Retrieving metrics: ");
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             metrics.put(containerId, jmxClient.retrieveMetrics(entry.getValue()));
+            LOG.info(containerId + " : " + metrics.get(containerId));
         }
         return metrics;
     }
