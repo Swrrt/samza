@@ -1,5 +1,6 @@
 package org.apache.samza.controller.streamswitch;
 
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.samza.config.Config;
 import org.apache.samza.controller.JobController;
 import org.apache.samza.controller.JobControllerListener;
@@ -7,6 +8,8 @@ import org.apache.samza.util.Util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +29,26 @@ public abstract class StreamSwitch implements JobController {
         this.listener = listener;
         this.retriever = createMetricsRetriever();
         this.retriever.init();
+
+        //Default partitionAssignment
+        LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
+        partitionAssignment = new HashedMap();
+        Iterator<String> iterator = partitions.iterator();
+        int times = partitions.size() / executors.size();
+        for(String executor: executors){
+            partitionAssignment.put(executor, new LinkedList<>());
+            for(int i=0;i<times;i++){
+                if(iterator.hasNext()){
+                    partitionAssignment.get(executor).add(iterator.next());
+                }
+            }
+        }
+        String executor = executors.get(0);
+        while(iterator.hasNext()){
+            partitionAssignment.get(executor).add(iterator.next());
+        }
+        LOG.info("Initial partitionAssignment: " + partitionAssignment);
+        listener.changePartitionAssignment(partitionAssignment);
     }
 
     private StreamSwitchMetricsRetriever createMetricsRetriever(){
