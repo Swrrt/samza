@@ -291,6 +291,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         private int alpha = 1, beta = 2;
         private long interval = 0;
         public DelayEstimateModel(){
+            times = new ArrayList<>();
             executors = new HashMap<>();
             partitions = new HashMap<>();
             delayWindows = new HashMap<>();
