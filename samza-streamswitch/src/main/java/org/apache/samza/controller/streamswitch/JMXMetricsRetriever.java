@@ -148,6 +148,19 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
     }
     static class JMXclient{
+        private boolean isWaterMark(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")
+                    && !name.getKeyProperty("name").contains("window-count");
+        }
+        private boolean isNextOffset(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-offset-change")
+                    && !name.getKeyProperty("name").contains("window-count");
+        }
+
+        private boolean isActuallyProcessed(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed");
+        }
+
         protected Map<String, Object> retrieveMetrics(String url){
             Map<String, Object> metrics = new HashMap<>();
             LOG.info("Try to retrieve metrics from " + url);
@@ -161,7 +174,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 for(Object mbean : mbeans){
                     ObjectName name = (ObjectName)mbean;
                     //Partition WaterMark
-                    if(name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")){
+                    if(isWaterMark(name)){
+
                         LOG.info(mbean.toString());
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("name");
@@ -176,7 +190,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         ((HashMap<String, String>) (metrics.get("PartitionWaterMark"))).put(partitionId, ok);
                     }
                     //Partition next offset
-                    if(name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-offset-change")){
+                    if(isNextOffset(name)){
                         LOG.info(mbean.toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
                         String partitionId = name.getKeyProperty("name");
@@ -191,7 +205,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         ((HashMap<String, String>) (metrics.get("PartitionNextOffset"))).put(partitionId, ok);
                     }
                     //Partition Processed
-                    if(name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed")){
+                    if(isActuallyProcessed(name)){
                         LOG.info(((ObjectName)mbean).toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
                         String partitionId = name.getKeyProperty("type");
@@ -235,11 +249,23 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         Map<String, Object> metrics = new HashMap<>();
         JMXclient jmxClient = new JMXclient();
         LOG.info("Retrieving metrics: ");
+        metrics.put("PartitionArrived", new HashMap());
+        metrics.put("PartitionProcessed", new HashMap());
+        metrics.put("ExecutorUtilization", new HashMap());
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
-            metrics.put(containerId, jmxClient.retrieveMetrics(entry.getValue()));
-            LOG.info(containerId + " : " + metrics.get(containerId));
+            Map<String, Object> ret = jmxClient.retrieveMetrics(entry.getValue());
+            if(ret.containsKey("PartitionWatermark")) {
+                ((HashMap<String, Object>)metrics.get("PartitionArrived")).put(containerId, ret.get("PartitionWatermark"));
+            }
+            if(ret.containsKey("PartitionProcessed")) {
+                ((HashMap<String, Object>)metrics.get("PartitionProcessed")).put(containerId, ret.get("PartitionProcessed"));
+            }
+            if(ret.containsKey("ExecutorUtilization")){
+                ((HashMap<String, Object>)metrics.get("ExecutorUtilization")).put(containerId, ret.get("ExecutorUtilization"));
+            }
         }
+        LOG.info("Retrieved Metrics: " + metrics);
         return metrics;
     }
 

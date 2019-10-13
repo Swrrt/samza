@@ -642,9 +642,14 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     @Override
     protected boolean updateModel(long time, Map<String, Object> metrics){
         LOG.info("Updating model from metrics");
-        Map<String, Long> partitionArrived = (HashMap<String, Long>)(metrics.get("PartitionArrived"));
-        Map<String, Long> partitionProcessed = (HashMap<String, Long>)(metrics.get("PartitionProcessed"));
-        Map<String, Double> executorUtilization = (HashMap<String, Double>)(metrics.get("ExecutorUtilization"));
+
+
+        Map<String, Long> partitionArrived =
+                (HashMap<String, Long>)(metrics.get("PartitionArrived"));
+        Map<String, Long> partitionProcessed =
+                (HashMap<String, Long>)(metrics.get("PartitionProcessed"));
+        Map<String, Double> executorUtilization =
+                (HashMap<String, Double>)(metrics.get("ExecutorUtilization"));
 
         updateNetworkCalculus(time, partitionArrived, partitionProcessed);
         updateDelayEstimateModel(time, executorUtilization);
