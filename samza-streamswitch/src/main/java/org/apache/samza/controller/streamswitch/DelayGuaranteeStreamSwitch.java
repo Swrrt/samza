@@ -660,7 +660,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             LOG.info("Last migration is not deployed, cannot migrate");
         }else if(time - startTime <= migrationWarmupTime){
             LOG.info("Still in warmup phase, cannot migrate");
-        }else if(time - lastTime > migrationInterval) {
+        }else if(time - lastTime <= migrationInterval) {
             LOG.info("To close to last migration decision, cannot migrate");
         }else{
             //TODO: check delay and migrate

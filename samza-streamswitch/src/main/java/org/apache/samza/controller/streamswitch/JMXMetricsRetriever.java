@@ -176,14 +176,14 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     //Partition WaterMark
                     if(isWaterMark(name)){
 
-                        LOG.info(mbean.toString());
+                        //LOG.info(mbean.toString());
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("name");
                         int i = partitionId.indexOf('-', 6);
                         i++;
                         int j = partitionId.indexOf('-', i);
                         partitionId = partitionId.substring(i, j);
-                        LOG.info("Watermark: " + ok);
+                        //LOG.info("Watermark: " + ok);
                         if(!metrics.containsKey("PartitionWaterMark")){
                             metrics.put("PartitionWaterMark", new HashMap<String, String>());
                         }
@@ -191,14 +191,14 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     }
                     //Partition next offset
                     if(isNextOffset(name)){
-                        LOG.info(mbean.toString());
+                        //LOG.info(mbean.toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
                         String partitionId = name.getKeyProperty("name");
                         int i = partitionId.indexOf('-', 6);
                         i++;
                         int j = partitionId.indexOf('-', i);
                         partitionId = partitionId.substring(i, j);
-                        LOG.info("Next offset: " + ok);
+                        //LOG.info("Next offset: " + ok);
                         if(!metrics.containsKey("PartitionNextOffset")){
                             metrics.put("PartitionNextOffset", new HashMap<String, String>());
                         }
@@ -206,11 +206,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     }
                     //Partition Processed
                     if(isActuallyProcessed(name)){
-                        LOG.info(((ObjectName)mbean).toString());
+                        //LOG.info(((ObjectName)mbean).toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
                         String partitionId = name.getKeyProperty("type");
                         partitionId = partitionId.substring(partitionId.indexOf("Partition") + 10);
-                        LOG.info("Retrieved: " + ok);
+                        //LOG.info("Retrieved: " + ok);
                         if(!metrics.containsKey("PartitionProcessed")){
                             metrics.put("PartitionProcessed", new HashMap<String, String>());
                         }
