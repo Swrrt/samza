@@ -352,13 +352,13 @@ public class YarnApplicationMaster implements JobControllerListener {
     }
 
     @Override
-    public void scaling(int n, Map<String, List<String>> partitionToExecutor){ //Method used by decision listener
+    public void scaling(int n, Map<String, List<String>> partitionAssignment){ //Method used by decision listener
         log.info("Try to change number of executors to: " + n + " from " + numOfContainers);
-        if(partitionToExecutor == null){
-            log.info("No partition-executor mapping is given, use auto-generated JobModel instead");
-            partitionToExecutor = new HashMap<>();
+        if(partitionAssignment == null){
+            log.info("No partition-executor mapping is given, break out");
+            return ;
         }
-        JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionToExecutor);
+        JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionAssignment);
         log.info("n: " + n + " old: " + numOfContainers);
         log.info("New JobModel = " + newJobModel);
         if(numOfContainers < n){   //Scale out
@@ -374,9 +374,9 @@ public class YarnApplicationMaster implements JobControllerListener {
         }
     }
     @Override
-    public void changePartitionAssignment(Map<String, List<String>> partitionToExecutor){
+    public void changePartitionAssignment(Map<String, List<String>> partitionAssignment){
         log.info("Receive request to change partitionAssignment");
-        JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionToExecutor);
+        JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionAssignment);
         log.info("New JobModel = " + newJobModel);
         if(newJobModel == null){
             log.info("No partition-executor mapping is given, use auto-generated JobModel instead");

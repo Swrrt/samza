@@ -5,10 +5,7 @@ import org.apache.samza.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 public class DumbScaleOutJobController implements JobController {
     private static final Logger LOG = LoggerFactory.getLogger(DumbScaleOutJobController.class);
@@ -16,14 +13,18 @@ public class DumbScaleOutJobController implements JobController {
     JobControllerListener listener;
     Config config;
     int startNumber = 1;
+    List<String> executors, partitions;
     public DumbScaleOutJobController(Config config){
         this.config = config;
+        executors = null;
+        partitions = null;
     }
     @Override
     public void init(JobControllerListener listener, List<String> executors, List<String> partitions){
         this.listener = listener;
+        this.partitions = new ArrayList(partitions);
+        this.executors = new ArrayList<>(executors);
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
-        this.listener = listener;
         startNumber = executors.size();
         HashMap<String, List<String>> partitionAssignment = new HashMap();
         Iterator<String> iterator = partitions.iterator();
@@ -51,11 +52,24 @@ public class DumbScaleOutJobController implements JobController {
         }
     }
     void tryToScale(){
-        for(int i=startNumber+1;i<=10;i++) {
+        for(int i=startNumber+1;i<=partitions.size();i++) {
             try{
                 Thread.sleep(30000);
                 LOG.info("Try to scale out");
-                listener.scaling(i, null);
+                while(executors.size()<i){
+                    executors.add(String.format("%06d", executors.size()+2));
+                }
+                Map<String, List<String>> partitionAssignment  = new HashMap<>();
+                for(int j=0;j<executors.size();j++){
+                    partitionAssignment.put(executors.get(j), new LinkedList<>());
+                }
+                int j=0;
+                for(String partition: partitions){
+                    partitionAssignment.get(executors.get(j)).add(partition);
+                    j++;
+                    if(j>=executors.size())j=0;
+                }
+                listener.scaling(i, partitionAssignment);
             }catch(Exception e){
             }
         }
