@@ -54,7 +54,7 @@ public class DumbScaleOutJobController implements JobController {
     void tryToScale(){
         for(int i=startNumber+1;i<=partitions.size();i++) {
             try{
-                Thread.sleep(30000);
+                Thread.sleep(120000);
                 LOG.info("Try to scale out");
                 while(executors.size()<i){
                     executors.add(String.format("%06d", executors.size()+2));
