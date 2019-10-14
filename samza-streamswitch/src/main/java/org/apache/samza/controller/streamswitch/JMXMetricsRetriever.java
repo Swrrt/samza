@@ -6,10 +6,7 @@ import org.apache.samza.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.management.JMX;
-import javax.management.MBeanServerConnection;
-import javax.management.ObjectInstance;
-import javax.management.ObjectName;
+import javax.management.*;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
@@ -169,6 +166,22 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 LOG.info("Connecting JMX server...");
                 JMXConnector jmxc = JMXConnectorFactory.connect(jmxServiceURL, null);
                 MBeanServerConnection mbsc = jmxc.getMBeanServerConnection();
+
+                //Executor Utilization
+                ObjectName objectName = ObjectName.getInstance("java.lang:type=OperatingSystem");
+                AttributeList attributeList = mbsc.getAttributes(objectName, new String[]{"ProcessCPULoad"});
+                if(attributeList.isEmpty()){
+                    LOG.info("Cannot retrieve executor CPU utilization");
+                }else{
+                    LOG.info(attributeList.get(0).toString());
+                    Double value = (Double)((Attribute)attributeList.get(0)).getValue();
+                    if(value < -0.5){
+                        LOG.info("Executor CPU utilization unavailable");
+                    }else{
+                        metrics.put("CPUUsage", value);
+                    }
+                }
+
                 Set mbeans = mbsc.queryNames(null, null);
                 LOG.info("MBean objects: ");
                 for(Object mbean : mbeans){
@@ -216,14 +229,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         }
                         ((HashMap<String, String>) (metrics.get("PartitionProcessed"))).put(partitionId, ok);
                     }
-                    //Executor Utilization
-                    if(name.getDomain().equals("JvmMetrics") && name.getKeyProperty("name").equals("process-cpu-usage")){
-                        //TODO
-                        LOG.info(((ObjectName)mbean).toString());
-                        String ok = mbsc.getAttribute(name, "Value").toString();
-                        LOG.info("CPU Usage:" + ok);
-                        metrics.put("CPUUsage", ok);
-                    }
+
                 }
             }catch (Exception e){
                 LOG.info("Exception when retrieve metrics from " + url + " : " + e);
