@@ -14,7 +14,7 @@ public class DefaultJobController implements JobController {
         this.config = config;
     }
     @Override
-    public void init(JobControllerListener listener, List<String> partitions, List<String> executors){
+    public void init(JobControllerListener listener, List<String> executors, List<String> partitions){
         this.listener = listener;
     }
     @Override
