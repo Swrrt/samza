@@ -15,6 +15,7 @@ public class DumbScaleOutJobController implements JobController {
 
     JobControllerListener listener;
     Config config;
+    int startNumber = 1;
     public DumbScaleOutJobController(Config config){
         this.config = config;
     }
@@ -23,6 +24,7 @@ public class DumbScaleOutJobController implements JobController {
         this.listener = listener;
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
         this.listener = listener;
+        startNumber = executors.size();
         HashMap<String, List<String>> partitionAssignment = new HashMap();
         Iterator<String> iterator = partitions.iterator();
         int times = partitions.size() / executors.size();
@@ -49,7 +51,6 @@ public class DumbScaleOutJobController implements JobController {
         }
     }
     void tryToScale(){
-        int startNumber = 1;
         for(int i=startNumber+1;i<=10;i++) {
             try{
                 Thread.sleep(30000);
