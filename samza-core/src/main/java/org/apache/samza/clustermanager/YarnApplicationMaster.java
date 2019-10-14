@@ -353,6 +353,7 @@ public class YarnApplicationMaster implements JobControllerListener {
 
     @Override
     public void scaling(int n, Map<String, List<String>> partitionToExecutor){ //Method used by decision listener
+        log.info("Try to change number of executors to : " + n);
         JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionToExecutor);
         if(newJobModel == null){
             log.info("No partition-executor mapping is given, use auto-generated JobModel instead");

@@ -43,7 +43,7 @@ public class DumbScaleOutJobController implements JobController {
     }
     @Override
     public void start(){
-        LOG.info("Start stream switch");
+        LOG.info("Start Job Controller");
         while(true){
             tryToScale();
         }
