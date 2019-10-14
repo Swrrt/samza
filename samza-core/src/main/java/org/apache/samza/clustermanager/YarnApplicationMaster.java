@@ -358,6 +358,7 @@ public class YarnApplicationMaster implements JobControllerListener {
         if(newJobModel == null){
             log.info("No partition-executor mapping is given, use auto-generated JobModel instead");
         }
+        log.info("Try to change number of executors to: " + n + " from " + numOfContainers);
         if(numOfContainers < n){   //Scale out
             log.info("Scale out!");
             int numToScaleOut = n - numOfContainers;
