@@ -178,7 +178,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     if(value < -0.5){
                         LOG.info("Executor CPU utilization unavailable");
                     }else{
-                        metrics.put("CPUUsage", value);
+                        metrics.put("ExecutorUtilization", value);
                     }
                 }
 
