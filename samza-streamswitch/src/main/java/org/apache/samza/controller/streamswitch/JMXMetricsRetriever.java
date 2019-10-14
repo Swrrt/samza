@@ -281,11 +281,25 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         System.out.println("Retrieved containers' RMI url : " + containerRMI);
         JMXclient jmxClient = new JMXclient();
 
+        Map<String, Object> metrics = new HashMap<>();
+        System.out.println("Retrieving metrics: ");
+        metrics.put("PartitionArrived", new HashMap());
+        metrics.put("PartitionProcessed", new HashMap());
+        metrics.put("ExecutorUtilization", new HashMap());
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
-            Map<String, Object> metrics = jmxClient.retrieveMetrics(entry.getValue());
-            System.out.println("Container " + containerId + " metrics: " + metrics);
+            Map<String, Object> ret = jmxClient.retrieveMetrics(entry.getValue());
+            if(ret.containsKey("PartitionWatermark")) {
+                ((HashMap<String, Object>)metrics.get("PartitionArrived")).put(containerId, ret.get("PartitionWatermark"));
+            }
+            if(ret.containsKey("PartitionProcessed")) {
+                ((HashMap<String, Object>)metrics.get("PartitionProcessed")).put(containerId, ret.get("PartitionProcessed"));
+            }
+            if(ret.containsKey("ExecutorUtilization")){
+                ((HashMap<String, Object>)metrics.get("ExecutorUtilization")).put(containerId, ret.get("ExecutorUtilization"));
+            }
         }
+        System.out.println("Retrieved Metrics: " + metrics);
 
         return ;
     }
