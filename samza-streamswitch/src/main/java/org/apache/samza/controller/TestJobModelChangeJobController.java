@@ -21,7 +21,7 @@ public class TestJobModelChangeJobController implements JobController {
     public void init(JobControllerListener listener, List<String> executors, List<String> partitions){
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
         this.listener = listener;
-        partitionAssignment = new HashedMap();
+        partitionAssignment = new HashMap();
         Iterator<String> iterator = partitions.iterator();
         int times = partitions.size() / executors.size();
         for(String executor: executors){
