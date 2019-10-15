@@ -168,18 +168,13 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 MBeanServerConnection mbsc = jmxc.getMBeanServerConnection();
 
                 //Executor Utilization
-                ObjectName objectName = ObjectName.getInstance("java.lang:type=OperatingSystem");
-                AttributeList attributeList = mbsc.getAttributes(objectName, new String[]{"ProcessCPULoad"});
-                if(attributeList.isEmpty()){
-                    LOG.info("Cannot retrieve executor CPU utilization");
+                Object os = mbsc.getAttribute(new ObjectName("java.lang:type=OperatingSystem"),"ProcessCpuTime");
+                LOG.info(os.toString());
+                Double value = (Double)((Attribute)os).getValue();
+                if(value < -0.5){
+                    LOG.info("Executor CPU utilization unavailable");
                 }else{
-                    LOG.info(attributeList.get(0).toString());
-                    Double value = (Double)((Attribute)attributeList.get(0)).getValue();
-                    if(value < -0.5){
-                        LOG.info("Executor CPU utilization unavailable");
-                    }else{
-                        metrics.put("ExecutorUtilization", value);
-                    }
+                    metrics.put("ExecutorUtilization", value);
                 }
 
                 Set mbeans = mbsc.queryNames(null, null);
