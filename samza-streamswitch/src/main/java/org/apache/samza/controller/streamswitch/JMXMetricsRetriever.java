@@ -178,6 +178,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 Double value = -1.0;
                 if(processCPUTime.containsKey(containerId)){
                     value = ((double)((long)os - processCPUTime.get(containerId))) / 1000000.0 / (time - lastTime.get(containerId)) ; //ProcessCPUtime is in nano second.
+                    LOG.info("lastProcess time: " + processCPUTime.get(containerId) + " time: " + time + " last time: " + lastTime.get(containerId));
                 }
                 processCPUTime.put(containerId, (Long)os);
                 lastTime.put(containerId, time);
