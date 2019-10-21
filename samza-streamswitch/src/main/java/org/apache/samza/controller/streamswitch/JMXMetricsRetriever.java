@@ -157,7 +157,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         private boolean isActuallyProcessed(ObjectName name){
             return name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed");
         }
-
+        long processCPUTime = -1, lastTime = -1;
         protected Map<String, Object> retrieveMetrics(String url){
             Map<String, Object> metrics = new HashMap<>();
             LOG.info("Try to retrieve metrics from " + url);
@@ -168,9 +168,15 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 MBeanServerConnection mbsc = jmxc.getMBeanServerConnection();
 
                 //Executor Utilization
+                long time = System.currentTimeMillis();
                 Object os = mbsc.getAttribute(new ObjectName("java.lang:type=OperatingSystem"),"ProcessCpuTime");
                 LOG.info("Retrieved ProcessCPUTime: " + os.toString());
-                Double value = (Double)((Attribute)os).getValue();
+                Double value = -1.0;
+                if(processCPUTime != -1){
+                    value = ((double)((long)os - processCPUTime)) / (time - lastTime);
+                }
+                processCPUTime = (Long)os;
+                lastTime = time;
                 if(value < -0.5){
                     LOG.info("Executor CPU utilization unavailable");
                 }else{
