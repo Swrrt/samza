@@ -169,7 +169,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
 
                 //Executor Utilization
                 Object os = mbsc.getAttribute(new ObjectName("java.lang:type=OperatingSystem"),"ProcessCpuTime");
-                LOG.info(os.toString());
+                LOG.info("Retrieved ProcessCPUTime: " + os.toString());
                 Double value = (Double)((Attribute)os).getValue();
                 if(value < -0.5){
                     LOG.info("Executor CPU utilization unavailable");
