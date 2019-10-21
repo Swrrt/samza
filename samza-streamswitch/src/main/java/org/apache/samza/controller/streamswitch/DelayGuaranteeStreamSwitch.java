@@ -639,6 +639,20 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
         return newAssignment;
     }
+    Map<String, Long> lastProcessCPUtime, lastProcessTime;
+    private double processCPUtimeToUtilization(String executorId, long processCPUtime, long time){
+        double value = -1.0;
+        if(lastProcessCPUtime == null){
+            lastProcessCPUtime = new HashMap<>();
+            lastProcessTime = new HashMap<>();
+        }
+        if(lastProcessCPUtime.containsKey(executorId)){
+            value = (processCPUtime - lastProcessCPUtime.get(executorId))/1000000.0 / (time - lastProcessTime.get(executorId));
+        }
+        lastProcessCPUtime.put(executorId, processCPUtime);
+        lastProcessTime.put(executorId, time);
+        return value;
+    }
 
     @Override
     protected boolean updateModel(long time, Map<String, Object> metrics){
@@ -649,8 +663,14 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 (HashMap<String, Long>)(metrics.get("PartitionArrived"));
         Map<String, Long> partitionProcessed =
                 (HashMap<String, Long>)(metrics.get("PartitionProcessed"));
-        Map<String, Double> executorUtilization =
-                (HashMap<String, Double>)(metrics.get("ExecutorUtilization"));
+
+        //Translate processCPUtime to utilization
+        Map<String, Double> executorUtilization = new HashMap<>();
+        Map<String, Long> times =
+                (HashMap<String, Long>)(metrics.get("Time"));
+        for(Map.Entry<String, Long> entry: ((HashMap<String, Long>)(metrics.get("ProcessCPUTime"))).entrySet()){
+            executorUtilization.put(entry.getKey(), processCPUtimeToUtilization(entry.getKey(), entry.getValue(), times.get(entry.getKey())));
+        }
 
         updateNetworkCalculus(time, partitionArrived, partitionProcessed);
         updateDelayEstimateModel(time, executorUtilization);
