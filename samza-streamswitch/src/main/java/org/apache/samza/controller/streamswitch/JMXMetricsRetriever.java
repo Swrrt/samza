@@ -144,7 +144,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             return null;
         }
     }
-    static class JMXclient{
+   private static class JMXclient{
+        JMXclient(){
+            processCPUTime = new HashMap<>();
+            lastTime = new HashMap<>();
+        }
         private boolean isWaterMark(ObjectName name){
             return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")
                     && !name.getKeyProperty("name").contains("window-count");
@@ -157,8 +161,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         private boolean isActuallyProcessed(ObjectName name){
             return name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed");
         }
-        long processCPUTime = -1, lastTime = -1;
-        protected Map<String, Object> retrieveMetrics(String url){
+        Map<String, Long> processCPUTime, lastTime;
+        protected Map<String, Object> retrieveMetrics(String containerId, String url){
             Map<String, Object> metrics = new HashMap<>();
             LOG.info("Try to retrieve metrics from " + url);
             try{
@@ -172,11 +176,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 Object os = mbsc.getAttribute(new ObjectName("java.lang:type=OperatingSystem"),"ProcessCpuTime");
                 LOG.info("Retrieved ProcessCPUTime: " + os.toString());
                 Double value = -1.0;
-                if(processCPUTime != -1){
-                    value = ((double)((long)os - processCPUTime)) / (time - lastTime);
+                if(processCPUTime.containsKey(containerId)){
+                    value = ((double)((long)os - processCPUTime.get(containerId))) / 1000000.0 / (time - lastTime.get(containerId)) ; //ProcessCPUtime is in nano second.
                 }
-                processCPUTime = (Long)os;
-                lastTime = time;
+                processCPUTime.put(containerId, (Long)os);
+                lastTime.put(containerId, time);
                 if(value < -0.5){
                     LOG.info("Executor CPU utilization unavailable");
                 }else{
@@ -250,7 +254,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     public Map<String, Object> retrieveMetrics(){
         YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
         String YarnHomePage = config.get("yarn.web.address");
-        String appId =yarnLogRetriever.retrieveAppId(YarnHomePage);
+        String appId = yarnLogRetriever.retrieveAppId(YarnHomePage);
         List<String> containers = yarnLogRetriever.retrieveContainersAddress(YarnHomePage, appId);
         containerRMI = yarnLogRetriever.retrieveContainerJMX(containers);
         Map<String, Object> metrics = new HashMap<>();
@@ -261,7 +265,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         metrics.put("ExecutorUtilization", new HashMap());
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
-            Map<String, Object> ret = jmxClient.retrieveMetrics(entry.getValue());
+            Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, entry.getValue());
             if(ret.containsKey("PartitionWatermark")) {
                 ((HashMap<String, Object>)metrics.get("PartitionArrived")).put(containerId, ret.get("PartitionWatermark"));
             }
@@ -295,7 +299,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         metrics.put("ExecutorUtilization", new HashMap());
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
-            Map<String, Object> ret = jmxClient.retrieveMetrics(entry.getValue());
+            Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, entry.getValue());
             if(ret.containsKey("PartitionWatermark")) {
                 ((HashMap<String, Object>)metrics.get("PartitionArrived")).put(containerId, ret.get("PartitionWatermark"));
             }
