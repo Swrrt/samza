@@ -2,16 +2,12 @@ package org.apache.samza.controller.streamswitch;
 
 import javafx.util.Pair;
 import org.apache.samza.config.Config;
-import org.apache.samza.container.TaskName;
-import org.apache.samza.controller.JobControllerListener;
-import org.apache.samza.job.model.ContainerModel;
-import org.apache.samza.job.model.JobModel;
-import org.apache.samza.util.Util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 //Under development
 
@@ -480,6 +476,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         networkCalculusModel = new NetworkCalculusModel();
         delayEstimateModel = new DelayEstimateModel();
         delayEstimateModel.setNetworkCalculusModel(networkCalculusModel);
+        algorithms = new ScalingAlgorithms();
+        updateLock = new ReentrantLock();
     }
 
     /* Algorithm: Iterate through pairs of executors, and search through all possible set of partitions,
@@ -501,11 +499,314 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             this.migratingPartitions = migratingPartitions;
         }
     }
+
+
+    //Algorithms packed
+    protected class ScalingAlgorithms{
+        public MigrationResult tryToScaleOut(){
+            LOG.info("Scale out by one container");
+
+            if(partitionAssignment.size() <= 0){
+                LOG.info("No executor to move");
+                return new MigrationResult();
+            }
+            long time = delayEstimateModel.getCurrentTime();
+            Pair<String, Double> a = findMaxLongtermDelayExecutor(partitionAssignment, time);
+            String srcExecutor = a.getKey();
+            double initialDelay = a.getValue();
+            if(srcExecutor == null || srcExecutor.equals("") || partitionAssignment.get(srcExecutor).size() <=1){
+                LOG.info("Cannot scale out: insufficient partition to migrate");
+                return new MigrationResult();
+            }
+
+            Map<String, Pair<String, String>> migratingPartitions = new HashMap<>();
+            long newExecutorId = getNextExecutorID();
+            String tgtExecutor = String.format("%06d", newExecutorId);
+            int numToMigrate = partitionAssignment.get(srcExecutor).size()/2;
+            for(String partition: partitionAssignment.get(srcExecutor)){
+                if(numToMigrate > 0){
+                    migratingPartitions.put(partition, new Pair(srcExecutor, tgtExecutor));
+                    numToMigrate--;
+                }
+            }
+            setNextExecutorId(newExecutorId + 1);
+            return new MigrationResult("Succeed", migratingPartitions);
+        }
+        public MigrationResult tryToScaleIn(){
+            LOG.info("Try to scale in");
+            long time = delayEstimateModel.getCurrentTime();
+            if(partitionAssignment.size() <= 1){
+                LOG.info("Not enough executor to merge");
+                return new MigrationResult();
+            }
+            for(String src: partitionAssignment.keySet()){
+                double srcArrival = delayEstimateModel.getExecutorArrivalRate(src, time);
+                for(String tgt: partitionAssignment.keySet())
+                    if(!src.equals(tgt)){
+                        double tgtArrival = delayEstimateModel.getExecutorArrivalRate(tgt, time);
+                        double tgtService = delayEstimateModel.getExecutorServiceRate(tgt, time);
+                        double tgtInstantDelay = delayEstimateModel.getAvgDelay(tgt, time);
+                        if(tgtInstantDelay < instantaneousThreshold && srcArrival + tgtArrival < tgtService){
+                            double estimatedLongtermDelay = estimateLongtermDelay(srcArrival + tgtArrival, tgtService);
+                            //Scale In
+                            if(estimatedLongtermDelay < longTermThreshold){
+                                Map<String, Pair<String, String>> migratingPartitions = new HashMap<>();
+                                for(String partition: partitionAssignment.get(src)){
+                                    migratingPartitions.put(partition, new Pair<>(src, tgt));
+                                }
+                                LOG.info("Scale in! from " + src + " to " + tgt);
+                                LOG.info("Migrating partitions: " + migratingPartitions.keySet());
+                                return new MigrationResult(MIGRATION_SUCCEED, migratingPartitions);
+                            }
+                        }
+                    }
+            }
+            LOG.info("Cannot find any scale in");
+            return new MigrationResult();
+        }
+
+        /*
+
+            Followings are used for re-balance algorithm
+
+         */
+        private class DFSState {
+            String srcContainer, tgtContainer;
+            double srcArrivalRate, tgtArrivalRate, srcServiceRate, tgtServiceRate;
+            double srcResidual, tgtResidual;
+            long time;
+            List<String> srcPartitions;
+            List<String> tgtPartitions;
+            Set<String> migratingPartitions;
+            double bestDelay;
+            Set<String> bestMigration;
+            String bestSrcContainer, bestTgtContainer;
+
+            DFSState() {
+                bestDelay = 1e100;
+                migratingPartitions = new HashSet<>();
+                bestMigration = new HashSet<>();
+            }
+
+            protected boolean okToMigratePartition(String partition) {
+                double partitionArrivalRate = delayEstimateModel.getPartitionArriveRate(partition, time);
+                return (partitionArrivalRate + tgtArrivalRate < tgtServiceRate - 1e-12);
+
+            }
+
+            protected void migratingPartition(String partition) {
+                migratingPartitions.add(partition);
+                double arrivalRate = delayEstimateModel.getPartitionArriveRate(partition, time);
+                srcArrivalRate -= arrivalRate;
+                tgtArrivalRate += arrivalRate;
+            }
+
+            protected void unmigratingPartition(String partition) {
+                migratingPartitions.remove(partition);
+                double arrivalRate = delayEstimateModel.getPartitionArriveRate(partition, time);
+                srcArrivalRate += arrivalRate;
+                tgtArrivalRate -= arrivalRate;
+            }
+        }
+        private Pair<String, Double> findIdealLongtermContainer(DFSState dfsState, String srcContainer, Map<String, List<String>> containerTasks, long time) {
+            double minIdealDelay = 1e100;
+            String tgtContainer = "";
+            for (String container : containerTasks.keySet()) {
+                if (container.equals(srcContainer)) continue;
+                double n1 = dfsState.srcArrivalRate;
+                double n2 = delayEstimateModel.getExecutorArrivalRate(container, time);
+                double u1 = dfsState.srcServiceRate;
+                double u2 = delayEstimateModel.getExecutorServiceRate(container, time);
+                double instantDelay = delayEstimateModel.getAvgDelay(container, time);
+                if(instantDelay < instantaneousThreshold && u2 > n2 && u2 - n2 > u1 - n1){
+                    double x = ((u2 - n2) - (u1 - n1))/2;
+                    if(u2 > n2 + x && u1 > n1 - x){
+                        double d1 = 1/(u2 - (n2 + x));
+                        double d2 = 1/(u1 - (n1 - x));
+                        LOG.info("Estimate ideal long term delay: " + d1 + " , " + d2);
+                        if(d1 < minIdealDelay){
+                            minIdealDelay = d1;
+                            tgtContainer = container;
+                        }
+                    }
+                }
+            }
+            return new Pair(tgtContainer, minIdealDelay);
+        }
+
+        public double estimateInstantaneousDelay(double arrivalRate, double serviceRate, double residual) {
+            double rho = arrivalRate / serviceRate;
+            return rho / (1 - rho) * residual + 1 / serviceRate;
+        }
+
+        public double estimateLongtermDelay(double arrivalRate, double serviceRate) {
+            if(serviceRate < arrivalRate + 1e-15)return 1e100;
+            return 1.0/(serviceRate - arrivalRate);
+        }
+
+        private double estimateSrcLongtermDelay(DFSState state) {
+            return estimateLongtermDelay(state.srcArrivalRate, state.srcServiceRate);
+        }
+
+        private double estimateTgtLongtermDelay(DFSState state) {
+            return estimateLongtermDelay(state.tgtArrivalRate, state.tgtServiceRate);
+        }
+
+
+        private double estimateSrcInstantDelay(DFSState state) {
+            return estimateInstantaneousDelay(state.srcArrivalRate, state.srcServiceRate, state.srcResidual);
+        }
+
+        private double estimateTgtInstantDelay(DFSState state) {
+            return estimateInstantaneousDelay(state.tgtArrivalRate, state.tgtServiceRate, state.tgtResidual);
+        }
+
+        private void DFSforBestLongtermDelay(int i, DFSState state) {
+            if (state.srcArrivalRate > 1e-12 && state.srcArrivalRate < state.srcServiceRate && state.tgtArrivalRate < state.tgtServiceRate) { //Cannot move all partitions out
+                double estimateSrc = estimateSrcLongtermDelay(state), estimateTgt = estimateTgtLongtermDelay(state);
+                LOG.info("If migrating partitions " + state.migratingPartitions
+                        + " from " + state.srcContainer
+                        + " to " + state.tgtContainer
+                        + ", estimate source delay: " + estimateSrc
+                        + ", estimate target delay: " + estimateTgt
+                        + ", current best delay: " + state.bestDelay
+                        + ", srcArrivalRate: " + state.srcArrivalRate
+                        + ", tgtArrivalRate: " + state.tgtArrivalRate
+                        + ", srcServiceRate: " + state.srcServiceRate
+                        + ", tgtServiceRate: " + state.tgtServiceRate
+                        + ", srcResidual: " + state.srcResidual
+                        + ", tgtResidual: " + state.tgtResidual
+                );
+                if (estimateTgt > estimateSrc && estimateSrc > state.bestDelay) return;
+                if (estimateSrc < state.bestDelay && estimateTgt < state.bestDelay) {
+                    state.bestDelay = Math.max(estimateSrc, estimateTgt);
+                    state.bestMigration.clear();
+                    state.bestMigration.addAll(state.migratingPartitions);
+                    state.bestTgtContainer = state.tgtContainer;
+                    state.bestSrcContainer = state.srcContainer;
+                }
+            }
+            if (i < 0) {
+                return;
+            }
+
+            //String partitionId = state.srcPartitions.get(i);
+
+            for (int j = i - 1; j >= 0; j--) {
+                String partitionId = state.srcPartitions.get(j);
+                if (state.okToMigratePartition(partitionId)) { //Migrate j
+                    state.migratingPartition(partitionId);
+                    DFSforBestLongtermDelay(j, state);
+                    state.unmigratingPartition(partitionId);
+                }
+            }
+        }
+
+        private Pair<String, Double> findMaxLongtermDelay(Map<String, List<String>> containerTasks, long time){
+            double initialDelay = -1.0;
+            String maxContainer = "";
+            for (String containerId : containerTasks.keySet()) {
+                double delay = delayEstimateModel.getLongTermDelay(containerId, time);
+                if (delay > initialDelay && !checkDelay(containerId)) {
+                    initialDelay = delay;
+                    maxContainer = containerId;
+                }
+            }
+            return new Pair(maxContainer, initialDelay);
+        }
+
+        //TODO: implement DFS
+        public MigrationResult tryToMigrate(){
+            LOG.info("Try to migrate");
+            LOG.info("Migrating once based on assignment: " + partitionAssignment);
+            Map<String, List<String>> containerTasks = new HashMap<>();
+            long time = delayEstimateModel.getCurrentTime();
+            containerTasks = partitionAssignment;
+            if (containerTasks.keySet().size() == 0) { //No executor to move
+                MigrationResult result = new MigrationResult();
+                return result;
+            }
+            DFSState dfsState = new DFSState();
+            dfsState.time = time;
+
+            //Find container with maximum delay
+            Pair<String, Double> a = findMaxLongtermDelay(containerTasks, time);
+            String srcContainer = a.getKey();
+            double initialDelay = a.getValue();
+            if (srcContainer.equals("")) { //No correct container
+                LOG.info("Cannot find the container that exceeds threshold");
+                MigrationResult result = new MigrationResult();
+                return result;
+            }
+
+            if (containerTasks.get(srcContainer).size() <= 1) { //Container has only one partition
+                LOG.info("Largest delay container " + srcContainer + " has only " + containerTasks.get(srcContainer).size());
+                MigrationResult result = new MigrationResult();
+                return result;
+            }
+            LOG.info("Try to migrate from largest delay container " + srcContainer);
+            dfsState.bestDelay = initialDelay;
+            dfsState.bestSrcContainer = srcContainer;
+            dfsState.bestTgtContainer = srcContainer;
+            dfsState.bestMigration.clear();
+            //Migrating this container
+            dfsState.srcContainer = srcContainer;
+            dfsState.srcArrivalRate = delayEstimateModel.getExecutorArrivalRate(srcContainer, time);
+            dfsState.srcServiceRate = delayEstimateModel.getExecutorServiceRate(srcContainer, time);
+            dfsState.srcResidual = delayEstimateModel.getAvgResidual(srcContainer, time);
+            dfsState.srcPartitions = containerTasks.get(srcContainer);
+            //Choose target container based on ideal delay (minimize ideal delay)
+            a = findIdealLongtermContainer(dfsState, srcContainer, containerTasks, time);
+            String tgtContainer = a.getKey();
+            double minIdealDelay = a.getValue();
+            if(tgtContainer.equals("")){
+                LOG.info("Cannot find available migration");
+                MigrationResult result = new MigrationResult();
+                return result;
+            }
+            LOG.info("Find minimal ideal container " + tgtContainer + " , ideal delay: " + minIdealDelay);
+/*        for (String tgtContainer : containerTasks.keySet())
+            if (!srcContainer.equals(tgtContainer)) {*/
+            double tgtArrivalRate = delayEstimateModel.getExecutorArrivalRate(tgtContainer, time);
+            double tgtServiceRate = delayEstimateModel.getExecutorServiceRate(tgtContainer, time);
+            if (tgtArrivalRate < tgtServiceRate - 1e-9) {
+                int srcSize = containerTasks.get(srcContainer).size();
+                dfsState.tgtPartitions = containerTasks.get(tgtContainer);
+                dfsState.tgtArrivalRate = tgtArrivalRate;
+                dfsState.tgtServiceRate = tgtServiceRate;
+                dfsState.tgtResidual = delayEstimateModel.getAvgResidual(tgtContainer, time);
+                dfsState.migratingPartitions.clear();
+                dfsState.tgtContainer = tgtContainer;
+                DFSforBestLongtermDelay(srcSize, dfsState);
+                //Bruteforce(srcSize, dfsState);
+            }
+            /*            } */
+
+            if (dfsState.bestDelay > initialDelay - 1e-9) {
+                LOG.info("Cannot find any better migration");
+                MigrationResult result = new MigrationResult();
+                return result;
+            }
+
+            if(dfsState.bestDelay > longTermThreshold){
+                LOG.info("Cannot find migration smaller than threshold");
+                MigrationResult result = new MigrationResult();
+                return result;
+            }
+            LOG.info("Find best migration with delay: " + dfsState.bestDelay + ", from container " + dfsState.bestSrcContainer + " to container " + dfsState.bestTgtContainer + ", partitions: " + dfsState.bestMigration);
+
+            Map<String, Pair<String, String>> migratingTasks = new HashMap<>();
+            for (String parition : dfsState.bestMigration) {
+                //delayEstimator.migration(time, srcContainer, dfsState.bestTgtContainer, parition);
+                migratingTasks.put(parition, new Pair(dfsState.bestSrcContainer, dfsState.bestTgtContainer));
+            }
+            MigrationResult result = new MigrationResult(MIGRATION_SUCCEED, migratingTasks);
+            return result;
+        }
+    }
+    ScalingAlgorithms algorithms;
     private MigrationResult tryToMigrate(){
-        LOG.info("Try to migrate");
-
-
-        return new MigrationResult();
+        return algorithms.tryToMigrate();
     }
 
     //Return false if both instantaneous and long-term thresholds are violated
@@ -555,7 +856,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     }
 
     private MigrationResult tryToScaleOut(){
-        LOG.info("Scale out by one container");
+        return algorithms.tryToScaleOut();
+        /*LOG.info("Scale out by one container");
 
         if(partitionAssignment.size() <= 0){
             LOG.info("No executor to move");
@@ -581,45 +883,16 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
         }
         setNextExecutorId(newExecutorId + 1);
-        return new MigrationResult("Succeed", migratingPartitions);
+        return new MigrationResult("Succeed", migratingPartitions);*/
     }
 
     private double estimateLongtermDelay(double arrivalRate, double serviceRate) {
         if(serviceRate < arrivalRate + 1e-15)return 1e100;
         return 1.0/(serviceRate - arrivalRate);
     }
-    //TODO
+
     private MigrationResult tryToScaleIn(){
-        LOG.info("Try to scale in");
-        long time = delayEstimateModel.getCurrentTime();
-        if(partitionAssignment.size() <= 1){
-            LOG.info("Not enough executor to merge");
-            return new MigrationResult();
-        }
-        for(String src: partitionAssignment.keySet()){
-            double srcArrival = delayEstimateModel.getExecutorArrivalRate(src, time);
-            for(String tgt: partitionAssignment.keySet())
-                if(!src.equals(tgt)){
-                    double tgtArrival = delayEstimateModel.getExecutorArrivalRate(tgt, time);
-                    double tgtService = delayEstimateModel.getExecutorServiceRate(tgt, time);
-                    double tgtInstantDelay = delayEstimateModel.getAvgDelay(tgt, time);
-                    if(tgtInstantDelay < instantaneousThreshold && srcArrival + tgtArrival < tgtService){
-                        double estimatedLongtermDelay = estimateLongtermDelay(srcArrival + tgtArrival, tgtService);
-                        //Scale In
-                        if(estimatedLongtermDelay < longTermThreshold){
-                            Map<String, Pair<String, String>> migratingPartitions = new HashMap<>();
-                            for(String partition: partitionAssignment.get(src)){
-                                migratingPartitions.put(partition, new Pair<>(src, tgt));
-                            }
-                            LOG.info("Scale in! from " + src + " to " + tgt);
-                            LOG.info("Migrating partitions: " + migratingPartitions.keySet());
-                            return new MigrationResult(MIGRATION_SUCCEED, migratingPartitions);
-                        }
-                    }
-                }
-        }
-        LOG.info("Cannot find any scale in");
-        return new MigrationResult();
+        return algorithms.tryToScaleIn();
     }
 
     MigrationResult lastResult;
@@ -653,76 +926,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         lastProcessTime.put(executorId, time);
         return value;
     }
-
-    @Override
-    protected boolean updateModel(long time, Map<String, Object> metrics){
-        LOG.info("Updating model from metrics");
-
-
-        Map<String, Long> partitionArrived =
-                (HashMap<String, Long>)(metrics.get("PartitionArrived"));
-        Map<String, Long> partitionProcessed =
-                (HashMap<String, Long>)(metrics.get("PartitionProcessed"));
-
-        //Translate processCPUtime to utilization
-        Map<String, Double> executorUtilization = new HashMap<>();
-        Map<String, Long> times =
-                (HashMap<String, Long>)(metrics.get("Time"));
-        for(Map.Entry<String, Long> entry: ((HashMap<String, Long>)(metrics.get("ProcessCPUTime"))).entrySet()){
-            executorUtilization.put(entry.getKey(), processCPUtimeToUtilization(entry.getKey(), entry.getValue(), times.get(entry.getKey())));
-        }
-        LOG.info("Show utilizations: " + executorUtilization);
-        updateNetworkCalculus(time, partitionArrived, partitionProcessed);
-        updateDelayEstimateModel(time, executorUtilization);
-
-        //Map<String, String> containerArrived = (HashMap<String, String>)(metrics.get(""))
-        if(waitForMigrationDeployed){
-            LOG.info("Last migration is not deployed, cannot migrate");
-        }else if(time - startTime <= migrationWarmupTime){
-            LOG.info("Still in warmup phase, cannot migrate");
-        }else if(time - lastTime <= migrationInterval) {
-            LOG.info("To close to last migration decision, cannot migrate");
-        }else{
-            //TODO: check delay and migrate
-            LOG.info("Check delay guarantee is followed");
-            if(!checkDelayGuarantee()){
-                //TODO: try to migrate
-                MigrationResult result = tryToMigrate();
-                if(result.resultCode.equals(MIGRATION_SUCCEED)){
-                    LOG.info("OK to migrate");
-                    lastResult = result;
-                    Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
-                    listener.changePartitionAssignment(newAssignment);
-                    waitForMigrationDeployed = true;
-                }else if(result.resultCode.equals(MIGRATION_NEEDSCALEOUT)){
-                    //TODO: try to scaling
-                    result = tryToScaleOut();
-                    if(result.resultCode.equals(MIGRATION_SUCCEED)){
-                        LOG.info("OK to scale out!");
-                        lastResult = result;
-                        Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
-                        listener.scaling(newAssignment.size(), newAssignment);
-                        waitForMigrationDeployed = true;
-                    }
-                }else{
-                    LOG.info("Error, some thing wrong with migration algorithm");
-                }
-            }else{
-                LOG.info("Delay guarantee is not violated, try to scaleIn");
-                MigrationResult result = tryToScaleIn();
-                if(result.equals(MIGRATION_SUCCEED)){
-                    LOG.info("OK to scale in");
-                    lastResult = result;
-                    Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
-                    listener.scaling(newAssignment.size(), newAssignment);
-                    waitForMigrationDeployed = true;
-                }else{
-                    LOG.info("Cannot scale in, do nothing");
-                }
-            }
-        }
-        return false;
-    };
 
     private boolean checkDelayGuarantee(String executorId){
         double delay = delayEstimateModel.getAvgDelay(executorId, delayEstimateModel.getCurrentTime());
@@ -814,19 +1017,95 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
     }
 
+
+    @Override
+    protected boolean updateModel(long time, Map<String, Object> metrics) {
+        LOG.info("Updating model from metrics, try to acquire lock...");
+        boolean needMigrate = false;
+        Map<String, Long> partitionArrived =
+                (HashMap<String, Long>) (metrics.get("PartitionArrived"));
+        Map<String, Long> partitionProcessed =
+                (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
+
+        //Translate processCPUtime to utilization
+        Map<String, Double> executorUtilization = new HashMap<>();
+        Map<String, Long> times =
+                (HashMap<String, Long>) (metrics.get("Time"));
+        for (Map.Entry<String, Long> entry : ((HashMap<String, Long>) (metrics.get("ProcessCPUTime"))).entrySet()) {
+            executorUtilization.put(entry.getKey(), processCPUtimeToUtilization(entry.getKey(), entry.getValue(), times.get(entry.getKey())));
+        }
+        LOG.info("Show utilizations: " + executorUtilization);
+        updateNetworkCalculus(time, partitionArrived, partitionProcessed);
+        updateDelayEstimateModel(time, executorUtilization);
+
+        //Map<String, String> containerArrived = (HashMap<String, String>)(metrics.get(""))
+        if (waitForMigrationDeployed) {
+            LOG.info("Last migration is not deployed, cannot migrate");
+        } else if (time - startTime <= migrationWarmupTime) {
+            LOG.info("Still in warmup phase, cannot migrate");
+        } else if (time - lastTime <= migrationInterval) {
+            LOG.info("To close to last migration decision, cannot migrate");
+        } else {
+            LOG.info("Check delay guarantee is followed");
+            if (!checkDelayGuarantee()) {
+                //TODO: try to migrate
+                MigrationResult result = tryToMigrate();
+                if (result.resultCode.equals(MIGRATION_SUCCEED)) {
+                    LOG.info("OK to migrate");
+                    lastResult = result;
+                    Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
+                    listener.changePartitionAssignment(newAssignment);
+                    needMigrate = true;
+                } else if (result.resultCode.equals(MIGRATION_NEEDSCALEOUT)) {
+                    result = tryToScaleOut();
+                    if (result.resultCode.equals(MIGRATION_SUCCEED)) {
+                        LOG.info("OK to scale out!");
+                        lastResult = result;
+                        Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
+                        listener.scaling(newAssignment.size(), newAssignment);
+                        needMigrate = true;
+                    }
+                } else {
+                    LOG.info("Error, some thing wrong with migration algorithm");
+                }
+            } else {
+                LOG.info("Delay guarantee is not violated, try to scaleIn");
+                MigrationResult result = tryToScaleIn();
+                if (result.equals(MIGRATION_SUCCEED)) {
+                    LOG.info("OK to scale in");
+                    lastResult = result;
+                    Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
+                    listener.scaling(newAssignment.size(), newAssignment);
+                    needMigrate = true;
+                } else {
+                    LOG.info("Cannot scale in, do nothing");
+                }
+            }
+        }
+        return needMigrate;
+    }
+
     //TODO
     @Override
     public synchronized void onChangeImplemented(){
-        LOG.info("Migration actually deployed");
-        if(waitForMigrationDeployed){
-            LOG.info("Update mapping and models");
-            waitForMigrationDeployed = false;
-            partitionAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, lastResult.migratingPartitions);
-            long time = System.currentTimeMillis();
-            for(String partition: lastResult.migratingPartitions.keySet()){
-                networkCalculusModel.migration(time, lastResult.migratingPartitions.get(partition).getKey(), lastResult.migratingPartitions.get(partition).getValue(), partition);
+        LOG.info("Migration actually deployed, try to acquire lock...");
+        updateLock.lock();
+        try {
+            LOG.info("Lock acquired, migrating");
+            //TODO: add updateLock here and update model
+            if (waitForMigrationDeployed) {
+                LOG.info("Update mapping and models");
+                waitForMigrationDeployed = false;
+                partitionAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, lastResult.migratingPartitions);
+                long time = System.currentTimeMillis();
+                for (String partition : lastResult.migratingPartitions.keySet()) {
+                    networkCalculusModel.migration(time, lastResult.migratingPartitions.get(partition).getKey(), lastResult.migratingPartitions.get(partition).getValue(), partition);
+                }
+                lastResult = new MigrationResult();
             }
-            lastResult = new MigrationResult();
+        }finally {
+            updateLock.unlock();
+            LOG.info("Migration is over, unlock");
         }
     }
 

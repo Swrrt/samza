@@ -12,6 +12,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 
 public abstract class StreamSwitch implements JobController {
     private static final Logger LOG = LoggerFactory.getLogger(StreamSwitch.class);
@@ -21,6 +22,7 @@ public abstract class StreamSwitch implements JobController {
     Map<String, List<String>> partitionAssignment;
     boolean waitForMigrationDeployed;
     long startTime = 0;
+    ReentrantLock updateLock; //Lock is used to avoid concurrent modify between updateModel() and changeImplemented()
     public StreamSwitch(Config config){
         this.config = config;
     }
@@ -66,13 +68,15 @@ public abstract class StreamSwitch implements JobController {
         waitForMigrationDeployed = false;
         startTime = System.currentTimeMillis();
         while(true) {
-
             long time = System.currentTimeMillis();
             if (time - startTime > metricsWarmupTime) isWarmup = false;
             if (!isWarmup) {
                 Map<String, Object> metrics = retriever.retrieveMetrics();
-                //To prevent migration deployment during update process, use synchronization lock.
-                synchronized (this) {
+                //To prevent migration deployment during update process, use synchronization updateLock.
+                LOG.info("Try to acquire lock to update model...");
+                updateLock.lock();
+                try {
+                    LOG.info("Lock acquired, update model");
                     if (updateModel(time, metrics)) {
                         if (!waitForMigrationDeployed) waitForMigrationDeployed = true;
                         else {
@@ -80,6 +84,9 @@ public abstract class StreamSwitch implements JobController {
                             //TODO: throw an error?
                         }
                     }
+                }finally {
+                    updateLock.unlock();
+                    LOG.info("Model update completed, unlock");
                 }
             }
             try {
