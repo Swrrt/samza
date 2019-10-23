@@ -175,7 +175,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 try {
                     Object os = mbsc.getAttribute(new ObjectName("java.lang:type=OperatingSystem"), "ProcessCpuTime");
                     value = (long) os;
-                    LOG.info("Retrieved " + containerId + " ProcessCPUTime: " + os.toString());
+                    //LOG.info("Retrieved " + containerId + " ProcessCPUTime: " + os.toString());
                 } catch (Exception e){
                     LOG.info("Exception when retrieving processCPUTime");
                 }
@@ -192,7 +192,6 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     ObjectName name = (ObjectName)mbean;
                     //Partition WaterMark
                     if(isWaterMark(name)){
-
                         //LOG.info(mbean.toString());
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("name");
@@ -200,11 +199,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         i++;
                         int j = partitionId.indexOf('-', i);
                         partitionId = partitionId.substring(i, j);
-                        //LOG.info("Watermark: " + ok);
-                        if(!metrics.containsKey("PartitionWaterMark")){
-                            metrics.put("PartitionWaterMark", new HashMap<String, String>());
+                        LOG.info("Watermark: " + ok);
+                        if(!metrics.containsKey("PartitionWatermark")){
+                            metrics.put("PartitionWatermark", new HashMap<String, String>());
                         }
-                        ((HashMap<String, String>) (metrics.get("PartitionWaterMark"))).put(partitionId, ok);
+                        ((HashMap<String, String>) (metrics.get("PartitionWatermark"))).put(partitionId, ok);
                     }
                     //Partition next offset
                     if(isNextOffset(name)){
