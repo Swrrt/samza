@@ -192,7 +192,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     ObjectName name = (ObjectName)mbean;
                     //Partition WaterMark
                     if(isWaterMark(name)){
-                        //LOG.info(mbean.toString());
+                        LOG.info(mbean.toString());
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("name");
                         int i = partitionId.indexOf('-', 6);
