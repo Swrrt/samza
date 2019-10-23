@@ -317,8 +317,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             Map<String, Object> ret = jmxClient.retrieveMetrics(topic, entry.getValue());
-            if(ret.containsKey("PartitionWatermark")) {
-                ((HashMap<String, Object>)metrics.get("PartitionArrived")).put(containerId, ret.get("PartitionWatermark"));
+            if(ret.containsKey("PartitionArrived")) {
+                ((HashMap<String, Object>)metrics.get("PartitionArrived")).put(containerId, ret.get("PartitionArrived"));
             }
             if(ret.containsKey("PartitionProcessed")) {
                 ((HashMap<String, Object>)metrics.get("PartitionProcessed")).put(containerId, ret.get("PartitionProcessed"));
