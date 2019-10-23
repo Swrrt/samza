@@ -206,6 +206,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         if(partitionNextOffset.containsKey(partitionId)){
                             long arrived = Long.parseLong(ok) - Long.parseLong(partitionNextOffset.get(partitionId));
                             if(arrived < 0) arrived = 0;
+                            LOG.info("Partition " + partitionId + " arrived: " + arrived);
                             partitionArrived.put(partitionId, String.valueOf(arrived));
                         }
                     }else
@@ -223,6 +224,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         if(partitionWatermark.containsKey(partitionId)){
                             long arrived =  Long.parseLong(partitionWatermark.get(partitionId))- Long.parseLong(ok);
                             if(arrived < 0) arrived = 0;
+                            LOG.info("Partition " + partitionId + " arrived: " + arrived);
                             partitionArrived.put(partitionId, String.valueOf(arrived));
                         }
                     }else
