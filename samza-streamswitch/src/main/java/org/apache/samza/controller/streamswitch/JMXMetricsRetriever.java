@@ -256,7 +256,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     }
     @Override
     public void init(){
-        partitionNextOffset = new HashMap<>();
+        partitionBeginOffset = new HashMap<>();
         partitionProcessed = new HashMap<>();
         partitionWatermark = new HashMap<>();
     }
@@ -264,11 +264,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         Currently, metrics retriever only support one topic metrics
 
         Attention:
-        1) NextOffset information is always 0 at the beginning. Only when new input comes to the partition, it will then be flushed.
+        1) BeginOffset is set to be the initial highwatermark, so please don't give any input at the beginning.
         2) After migration, containers still contain migrated partitions' metrics (offset)
      */
 
-    HashMap<String, Long> partitionWatermark, partitionNextOffset, partitionProcessed;
+    HashMap<String, Long> partitionWatermark, partitionBeginOffset, partitionProcessed;
     @Override
     public Map<String, Object> retrieveMetrics(){
         YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
@@ -291,6 +291,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             if(ret.containsKey("PartitionWatermark")) {
                 HashMap<String, String> watermark = (HashMap<String, String>)ret.get("PartitionWatermark");
                 for(Map.Entry<String, String> ent : watermark.entrySet()){
+                    if(!partitionBeginOffset.containsKey(ent.getKey())){
+                        partitionBeginOffset.put(ent.getKey(), Long.parseLong(ent.getValue()));
+                    }
                     if(!partitionWatermark.containsKey(ent.getKey())){
                         partitionWatermark.put(ent.getKey(), Long.parseLong(ent.getValue()));
                     }else{
@@ -301,22 +304,18 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     }
                 }
             }
-
-            if(ret.containsKey("PartitionNextOffset")) {
-                HashMap<String, String> offset = (HashMap<String, String>)ret.get("PartitionNextOffset");
-                for(Map.Entry<String, String> ent : offset.entrySet()){
-                    long value = Long.parseLong(ent.getValue());
-                    if(!partitionNextOffset.containsKey(ent.getKey())){
-                        partitionNextOffset.put(ent.getKey(), value);
-                    }else{
-                        if(value < partitionNextOffset.get(ent.getKey())){
-                            partitionNextOffset.put(ent.getKey(), value);
+            if(ret.containsKey("PartitionProcessed")) {
+                HashMap<String, String> processed = (HashMap<String, String>)ret.get("PartitionProcessed");
+                for(Map.Entry<String, String> ent : processed.entrySet()) {
+                    if (!partitionProcessed.containsKey(ent.getKey())) {
+                        partitionProcessed.put(ent.getKey(), Long.parseLong(ent.getValue()));
+                    } else {
+                        long value = Long.parseLong(ent.getValue());
+                        if (value < partitionProcessed.get(ent.getKey())) {
+                            partitionProcessed.put(ent.getKey(), value);
                         }
                     }
                 }
-            }
-            if(ret.containsKey("PartitionProcessed")) {
-                ((HashMap<String, Object>)metrics.get("PartitionProcessed")).put(containerId, ret.get("PartitionProcessed"));
             }
             if(ret.containsKey("ProcessCPUTime")){
                 ((HashMap<String, Object>)metrics.get("ProcessCPUTime")).put(containerId, ret.get("ProcessCPUTime"));
@@ -326,13 +325,14 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }
         }
         for(String partitionId : partitionWatermark.keySet()){
-            long offset = partitionNextOffset.get(partitionId);
+            long begin = partitionBeginOffset.get(partitionId);
             long watermark = partitionWatermark.get(partitionId);
-            if(offset == 0){
-                partitionNextOffset.put(partitionId, watermark);
-                offset = watermark;
+            long processed = partitionProcessed.getOrDefault(partitionId, 0l);
+            if(watermark - processed < begin){
+                begin = watermark - processed;
+                partitionBeginOffset.put(partitionId, begin);
             }
-            partitionArrived.put(partitionId, watermark - offset);
+            partitionArrived.put(partitionId, watermark - begin);
         }
         LOG.info("Retrieved Metrics: " + metrics);
         return metrics;
