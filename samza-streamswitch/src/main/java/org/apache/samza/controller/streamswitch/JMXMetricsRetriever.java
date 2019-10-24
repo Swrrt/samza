@@ -282,7 +282,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         LOG.info("Retrieving metrics: ");
         HashMap<String, Long> partitionArrived = new HashMap<>();
         metrics.put("PartitionArrived", partitionArrived);
-        metrics.put("PartitionProcessed", new HashMap());
+        metrics.put("PartitionProcessed", partitionProcessed);
         metrics.put("ProcessCPUTime", new HashMap());
         metrics.put("Time", new HashMap());
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
@@ -298,7 +298,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         partitionWatermark.put(ent.getKey(), Long.parseLong(ent.getValue()));
                     }else{
                         long value = Long.parseLong(ent.getValue());
-                        if(value < partitionWatermark.get(ent.getKey())){
+                        if(value > partitionWatermark.get(ent.getKey())){
                             partitionWatermark.put(ent.getKey(), value);
                         }
                     }
@@ -311,7 +311,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         partitionProcessed.put(ent.getKey(), Long.parseLong(ent.getValue()));
                     } else {
                         long value = Long.parseLong(ent.getValue());
-                        if (value < partitionProcessed.get(ent.getKey())) {
+                        if (value > partitionProcessed.get(ent.getKey())) {
                             partitionProcessed.put(ent.getKey(), value);
                         }
                     }
