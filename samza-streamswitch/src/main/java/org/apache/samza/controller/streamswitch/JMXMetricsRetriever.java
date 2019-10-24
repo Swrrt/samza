@@ -162,10 +162,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
         protected Map<String, Object> retrieveMetrics(String topic, String url){
             Map<String, Object> metrics = new HashMap<>();
-            LOG.info("Try to retrieve metrics from " + url);
+            //LOG.info("Try to retrieve metrics from " + url);
             try{
                 JMXServiceURL jmxServiceURL = new JMXServiceURL(url);
-                LOG.info("Connecting JMX server...");
+                //LOG.info("Connecting JMX server...");
                 JMXConnector jmxc = JMXConnectorFactory.connect(jmxServiceURL, null);
                 MBeanServerConnection mbsc = jmxc.getMBeanServerConnection();
 
@@ -191,7 +191,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 metrics.put("PartitionNextOffset", partitionNextOffset);
                 metrics.put("PartitionProcessed", partitionProcessed);
                 Set mbeans = mbsc.queryNames(null, null);
-                LOG.info("MBean objects: ");
+                //LOG.info("MBean objects: ");
                 for(Object mbean : mbeans){
                     ObjectName name = (ObjectName)mbean;
                     //Partition WaterMark
