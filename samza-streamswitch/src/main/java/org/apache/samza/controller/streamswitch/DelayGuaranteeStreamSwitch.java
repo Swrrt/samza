@@ -1022,8 +1022,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     protected boolean updateModel(long time, Map<String, Object> metrics) {
         LOG.info("Updating model from metrics, try to acquire lock...");
         boolean needMigrate = false;
-        Map<String, Long> partitionArrived =
-                (HashMap<String, Long>) (metrics.get("PartitionArrived"));
+        Map<String, Long> partitionArrived = null;
+        if(metrics.containsKey("PartitionArrived")) {
+            partitionArrived = (HashMap<String, Long>) (metrics.get("PartitionArrived"));
+        }else if(metrics.containsKey("PartitionWatermark")){    //Use watermark to calculate arrived
+        }
         Map<String, Long> partitionProcessed =
                 (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
 
