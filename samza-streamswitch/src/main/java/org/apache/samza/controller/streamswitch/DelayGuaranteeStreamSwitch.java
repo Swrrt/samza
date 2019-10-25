@@ -924,6 +924,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
         lastProcessCPUtime.put(executorId, processCPUtime);
         lastProcessTime.put(executorId, time);
+        if(value > 1.0) value = 1;
+        if(value < 0) value = 1;
         return value;
     }
 
