@@ -131,7 +131,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             return completed;
         }
         public void updateAtTime(long time, Map<String, Long> taskArrived, Map<String, Long> taskProcessed, Map<String, List<String>> partitionAssignment) { //Normal update
-            LOG.info("Debugging, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
+            //LOG.info("Debugging, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
             timePoints.add(time);
             for (String executorId : partitionAssignment.keySet()) {
                 long d_completed = 0;
@@ -163,7 +163,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     long lastTime = timePoints.get(timePoints.size() - 2);
                     d_completed += getExecutorCompleted(executorId, lastTime);
                 }
-                LOG.info("Debugging, executor " + executorId + " dcompleted: " + d_completed);
+                //LOG.info("Debugging, executor " + executorId + " dcompleted: " + d_completed);
                 updateExecutorCompleted(executorId, time, d_completed);
             }
         }
@@ -407,6 +407,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     updatePartitionArriveRate(partitionId, time, arrivalRate);
                     s_arrivalRate += arrivalRate;
                 }
+                LOG.info("Debugging,  time: " + time + " last time: " + lastTime + " s_arrivalRate: " + s_arrivalRate);
                 updateExecutorArriveRate(containerId, time, s_arrivalRate);
 
                 //Update actual service rate (capability)
