@@ -131,6 +131,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             return completed;
         }
         public void updateAtTime(long time, Map<String, Long> taskArrived, Map<String, Long> taskProcessed, Map<String, List<String>> partitionAssignment) { //Normal update
+            LOG.info("Debugging, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
             timePoints.add(time);
             for (String executorId : partitionAssignment.keySet()) {
                 long d_completed = 0;
@@ -1022,16 +1023,17 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
     @Override
     protected boolean updateModel(long time, Map<String, Object> metrics) {
-        LOG.info("Updating model from metrics, try to acquire lock...");
+        LOG.info("Updating model from metrics");
         boolean needMigrate = false;
         Map<String, Long> partitionArrived = null;
         if(metrics.containsKey("PartitionArrived")) {
             partitionArrived = (HashMap<String, Long>) (metrics.get("PartitionArrived"));
+            LOG.info("Partition arrived: " + partitionArrived);
         }else if(metrics.containsKey("PartitionWatermark")){    //Use watermark to calculate arrived
         }
         Map<String, Long> partitionProcessed =
                 (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
-
+        LOG.info("Partition Processed: " + partitionProcessed);
         //Translate processCPUtime to utilization
         Map<String, Double> executorUtilization = new HashMap<>();
         Map<String, Long> times =
@@ -1062,6 +1064,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     listener.changePartitionAssignment(newAssignment);
                     needMigrate = true;
                 } else if (result.resultCode.equals(MIGRATION_NEEDSCALEOUT)) {
+                    LOG.info("Need to scale out!");
                     result = tryToScaleOut();
                     if (result.resultCode.equals(MIGRATION_SUCCEED)) {
                         LOG.info("OK to scale out!");
