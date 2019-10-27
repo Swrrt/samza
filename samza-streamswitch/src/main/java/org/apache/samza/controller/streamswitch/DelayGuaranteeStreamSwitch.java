@@ -480,6 +480,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         networkCalculusModel = new NetworkCalculusModel();
         delayEstimateModel = new DelayEstimateModel();
         delayEstimateModel.setNetworkCalculusModel(networkCalculusModel);
+        delayEstimateModel.setTimes(networkCalculusModel.timePoints);
+        delayEstimateModel.setTimes(config.getLong("streamswitch.delay.interval", 500l), config.getInt("streamswitch.delay.alpha", 20), config.getInt("streamswitch.delay.beta", 10));
         algorithms = new ScalingAlgorithms();
         updateLock = new ReentrantLock();
     }
