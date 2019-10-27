@@ -534,7 +534,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 }
             }
             setNextExecutorId(newExecutorId + 1);
-            return new MigrationResult("Succeed", migratingPartitions);
+            LOG.info("Debugging, scaling out migrating partitions: " + migratingPartitions);
+            return new MigrationResult(MIGRATION_SUCCEED, migratingPartitions);
         }
         public MigrationResult tryToScaleIn(){
             LOG.info("Try to scale in");
