@@ -404,6 +404,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     long lastArrived = networkCalculusModel.getPartitionArrived(partitionId, lastTime);
                     double arrivalRate = 0;
                     if(time > lastTime) arrivalRate = (arrived - lastArrived) / ((double) time - lastTime);
+                    LOG.info("Debugging,  time: " + time + " last time: " + lastTime + " arrived: " + arrived + "lastArrived: " + lastArrived + " arrivalRate: " + arrivalRate);
                     updatePartitionArriveRate(partitionId, time, arrivalRate);
                     s_arrivalRate += arrivalRate;
                 }
