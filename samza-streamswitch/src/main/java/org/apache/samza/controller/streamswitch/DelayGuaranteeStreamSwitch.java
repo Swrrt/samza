@@ -767,7 +767,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             double minIdealDelay = a.getValue();
             if(tgtContainer.equals("")){
                 LOG.info("Cannot find available migration");
-                MigrationResult result = new MigrationResult();
+                MigrationResult result = new MigrationResult(MIGRATION_NEEDSCALEOUT, null);
                 return result;
             }
             LOG.info("Find minimal ideal container " + tgtContainer + " , ideal delay: " + minIdealDelay);
@@ -1062,6 +1062,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             if (!checkDelayGuarantee()) {
                 //TODO: try to migrate
                 MigrationResult result = tryToMigrate();
+                LOG.info(result.toString());
                 if (result.resultCode.equals(MIGRATION_SUCCEED)) {
                     LOG.info("OK to migrate");
                     lastResult = result;
