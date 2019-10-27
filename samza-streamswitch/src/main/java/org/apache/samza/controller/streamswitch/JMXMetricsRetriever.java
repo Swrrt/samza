@@ -307,7 +307,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             if(ret.containsKey("PartitionProcessed")) {
                 HashMap<String, String> processed = (HashMap<String, String>)ret.get("PartitionProcessed");
                 for(Map.Entry<String, String> ent : processed.entrySet()) {
-                    String partitionId = "Partition " + entry.getKey();
+                    String partitionId = "Partition " + ent.getKey();
                     if (!partitionProcessed.containsKey(partitionId)) {
                         partitionProcessed.put(partitionId, Long.parseLong(ent.getValue()));
                     } else {
