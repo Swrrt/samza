@@ -163,6 +163,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     long lastTime = timePoints.get(timePoints.size() - 2);
                     d_completed += getExecutorCompleted(executorId, lastTime);
                 }
+                LOG.info("Debugging, executor " + executorId + " dcompleted: " + d_completed);
                 updateExecutorCompleted(executorId, time, d_completed);
             }
         }
@@ -1028,12 +1029,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         Map<String, Long> partitionArrived = null;
         if(metrics.containsKey("PartitionArrived")) {
             partitionArrived = (HashMap<String, Long>) (metrics.get("PartitionArrived"));
-            LOG.info("Partition arrived: " + partitionArrived);
+            //LOG.info("Partition arrived: " + partitionArrived);
         }else if(metrics.containsKey("PartitionWatermark")){    //Use watermark to calculate arrived
         }
         Map<String, Long> partitionProcessed =
                 (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
-        LOG.info("Partition Processed: " + partitionProcessed);
+        //LOG.info("Partition Processed: " + partitionProcessed);
         //Translate processCPUtime to utilization
         Map<String, Double> executorUtilization = new HashMap<>();
         Map<String, Long> times =
