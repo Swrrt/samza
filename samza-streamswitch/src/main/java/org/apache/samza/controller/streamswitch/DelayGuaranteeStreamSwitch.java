@@ -404,11 +404,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     long lastArrived = networkCalculusModel.getPartitionArrived(partitionId, lastTime);
                     double arrivalRate = 0;
                     if(time > lastTime) arrivalRate = (arrived - lastArrived) / ((double) time - lastTime);
-                    LOG.info("Debugging,  time: " + time + " last time: " + lastTime + " arrived: " + arrived + "lastArrived: " + lastArrived + " arrivalRate: " + arrivalRate);
+                    //LOG.info("Debugging,  time: " + time + " last time: " + lastTime + " arrived: " + arrived + "lastArrived: " + lastArrived + " arrivalRate: " + arrivalRate);
                     updatePartitionArriveRate(partitionId, time, arrivalRate);
                     s_arrivalRate += arrivalRate;
                 }
-                LOG.info("Debugging,  time: " + time + " last time: " + lastTime + " s_arrivalRate: " + s_arrivalRate);
+                //LOG.info("Debugging,  time: " + time + " last time: " + lastTime + " s_arrivalRate: " + s_arrivalRate);
                 updateExecutorArriveRate(containerId, time, s_arrivalRate);
 
                 //Update actual service rate (capability)
@@ -1058,7 +1058,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         } else if (time - lastTime <= migrationInterval) {
             LOG.info("To close to last migration decision, cannot migrate");
         } else {
-            LOG.info("Check delay guarantee is followed");
+            LOG.info("Check whether delay guarantee is violated");
             if (!checkDelayGuarantee()) {
                 //TODO: try to migrate
                 MigrationResult result = tryToMigrate();
