@@ -12,6 +12,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 public abstract class StreamSwitch implements JobController {
@@ -23,6 +24,8 @@ public abstract class StreamSwitch implements JobController {
     boolean waitForMigrationDeployed;
     long startTime = 0;
     ReentrantLock updateLock; //Lock is used to avoid concurrent modify between updateModel() and changeImplemented()
+    AtomicLong nextExecutorID;
+
     public StreamSwitch(Config config){
         this.config = config;
     }
@@ -35,6 +38,7 @@ public abstract class StreamSwitch implements JobController {
         //Default partitionAssignment
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
         partitionAssignment = new HashedMap();
+        nextExecutorID = new AtomicLong();
         Iterator<String> iterator = partitions.iterator();
         int times = partitions.size() / executors.size();
         for(String executor: executors){
@@ -45,6 +49,7 @@ public abstract class StreamSwitch implements JobController {
                 }
             }
         }
+        nextExecutorID.set(executors.size() + 2);
         String executor = executors.get(0);
         while(iterator.hasNext()){
             partitionAssignment.get(executor).add(iterator.next());

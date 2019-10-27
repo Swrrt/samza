@@ -464,7 +464,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     NetworkCalculusModel networkCalculusModel;
     DelayEstimateModel delayEstimateModel;
     long migrationWarmupTime, migrationInterval, lastTime;
-    AtomicLong nextExecutorID;
     double instantaneousThreshold, longTermThreshold;
 
     public DelayGuaranteeStreamSwitch(Config config){
@@ -476,7 +475,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         longTermThreshold = config.getDouble("streamswtich.delay.longterm.threshold", 100.0);
 
         lastTime = -1000000000l;
-
         networkCalculusModel = new NetworkCalculusModel();
         delayEstimateModel = new DelayEstimateModel();
         delayEstimateModel.setNetworkCalculusModel(networkCalculusModel);
