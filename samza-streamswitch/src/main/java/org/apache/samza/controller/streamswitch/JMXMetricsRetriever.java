@@ -286,12 +286,14 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         metrics.put("PartitionProcessed", partitionProcessed);
         metrics.put("ProcessCPUTime", new HashMap());
         metrics.put("Time", new HashMap());
+        HashMap<String, String> debugWatermark = new HashMap<>(), debugProcessed = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             Map<String, Object> ret = jmxClient.retrieveMetrics(topic, entry.getValue());
             if(ret.containsKey("PartitionWatermark")) {
                 HashMap<String, String> watermark = (HashMap<String, String>)ret.get("PartitionWatermark");
                 for(Map.Entry<String, String> ent : watermark.entrySet()){
+                    debugWatermark.put(ent.getKey(), ent.getValue());
                     if(!partitionBeginOffset.containsKey(ent.getKey())){
                         partitionBeginOffset.put(ent.getKey(), Long.parseLong(ent.getValue()));
                     }
@@ -309,6 +311,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 HashMap<String, String> processed = (HashMap<String, String>)ret.get("PartitionProcessed");
                 for(Map.Entry<String, String> ent : processed.entrySet()) {
                     String partitionId = "Partition " + ent.getKey();
+                    debugProcessed.put(partitionId, ent.getValue());
                     if (!partitionProcessed.containsKey(partitionId)) {
                         partitionProcessed.put(partitionId, Long.parseLong(ent.getValue()));
                     } else {
@@ -336,6 +339,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }
             partitionArrived.put("Partition " + partitionId, watermark - begin);
         }
+        LOG.info("Debugging, watermark: " + debugWatermark);
+        LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Retrieved Metrics: " + metrics);
         return metrics;
     }

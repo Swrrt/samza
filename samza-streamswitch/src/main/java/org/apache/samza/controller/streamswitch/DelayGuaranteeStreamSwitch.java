@@ -1112,9 +1112,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 partitionAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, lastResult.migratingPartitions);
                 long time = System.currentTimeMillis();
                 for (String partition : lastResult.migratingPartitions.keySet()) {
+                    LOG.info("Migrating " + partition + " from " + lastResult.migratingPartitions.get(partition).getKey() + " to " + lastResult.migratingPartitions.get(partition).getValue() );
                     networkCalculusModel.migration(time, lastResult.migratingPartitions.get(partition).getKey(), lastResult.migratingPartitions.get(partition).getValue(), partition);
                 }
                 lastResult = new MigrationResult();
+            }else{
+                LOG.info("No migration is waiting, do nothing");
             }
         }finally {
             updateLock.unlock();
