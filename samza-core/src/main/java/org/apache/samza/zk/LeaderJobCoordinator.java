@@ -20,6 +20,7 @@
 package org.apache.samza.zk;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableList;
 import org.I0Itec.zkclient.IZkStateListener;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.samza.checkpoint.CheckpointManager;
@@ -557,6 +558,11 @@ public class LeaderJobCoordinator implements JobCoordinator{
         // Start the barrier for the job model update
         barrier.create(nextJMVersion, currentProcessorIds);
 
+
+        // Listen to barrier change, to inform controller when to update
+        String barrierStatePath = String.format("%s/barrier_%s", zkUtils.getKeyBuilder().getJobModelVersionBarrierPrefix(), nextJMVersion) + "/barrier_state";
+        zkUtils.subscribeDataChanges(barrierStatePath, new LeaderBarrierListener(barrierStatePath, nextJMVersion, zkUtils));
+
         // Notify all processors about the new JobModel by updating JobModel Version number
         zkUtils.publishJobModelVersion(currentJMVersion, nextJMVersion);
 
@@ -564,5 +570,36 @@ public class LeaderJobCoordinator implements JobCoordinator{
 
         debounceTimer.scheduleAfterDebounceTime(ON_ZK_CLEANUP, 0, () -> zkUtils.cleanupZK(NUM_VERSIONS_TO_LEAVE));
         return true;
+    }
+    class LeaderBarrierListener extends ZkUtils.GenerationAwareZkDataListener {
+        private final String barrierStatePath;
+        private final String barrierVersion;
+
+        public LeaderBarrierListener(String barrierStatePath, String version, ZkUtils zkUtils) {
+            super(zkUtils, "LeaderBarrierListener");
+            this.barrierStatePath = barrierStatePath;
+            this.barrierVersion = version;
+        }
+
+        @Override
+        public void doHandleDataChange(String dataPath, Object data) {
+            LOG.info(String.format("Received barrierState change notification for barrier version: %s from zkNode: %s with data: %s.", barrierVersion, dataPath, data));
+
+            ZkBarrierForVersionUpgrade.State barrierState = (ZkBarrierForVersionUpgrade.State) data;
+            List<ZkBarrierForVersionUpgrade.State> expectedBarrierStates = ImmutableList.of(ZkBarrierForVersionUpgrade.State.DONE, ZkBarrierForVersionUpgrade.State.TIMED_OUT);
+
+            if (barrierState != null && expectedBarrierStates.contains(barrierState)) {
+                LOG.info("Consensus reached, inform job controller to change");
+                zkUtils.unsubscribeDataChanges(barrierStatePath, this);
+                coordinatorListener.onNewJobModel("000001", nextJobModel);
+            } else {
+                LOG.debug("Barrier version: {} is at state: {}. Ignoring the barrierState change notification.", barrierVersion, barrierState);
+            }
+        }
+
+        @Override
+        public void doHandleDataDeleted(String path) {
+            LOG.warn("Data deleted in path: " + path + " barrierVersion: " + barrierVersion);
+        }
     }
 }
