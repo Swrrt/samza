@@ -131,7 +131,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             return completed;
         }
         public void updateAtTime(long time, Map<String, Long> taskArrived, Map<String, Long> taskProcessed, Map<String, List<String>> partitionAssignment) { //Normal update
-            //LOG.info("Debugging, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
+            LOG.info("Debugging, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
             timePoints.add(time);
             for (String executorId : partitionAssignment.keySet()) {
                 long d_completed = 0;
@@ -1020,7 +1020,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 double arrivalR = delayEstimateModel.getPartitionArriveRate(partitionId, time);
                 partitionArrivalRate.put(partitionId, arrivalR);
             }
-            System.out.println("MixedLoadBalanceManager, time " + time + " : " + "Partition Arrival Rate: " + partitionArrivalRate);
+            System.out.println("DelayEstimateModel, time " + time + " : " + "Partition Arrival Rate: " + partitionArrivalRate);
         }
     }
 
