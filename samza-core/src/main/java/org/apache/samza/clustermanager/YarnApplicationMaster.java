@@ -25,6 +25,7 @@ import org.apache.samza.SamzaException;
 import org.apache.samza.checkpoint.CheckpointManager;
 import org.apache.samza.config.*;
 import org.apache.samza.container.TaskName;
+import org.apache.samza.coordinator.JobCoordinatorListener;
 import org.apache.samza.coordinator.JobModelManager;
 import org.apache.samza.coordinator.StreamPartitionCountMonitor;
 import org.apache.samza.coordinator.stream.CoordinatorStreamManager;
@@ -329,6 +330,27 @@ public class YarnApplicationMaster implements JobControllerListener {
     }
     private void startLeader(){
         leaderJobCoordinator.start();
+        leaderJobCoordinator.setListener(new JobCoordinatorListener() {
+            @Override
+            public void onJobModelExpired() {
+            }
+
+            @Override
+            public void onNewJobModel(String processorId, JobModel jobModel) {
+                log.info("New Job Model actually deployed!");
+                controller.onChangeImplemented();
+            }
+
+            @Override
+            public void onCoordinatorStop() {
+
+            }
+
+            @Override
+            public void onCoordinatorFailure(Throwable t) {
+
+            }
+        });
     }
 
     private void startController(Map<String, ContainerModel> containers){
