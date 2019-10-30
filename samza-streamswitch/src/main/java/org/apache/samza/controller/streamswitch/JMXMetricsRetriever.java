@@ -416,6 +416,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
 
         LOG.info("Debugging, watermark: " + debugWatermark);
+        LOG.info("Debugging, checkpoint: " + checkpointOffset);
         LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Retrieved Metrics: " + metrics);
         return metrics;
