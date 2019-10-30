@@ -1024,7 +1024,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
     }
 
-
+    // Maintaining processed after migration
+    Map<String, Long> accumulatedProcessed, currentProcessed;
     @Override
     protected boolean updateModel(long time, Map<String, Object> metrics) {
         LOG.info("Updating model from metrics");
@@ -1037,6 +1038,13 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
         Map<String, Long> partitionProcessed =
                 (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
+        if(accumulatedProcessed == null){
+            accumulatedProcessed = new HashMap<>();
+            currentProcessed = new HashMap<>();
+        }
+        for(String id: partitionProcessed.keySet()){
+            currentProcessed.put(id, partitionProcessed.get(id) + accumulatedProcessed.getOrDefault(id, 0l));
+        }
         //LOG.info("Partition Processed: " + partitionProcessed);
         //Translate processCPUtime to utilization
         Map<String, Double> executorUtilization = new HashMap<>();
@@ -1046,7 +1054,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             executorUtilization.put(entry.getKey(), processCPUtimeToUtilization(entry.getKey(), entry.getValue(), times.get(entry.getKey())));
         }
         LOG.info("Show utilizations: " + executorUtilization);
-        updateNetworkCalculus(time, partitionArrived, partitionProcessed);
+        updateNetworkCalculus(time, partitionArrived, currentProcessed);
         updateDelayEstimateModel(time, executorUtilization);
 
         //Map<String, String> containerArrived = (HashMap<String, String>)(metrics.get(""))
@@ -1105,7 +1113,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         updateLock.lock();
         try {
             LOG.info("Lock acquired, migrating");
-            //TODO: add updateLock here and update model
             if (waitForMigrationDeployed) {
                 LOG.info("Update mapping and models");
                 waitForMigrationDeployed = false;
@@ -1116,6 +1123,17 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     networkCalculusModel.migration(time, lastResult.migratingPartitions.get(partition).getKey(), lastResult.migratingPartitions.get(partition).getValue(), partition);
                 }
                 lastResult = new MigrationResult();
+
+                LOG.info("Update accumulate processed");
+                if(accumulatedProcessed == null){
+                    accumulatedProcessed = new HashMap<>();
+                    currentProcessed = new HashMap<>();
+                }
+                for(String id: currentProcessed.keySet()){
+                    long value = accumulatedProcessed.getOrDefault(id, 0l) + currentProcessed.get(id);
+                    accumulatedProcessed.put(id, value);
+                    currentProcessed.put(id, 0l);
+                }
             }else{
                 LOG.info("No migration is waiting, do nothing");
             }
