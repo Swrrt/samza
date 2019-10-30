@@ -93,7 +93,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             if(in != -1){
                                 int ind = content.indexOf(".log", in);
                                 if(NumberUtils.isNumber(content.substring(in + 16, ind))){
-                                    String caddress = address +"/" + content.substring(in, ind) + ".log/?start=0";
+                                    String caddress = address +"/stdout/?start=0";
                                     Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
                                     if(ret == null){ //Cannot retrieve JMXRMI for some reason
                                         LOG.info("Cannot retrieve container's JMX, report error");
@@ -123,11 +123,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 scanner.useDelimiter("\n");
                 while(scanner.hasNext()){
                     String content = scanner.next().trim();
-                    if(content.contains("pid=")){
-                        int i = content.indexOf("pid=")+4;
+                    if(content.contains("Container ID: ")){
+                        int i = content.indexOf("ID: ")+4;
                         containerId = content.substring(i, i+6);
                     }
-                    if(content.contains("Started JmxServer")){
+                    if(content.contains("JMX Server: ")){
                         int i = content.indexOf("url=") + 4;
                         JMXaddress = content.substring(i);
                     }
@@ -228,7 +228,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         private boolean isActuallyProcessed(ObjectName name, String topic){
             return name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed");
         }
-        protected Map<String, Object> retrieveMetrics(String topic, String url){
+        protected Map<String, Object> retrieveMetrics(String containerId, String topic, String url){
             Map<String, Object> metrics = new HashMap<>();
             //LOG.info("Try to retrieve metrics from " + url);
             try{
@@ -312,7 +312,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     }
                 }
             }catch (Exception e){
-                LOG.info("Exception when retrieve metrics from " + url + " : " + e);
+                LOG.info("Exception when retrieving " + containerId + "'s metrics from " + url + " : " + e);
             }
             return metrics;
         }
@@ -359,7 +359,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         HashMap<String, String> debugWatermark = new HashMap<>(), debugProcessed = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
-            Map<String, Object> ret = jmxClient.retrieveMetrics(topic, entry.getValue());
+            Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, topic, entry.getValue());
             if(ret.containsKey("PartitionWatermark")) {
                 HashMap<String, String> watermark = (HashMap<String, String>)ret.get("PartitionWatermark");
                 for(Map.Entry<String, String> ent : watermark.entrySet()){
@@ -445,7 +445,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         metrics.put("Time", new HashMap<>());
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
-            Map<String, Object> ret = jmxClient.retrieveMetrics(topic, entry.getValue());
+            Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, topic, entry.getValue());
             if(ret.containsKey("PartitionWatermark")) {
                 ((HashMap<String, Object>)metrics.get("PartitionWatermark")).put(containerId, ret.get("PartitionWatermark"));
             }
