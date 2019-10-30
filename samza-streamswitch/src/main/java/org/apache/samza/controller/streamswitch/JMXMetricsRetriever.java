@@ -82,7 +82,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             for(String address: containerAddress){
                 try {
                     String url = address;
-                    LOG.info("Try to retrieve container's log from url: " + url);
+                    //LOG.info("Try to retrieve container's log from url: " + url);
                     URLConnection connection = new URL(url).openConnection();
                     Scanner scanner = new Scanner(connection.getInputStream());
                     scanner.useDelimiter("\n");
@@ -117,7 +117,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             String containerId = null, JMXaddress = null;
             try{
                 String url = address;
-                LOG.info("Try to retrieve container's log from url: " + url);
+                //LOG.info("Try to retrieve container's log from url: " + url);
                 URLConnection connection = new URL(url).openConnection();
                 Scanner scanner = new Scanner(connection.getInputStream());
                 scanner.useDelimiter("\n");
@@ -143,6 +143,74 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }
             LOG.info("Warning, cannot find container's JMXRMI");
             return null;
+        }
+        protected Map<String, Long> retrieveCheckpointOffsets(List<String> containerAddress, String topic) {
+            Map<String, Long> checkpointOffsets = new HashMap<>();
+            for (String address : containerAddress) {
+                try {
+                    String url = address;
+                    //LOG.info("Try to retrieve container's log from url: " + url);
+                    URLConnection connection = new URL(url).openConnection();
+                    Scanner scanner = new Scanner(connection.getInputStream());
+                    scanner.useDelimiter("\n");
+                    while (scanner.hasNext()) {
+                        String content = scanner.next().trim();
+                        if (content.startsWith("<a href=\"/node/containerlogs/container")) {
+                            int in = content.indexOf("samza-container-");
+                            if (in != -1) {
+                                int ind = content.indexOf(".log", in);
+                                if (NumberUtils.isNumber(content.substring(in + 16, ind))) {
+                                    String caddress = address + "/" + content.substring(in, ind) + ".log/?start=0";
+                                    Map<String, Long> ret = retrieveCheckpointOffset(caddress, topic);
+                                    if (ret == null) { //Cannot retrieve JMXRMI for some reason
+                                        LOG.info("Cannot retrieve container " + content.substring(in, ind) + " 's checkpoint, report error");
+                                    } else {
+                                        //LOG.info("container's JMX: " + ret);
+                                        for(String partition: ret.keySet()){
+                                            long value = checkpointOffsets.getOrDefault(partition, -1l);
+                                            long v1 = ret.get(partition);
+                                            if(value < v1)value = v1;
+                                            checkpointOffsets.put(partition, value);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    LOG.info("Exception happened when retrieve containers' JMX address : " + e);
+                }
+            }
+            return checkpointOffsets;
+        }
+        protected Map<String, Long> retrieveCheckpointOffset(String address, String topic){
+            Map<String, Long> checkpointOffset = new HashMap<>();
+            try{
+                String url = address;
+                LOG.info("Try to retrieve container's log from url: " + url);
+                URLConnection connection = new URL(url).openConnection();
+                Scanner scanner = new Scanner(connection.getInputStream());
+                scanner.useDelimiter("\n");
+                while(scanner.hasNext()){
+                    String content = scanner.next().trim();
+                    if(content.contains("Checkpointed offset is currently ")){
+                        int x = content.indexOf("[kafka, " + topic + ", ");
+                        x = content.indexOf(',', x+1);
+                        x = content.indexOf(',', x+1) + 2;
+                        String partition = content.substring(x, content.indexOf(']', x));
+                        x = content.indexOf("currently ");
+                        x = content.indexOf(' ', x) + 1;
+                        String value = content.substring(x, content.indexOf(' ', x));
+                        checkpointOffset.put(partition, Long.parseLong(value));
+                    }
+                    /*if(containerId!=null && JMXaddress != null){
+                        return new DefaultMapEntry(containerId, JMXaddress);
+                    }*/
+                }
+            }catch (Exception e){
+                LOG.info("Exception happened when retrieve container's address : " + e);
+            }
+            return checkpointOffset;
         }
     }
    private static class JMXclient{
@@ -254,6 +322,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     public JMXMetricsRetriever(Config config){
         this.config = config;
     }
+
     @Override
     public void init(){
         partitionBeginOffset = new HashMap<>();
@@ -278,6 +347,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         String appId = yarnLogRetriever.retrieveAppId(YarnHomePage);
         List<String> containers = yarnLogRetriever.retrieveContainersAddress(YarnHomePage, appId);
         containerRMI = yarnLogRetriever.retrieveContainerJMX(containers);
+        Map<String, Long> checkpointOffset = yarnLogRetriever.retrieveCheckpointOffsets(containers, topic);
         Map<String, Object> metrics = new HashMap<>();
         JMXclient jmxClient = new JMXclient();
         LOG.info("Retrieving metrics: ");
@@ -311,13 +381,18 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 HashMap<String, String> processed = (HashMap<String, String>)ret.get("PartitionProcessed");
                 for(Map.Entry<String, String> ent : processed.entrySet()) {
                     String partitionId = "Partition " + ent.getKey();
-                    debugProcessed.put(containerId + partitionId, ent.getValue());
+                    long val = Long.parseLong(ent.getValue());
+                    if(checkpointOffset.containsKey(ent.getKey())){
+                        long t = checkpointOffset.get(ent.getKey()) - partitionBeginOffset.get(ent.getKey());
+                        if(t > 0) val += t;
+
+                    }
+                    debugProcessed.put(containerId + partitionId, String.valueOf(val));
                     if (!partitionProcessed.containsKey(partitionId)) {
-                        partitionProcessed.put(partitionId, Long.parseLong(ent.getValue()));
+                        partitionProcessed.put(partitionId, val);
                     } else {
-                        long value = Long.parseLong(ent.getValue());
-                        if (value > partitionProcessed.get(partitionId)) {
-                            partitionProcessed.put(partitionId, value);
+                        if (val > partitionProcessed.get(partitionId)) {
+                            partitionProcessed.put(partitionId, val);
                         }
                     }
                 }
@@ -339,6 +414,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }
             partitionArrived.put("Partition " + partitionId, watermark - begin);
         }
+
         LOG.info("Debugging, watermark: " + debugWatermark);
         LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Retrieved Metrics: " + metrics);
