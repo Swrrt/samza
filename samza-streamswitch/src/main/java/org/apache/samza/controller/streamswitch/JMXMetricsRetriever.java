@@ -268,10 +268,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         i++;
                         int j = partitionId.indexOf('-', i);
                         partitionId = partitionId.substring(i, j);*/
-                        String ok = mbsc.getAttribute(name, "Count").toString();
+                        String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("type");
                         partitionId = partitionId.substring(partitionId.indexOf("Partition") + 10);
-                        LOG.info("Watermark: " + ok);
+                        //LOG.info("Watermark: " + ok);
                         partitionWatermark.put(partitionId, ok);
                         /*if(partitionNextOffset.containsKey(partitionId)){
                             long arrived = Long.parseLong(ok) - Long.parseLong(partitionNextOffset.get(partitionId));
