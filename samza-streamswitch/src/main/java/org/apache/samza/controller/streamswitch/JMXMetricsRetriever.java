@@ -96,7 +96,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                     String caddress = address +"/stdout/?start=0";
                                     Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
                                     if(ret == null){ //Cannot retrieve JMXRMI for some reason
-                                        LOG.info("Cannot retrieve container's JMX, report error");
+                                        LOG.info("Cannot retrieve container's JMX from : " + caddress + ", report error");
                                     }else {
                                         //LOG.info("container's JMX: " + ret);
                                         String host = url.split("[\\:]")[1].substring(2);
@@ -187,7 +187,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             Map<String, Long> checkpointOffset = new HashMap<>();
             try{
                 String url = address;
-                LOG.info("Try to retrieve container's log from url: " + url);
+                LOG.info("Try to retrieve container's offset from url: " + url);
                 URLConnection connection = new URL(url).openConnection();
                 Scanner scanner = new Scanner(connection.getInputStream());
                 scanner.useDelimiter("\n");
