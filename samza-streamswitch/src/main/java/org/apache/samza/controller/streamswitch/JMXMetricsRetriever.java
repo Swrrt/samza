@@ -217,12 +217,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         JMXclient(){
         }
         private boolean isWaterMark(ObjectName name, String topic){
-            return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")
-                    && !name.getKeyProperty("name").contains("window-count");
-        }
-        private boolean isNextOffset(ObjectName name, String topic){
-            return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-offset-change")
-                    && !name.getKeyProperty("name").contains("window-count");
+            /*return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")
+                    && !name.getKeyProperty("name").contains("window-count");*/
+            return name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").contains(topic) && name.getKeyProperty("name").contains("-offset");
         }
 
         private boolean isActuallyProcessed(ObjectName name, String topic){
@@ -253,10 +250,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     metrics.put("ProcessCPUTime", value);
                     metrics.put("Time", time);
                 }
-                HashMap<String, String> partitionArrived = new HashMap<>(), partitionWatermark = new HashMap<>(), partitionNextOffset = new HashMap<>(), partitionProcessed = new HashMap<>();
+                HashMap<String, String> partitionArrived = new HashMap<>(), partitionWatermark = new HashMap<>(), partitionProcessed = new HashMap<>();
                 //metrics.put("PartitionArrived", partitionArrived);
                 metrics.put("PartitionWatermark", partitionWatermark);
-                metrics.put("PartitionNextOffset", partitionNextOffset);
+                //metrics.put("PartitionNextOffset", partitionNextOffset);
                 metrics.put("PartitionProcessed", partitionProcessed);
                 Set mbeans = mbsc.queryNames(null, null);
                 //LOG.info("MBean objects: ");
@@ -264,14 +261,17 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     ObjectName name = (ObjectName)mbean;
                     //Partition WaterMark
                     if(isWaterMark(name, topic)){
-                        //LOG.info(mbean.toString());
-                        String ok = mbsc.getAttribute(name, "Value").toString();
+                        LOG.info(mbean.toString());
+                        /*String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("name");
                         int i = partitionId.indexOf('-', 6);
                         i++;
                         int j = partitionId.indexOf('-', i);
-                        partitionId = partitionId.substring(i, j);
-                        //LOG.info("Watermark: " + ok);
+                        partitionId = partitionId.substring(i, j);*/
+                        String ok = mbsc.getAttribute(name, "Count").toString();
+                        String partitionId = name.getKeyProperty("type");
+                        partitionId = partitionId.substring(partitionId.indexOf("Partition") + 10);
+                        LOG.info("Watermark: " + ok);
                         partitionWatermark.put(partitionId, ok);
                         /*if(partitionNextOffset.containsKey(partitionId)){
                             long arrived = Long.parseLong(ok) - Long.parseLong(partitionNextOffset.get(partitionId));
@@ -279,27 +279,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             LOG.info("Partition " + partitionId + " arrived: " + arrived);
                             partitionArrived.put(partitionId, String.valueOf(arrived));
                         }*/
-                    }else
-                    //Partition next offset
-                    if(isNextOffset(name, topic)){
-                        //LOG.info(mbean.toString());
-                        String ok = mbsc.getAttribute(name, "Count").toString();
-                        String partitionId = name.getKeyProperty("name");
-                        int i = partitionId.indexOf('-', 6);
-                        i++;
-                        int j = partitionId.indexOf('-', i);
-                        partitionId = partitionId.substring(i, j);
-                        //LOG.info("Next offset: " + ok);
-                        partitionNextOffset.put(partitionId, ok);
-                        /*if(partitionWatermark.containsKey(partitionId)){
-                            long arrived =  Long.parseLong(partitionWatermark.get(partitionId))- Long.parseLong(ok);
-                            if(arrived < 0) arrived = 0;
-                            LOG.info("Partition " + partitionId + " arrived: " + arrived);
-                            partitionArrived.put(partitionId, String.valueOf(arrived));
-                        }*/
-                    }else
+                    }
                     //Partition Processed
-                    if(isActuallyProcessed(name, topic)){
+                    else if(isActuallyProcessed(name, topic)){
                         //LOG.info(((ObjectName)mbean).toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
                         String partitionId = name.getKeyProperty("type");
