@@ -135,6 +135,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
         zkUtils.registerProcessorAndGetId(new ProcessorData(getHostName(), processorId));
         //leaderElector.tryBecomeLeader();
         zkUtils.subscribeToJobModelVersionChange(new FollowerJobCoordinator.ZkJobModelVersionChangeHandler(zkUtils));
+        System.out.println("pid=" + processorId);
     }
 
     @Override
