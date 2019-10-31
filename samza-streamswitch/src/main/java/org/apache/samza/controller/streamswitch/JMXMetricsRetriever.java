@@ -144,6 +144,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             LOG.info("Warning, cannot find container's JMXRMI");
             return null;
         }
+        // TODO: in 1.0.0, checkpoint offsets are available in OffsetManagerMetrics
         protected Map<String, Long> retrieveCheckpointOffsets(List<String> containerAddress, String topic) {
             Map<String, Long> checkpointOffsets = new HashMap<>();
             for (String address : containerAddress) {
