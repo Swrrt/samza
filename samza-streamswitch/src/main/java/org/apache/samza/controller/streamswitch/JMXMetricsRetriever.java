@@ -217,9 +217,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         JMXclient(){
         }
         private boolean isWaterMark(ObjectName name, String topic){
-            /*return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")
-                    && !name.getKeyProperty("name").contains("window-count");*/
-            return name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").contains(topic) && name.getKeyProperty("name").contains("-offset");
+            return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")
+                    && !name.getKeyProperty("name").contains("window-count");
+        }
+        private boolean isNextOffset(ObjectName name, String topic){
+            return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-offset-change")
+                    && !name.getKeyProperty("name").contains("window-count");
         }
 
         private boolean isActuallyProcessed(ObjectName name, String topic){
@@ -261,16 +264,13 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     ObjectName name = (ObjectName)mbean;
                     //Partition WaterMark
                     if(isWaterMark(name, topic)){
-                        LOG.info(mbean.toString());
-                        /*String ok = mbsc.getAttribute(name, "Value").toString();
+                        //LOG.info(mbean.toString());
+                        String ok = mbsc.getAttribute(name, "Value").toString();
                         String partitionId = name.getKeyProperty("name");
                         int i = partitionId.indexOf('-', 6);
                         i++;
                         int j = partitionId.indexOf('-', i);
-                        partitionId = partitionId.substring(i, j);*/
-                        String ok = mbsc.getAttribute(name, "Value").toString();
-                        String partitionId = name.getKeyProperty("type");
-                        partitionId = partitionId.substring(partitionId.indexOf("Partition") + 10);
+                        partitionId = partitionId.substring(i, j);
                         //LOG.info("Watermark: " + ok);
                         partitionWatermark.put(partitionId, ok);
                         /*if(partitionNextOffset.containsKey(partitionId)){
@@ -279,8 +279,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             LOG.info("Partition " + partitionId + " arrived: " + arrived);
                             partitionArrived.put(partitionId, String.valueOf(arrived));
                         }*/
-                    }
-                    //Partition Processed
+                    }//Partition Processed
+
                     else if(isActuallyProcessed(name, topic)){
                         //LOG.info(((ObjectName)mbean).toString());
                         String ok = mbsc.getAttribute(name, "Count").toString();
