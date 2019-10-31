@@ -470,7 +470,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         super(config);
 
         migrationWarmupTime = config.getLong("streamswitch.migration.warmup.time");
-        migrationInterval = config.getLong("streamswitch.migration.interval.time");
+        migrationInterval = config.getLong("streamswitch.migration.interval.time", 1000l);
         instantaneousThreshold = config.getDouble("streamswitch.delay.instant.threshold", 100.0);
         longTermThreshold = config.getDouble("streamswtich.delay.longterm.threshold", 100.0);
 
@@ -1115,6 +1115,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     networkCalculusModel.migration(time, lastResult.migratingPartitions.get(partition).getKey(), lastResult.migratingPartitions.get(partition).getValue(), partition);
                 }
                 lastResult = new MigrationResult();
+                lastTime = time;
             }else{
                 LOG.info("No migration is waiting, do nothing");
             }
