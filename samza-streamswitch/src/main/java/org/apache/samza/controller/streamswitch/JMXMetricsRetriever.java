@@ -123,9 +123,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 scanner.useDelimiter("\n");
                 while(scanner.hasNext()){
                     String content = scanner.next().trim();
-                    if(content.contains("Container ID: ")){
+                    if(content.contains("pid=")){
                         int i = content.indexOf("pid=")+4;
-                        containerId = content.substring(i, i+6);
+                        containerId = content.substring(i, i+6  );
                     }
                     if(content.contains("JMX Server: ")){
                         int i = content.indexOf("url=") + 4;
