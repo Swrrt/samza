@@ -82,7 +82,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             for(String address: containerAddress){
                 try {
                     String url = address;
-                    //LOG.info("Try to retrieve container's log from url: " + url);
+                    LOG.info("Try to retrieve container's log for JMX from url: " + url);
                     URLConnection connection = new URL(url).openConnection();
                     Scanner scanner = new Scanner(connection.getInputStream());
                     scanner.useDelimiter("\n");
@@ -117,7 +117,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             String containerId = null, JMXaddress = null;
             try{
                 String url = address;
-                //LOG.info("Try to retrieve container's log from url: " + url);
+                LOG.info("Try to retrieve container's JMXRMI from url: " + url);
                 URLConnection connection = new URL(url).openConnection();
                 Scanner scanner = new Scanner(connection.getInputStream());
                 scanner.useDelimiter("\n");
