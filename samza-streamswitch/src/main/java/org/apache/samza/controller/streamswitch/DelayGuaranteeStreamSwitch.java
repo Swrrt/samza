@@ -469,7 +469,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     public DelayGuaranteeStreamSwitch(Config config){
         super(config);
 
-        migrationWarmupTime = config.getLong("streamswitch.migration.warmup.time");
+        migrationWarmupTime = config.getLong("streamswitch.migration.warmup.time", 1000000000l);
         migrationInterval = config.getLong("streamswitch.migration.interval.time", 1000l);
         instantaneousThreshold = config.getDouble("streamswitch.delay.instant.threshold", 100.0);
         longTermThreshold = config.getDouble("streamswtich.delay.longterm.threshold", 100.0);

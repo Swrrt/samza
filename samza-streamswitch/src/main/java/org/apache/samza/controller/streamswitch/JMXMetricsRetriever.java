@@ -387,20 +387,22 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 ((HashMap<String, Object>)metrics.get("Time")).put(containerId, ret.get("Time"));
             }
         }
+        //Why need this?
         for(String partitionId : partitionWatermark.keySet()){
             long begin = partitionBeginOffset.get(partitionId);
             long watermark = partitionWatermark.get(partitionId);
             long processed = partitionProcessed.getOrDefault("Partition " + partitionId, 0l);
-            if(watermark - processed < begin){
-                begin = watermark - processed;
-                partitionBeginOffset.put(partitionId, begin);
+            long arrived = watermark - begin;
+            if(arrived < processed){
+               arrived = processed;
             }
-            partitionArrived.put("Partition " + partitionId, watermark - begin);
+            partitionArrived.put("Partition " + partitionId, arrived);
         }
 
         LOG.info("Debugging, watermark: " + debugWatermark);
         LOG.info("Debugging, checkpoint: " + checkpointOffset);
         LOG.info("Debugging, processed: " + debugProcessed);
+        LOG.info("Debugging, begin: " + partitionBeginOffset);
         LOG.info("Retrieved Metrics: " + metrics);
         return metrics;
     }
