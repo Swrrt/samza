@@ -219,11 +219,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
         private boolean isWaterMark(ObjectName name, String topic){
             return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")
-                    && !name.getKeyProperty("name").contains("window-count");
+                    && !name.getKeyProperty("name").contains("window-count") && !name.getKeyProperty("name").contains(topic + "-changelog-") ;
         }
         private boolean isNextOffset(ObjectName name, String topic){
             return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-offset-change")
-                    && !name.getKeyProperty("name").contains("window-count");
+                    && !name.getKeyProperty("name").contains("window-count") && !name.getKeyProperty("name").contains(topic + "-changelog-");
         }
 
         private boolean isActuallyProcessed(ObjectName name, String topic){
