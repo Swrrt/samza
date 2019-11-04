@@ -88,7 +88,8 @@ public class FollowerJobCoordinator implements JobCoordinator {
     private final Map<TaskName, Integer> changeLogPartitionMap = new HashMap<>();
 
     private JobCoordinatorListener coordinatorListener = null;
-    private JobModel newJobModel;
+    private JobModel newJobModel, oldJobModel = null; //oldJobModel is used to check whether container is effected
+    private boolean isContainerModelEffected = false;
     private boolean hasCreatedStreams = false;
     private String cachedJobModelVersion = null;
 
@@ -327,8 +328,10 @@ public class FollowerJobCoordinator implements JobCoordinator {
 
                     // read the new Model
                     JobModel jobModel = getJobModel();
-                    // start the container with the new model
-                    if (coordinatorListener != null) {
+                    // start the container with the new model if it is effected
+                    if(!isContainerModelEffected){
+                        LOG.info("Container is not effected, no need to restart.");
+                    }else if (coordinatorListener != null) {
                         coordinatorListener.onNewJobModel(processorId, jobModel);
                     }
                 });
@@ -371,10 +374,10 @@ public class FollowerJobCoordinator implements JobCoordinator {
                 String jobModelVersion = (String) data;
 
                 LOG.info("Got a notification for new JobModel version. Path = {} Version = {}", dataPath, data);
-
+                oldJobModel = newJobModel;
                 newJobModel = zkUtils.getJobModel(jobModelVersion);
                 LOG.info("pid=" + processorId + ": new JobModel is available. Version =" + jobModelVersion + "; JobModel = " + newJobModel);
-
+                //Doing: only restart related processors.
                 if (!newJobModel.getContainers().containsKey(processorId)) {
                     LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
                             processorId, newJobModel);
@@ -385,11 +388,17 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     stop();
 
 
+                }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
+                        && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
+                    LOG.info("New JobModel does not change this container, do nothing");
+                    isContainerModelEffected = false;
+                    barrier.join(jobModelVersion, processorId);
                 } else {
                     // stop current work
                     if (coordinatorListener != null) {
                         coordinatorListener.onJobModelExpired();
                     }
+                    isContainerModelEffected = true;
                     // update ZK and wait for all the processors to get this new version
                     barrier.join(jobModelVersion, processorId);
                 }
