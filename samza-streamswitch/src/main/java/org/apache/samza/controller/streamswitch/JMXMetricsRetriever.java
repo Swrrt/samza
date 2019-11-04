@@ -319,6 +319,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         1) BeginOffset is set to be the initial highwatermark, so please don't give any input at the beginning.
         2) After migration, containers still contain migrated partitions' metrics (offset)
         3) Return partition ID is in "Partition XXX" format
+        4) Even JMX metrics are not correct after migration?
      */
 
     HashMap<String, Long> partitionWatermark, partitionBeginOffset, partitionProcessed;
