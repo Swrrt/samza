@@ -88,8 +88,15 @@ class JmxReporter(server: MBeanServer) extends MetricsReporter with Logging {
   def registerBean(bean: MetricMBean) {
     if (!server.isRegistered(bean.objectName)) {
       debug("Registering MBean for %s." format bean.objectName)
+      //Debugging
+      info("Registering MBean for %s." format bean.objectName())
       server.registerMBean(bean, bean.objectName)
     }
+    //Debugging
+    else{
+      info("Mbean already registered: %s " format bean.objectName())
+    }
+    //Debugging
   }
 }
 
@@ -140,6 +147,9 @@ class JmxTimer(t: org.apache.samza.metrics.Timer, on: ObjectName) extends JmxTim
 class JmxReporterFactory extends MetricsReporterFactory with Logging {
   def getMetricsReporter(name: String, containerName: String, config: Config) = {
     info("Creating JMX reporter with  name %s." format name)
+    //Debugging
+    info("MBeanServer: " + ManagementFactory.getPlatformMBeanServer);
+    //Debugging
     new JmxReporter(ManagementFactory.getPlatformMBeanServer)
   }
 }
