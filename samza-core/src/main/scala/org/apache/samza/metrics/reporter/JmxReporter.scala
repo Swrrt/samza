@@ -88,15 +88,14 @@ class JmxReporter(server: MBeanServer) extends MetricsReporter with Logging {
   def registerBean(bean: MetricMBean) {
     if (!server.isRegistered(bean.objectName)) {
       debug("Registering MBean for %s." format bean.objectName)
-      //Debugging
-      info("Registering MBean for %s." format bean.objectName())
       server.registerMBean(bean, bean.objectName)
     }
-    //Debugging
+    //Testing
     else{
-      info("Mbean already registered: %s " format bean.objectName())
+      info("Unregister MBean for %s first." format bean.objectName)
+      server.unregisterMBean(bean.objectName)
+      server.registerMBean(bean, bean.objectName)
     }
-    //Debugging
   }
 }
 
