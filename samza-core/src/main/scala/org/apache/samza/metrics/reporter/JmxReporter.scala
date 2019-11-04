@@ -79,21 +79,38 @@ class JmxReporter(server: MBeanServer) extends MetricsReporter with Logging {
     }
   }
 
+  //We add unregister mbean phase so that it can work with restart.
   def stop() {
     for ((registry, listener) <- listeners) {
+      //Testing
+      registry.getGroups.asScala.foreach(group => {
+        registry.getGroup(group).asScala.foreach {
+          case (name, metric) =>
+            metric.visit(new MetricsVisitor {
+              def counter(counter: Counter) = unregisterBean(new JmxCounter(counter, getObjectName(group, name, sources(registry))))
+              def gauge[T](gauge: Gauge[T]) = unregisterBean(new JmxGauge(gauge.asInstanceOf[Gauge[Object]], getObjectName(group, name, sources(registry))))
+              def timer(timer: Timer) = unregisterBean(new JmxTimer(timer, getObjectName(group, name, sources(registry))))
+              def listGauge[T](listGauge: ListGauge[T]) = unregisterBean(new JmxListGauge(listGauge.asInstanceOf[ListGauge[Object]], getObjectName(group, name, sources(registry))))
+
+            })
+        }
+      })
+      //Testing
       registry.unlisten(listener)
     }
   }
 
+  //Testing
+  def unregisterBean(bean: MetricMBean): Unit ={
+    if(server.isRegistered(bean.objectName())){
+      server.unregisterMBean(bean.objectName())
+    }
+  }
+  //Testing
+
   def registerBean(bean: MetricMBean) {
     if (!server.isRegistered(bean.objectName)) {
       debug("Registering MBean for %s." format bean.objectName)
-      server.registerMBean(bean, bean.objectName)
-    }
-    //Testing
-    else{
-      info("Unregister MBean for %s first." format bean.objectName)
-      server.unregisterMBean(bean.objectName)
       server.registerMBean(bean, bean.objectName)
     }
   }

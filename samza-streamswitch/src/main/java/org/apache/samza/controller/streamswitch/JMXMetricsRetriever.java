@@ -37,7 +37,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             URLConnection connection = null;
             try {
                 String url = "http://" + YARNHomePage + "/cluster/apps";
-                LOG.info("Try to retrieve AppId from : " +  url);
+                //LOG.info("Try to retrieve AppId from : " +  url);
                 connection = new URL(url).openConnection();
                 Scanner scanner = new Scanner(connection.getInputStream());
                 scanner.useDelimiter("\n");
@@ -50,7 +50,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         }
                     }
                 }
-                LOG.info("Retrieved newest AppId is : " + newestAppId);
+                //LOG.info("Retrieved newest AppId is : " + newestAppId);
             }catch (Exception e){
                 LOG.info("Exception happened when retrieve AppIds, exception : " + e);
             }
@@ -60,7 +60,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             List<String> containerAddress = new LinkedList<>();
             String url = "http://" + YARNHomePage + "/cluster/appattempt/appattempt_" + appId + "_000001";
             try{
-                LOG.info("Try to retrieve containers' address from : " + url);
+                //LOG.info("Try to retrieve containers' address from : " + url);
                 URLConnection connection = new URL(url).openConnection();
                 Scanner scanner = new Scanner(connection.getInputStream());
                 scanner.useDelimiter("\n");
@@ -82,7 +82,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             for(String address: containerAddress){
                 try {
                     String url = address;
-                    LOG.info("Try to retrieve container's log for JMX from url: " + url);
+                    //LOG.info("Try to retrieve container's log for JMX from url: " + url);
                     URLConnection connection = new URL(url).openConnection();
                     Scanner scanner = new Scanner(connection.getInputStream());
                     scanner.useDelimiter("\n");
@@ -117,7 +117,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             String containerId = null, JMXaddress = null;
             try{
                 String url = address;
-                LOG.info("Try to retrieve container's JMXRMI from url: " + url);
+                //LOG.info("Try to retrieve container's JMXRMI from url: " + url);
                 URLConnection connection = new URL(url).openConnection();
                 Scanner scanner = new Scanner(connection.getInputStream());
                 scanner.useDelimiter("\n");
@@ -188,7 +188,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             Map<String, Long> checkpointOffset = new HashMap<>();
             try{
                 String url = address;
-                LOG.info("Try to retrieve container's offset from url: " + url);
+                //LOG.info("Try to retrieve container's offset from url: " + url);
                 URLConnection connection = new URL(url).openConnection();
                 Scanner scanner = new Scanner(connection.getInputStream());
                 scanner.useDelimiter("\n");
