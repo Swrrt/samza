@@ -623,6 +623,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 double u1 = dfsState.srcServiceRate;
                 double u2 = delayEstimateModel.getExecutorServiceRate(container, time);
                 double instantDelay = delayEstimateModel.getAvgDelay(container, time);
+                LOG.info("Debugging, try to move to executor " + container + ", (a1, a2, u1, u2) are: " + n1 + ", " + n2 + ", " + u1 + ", " + u2 + ", instant delay: " + instantDelay);
                 if(instantDelay < instantaneousThreshold && u2 > n2 && u2 - n2 > u1 - n1){
                     double x = ((u2 - n2) - (u1 - n1))/2;
                     if(u2 > n2 + x && u1 > n1 - x){
@@ -1061,7 +1062,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             if (!checkDelayGuarantee()) {
                 //TODO: try to migrate
                 MigrationResult result = tryToMigrate();
-                LOG.info(result.toString());
+                //LOG.info(result.toString());
                 if (result.resultCode.equals(MIGRATION_SUCCEED)) {
                     LOG.info("OK to migrate");
                     lastResult = result;
