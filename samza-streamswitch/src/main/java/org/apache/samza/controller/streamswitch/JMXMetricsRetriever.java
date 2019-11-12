@@ -229,6 +229,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         private boolean isActuallyProcessed(ObjectName name, String topic){
             return name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed");
         }
+
+        private boolean isExecutorUtilization(ObjectName name, String topic){
+            return name.getDomain().equals("org.apache.samza.container.SamzaContainerMetrics") && name.getKeyProperty("name").equals("average-utilization");
+        }
+
         protected Map<String, Object> retrieveMetrics(String containerId, String topic, String url){
             Map<String, Object> metrics = new HashMap<>();
             //LOG.info("Try to retrieve metrics from " + url);
@@ -293,6 +298,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         }
                         ((HashMap<String, String>) (metrics.get("PartitionProcessed"))).put(partitionId, ok);
                     }
+                    else if(isExecutorUtilization(name, topic)){
+                        String ok = mbsc.getAttribute(name, "Value").toString();
+                        metrics.put("ExecutorUtilization", Double.parseDouble(ok));
+                    }
                 }
             }catch (Exception e){
                 LOG.info("Exception when retrieving " + containerId + "'s metrics from " + url + " : " + e);
@@ -334,12 +343,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         Map<String, Long> checkpointOffset = yarnLogRetriever.retrieveCheckpointOffsets(containers, topic);
         Map<String, Object> metrics = new HashMap<>();
         JMXclient jmxClient = new JMXclient();
-        LOG.info("Retrieving metrics: ");
+        LOG.info("Retrieving metrics...... ");
         HashMap<String, Long> partitionArrived = new HashMap<>();
+        HashMap<String, Double> executorUtilization = new HashMap<>();
         metrics.put("PartitionArrived", partitionArrived);
         metrics.put("PartitionProcessed", partitionProcessed);
-        metrics.put("ProcessCPUTime", new HashMap());
-        metrics.put("Time", new HashMap());
+        metrics.put("ExecutorUtilization", executorUtilization);
         HashMap<String, String> debugWatermark = new HashMap<>(), debugProcessed = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
@@ -381,11 +390,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     }
                 }
             }
-            if(ret.containsKey("ProcessCPUTime")){
-                ((HashMap<String, Object>)metrics.get("ProcessCPUTime")).put(containerId, ret.get("ProcessCPUTime"));
-            }
-            if(ret.containsKey("Time")){
-                ((HashMap<String, Object>)metrics.get("Time")).put(containerId, ret.get("Time"));
+            if(ret.containsKey("ExecutorUtilization")){
+                executorUtilization.put(containerId, (Double)ret.get("ExecutorUtilization"));
             }
         }
         //Why need this?

@@ -1040,12 +1040,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
         //LOG.info("Partition Processed: " + partitionProcessed);
         //Translate processCPUtime to utilization
-        Map<String, Double> executorUtilization = new HashMap<>();
-        Map<String, Long> times =
-                (HashMap<String, Long>) (metrics.get("Time"));
-        for (Map.Entry<String, Long> entry : ((HashMap<String, Long>) (metrics.get("ProcessCPUTime"))).entrySet()) {
-            executorUtilization.put(entry.getKey(), processCPUtimeToUtilization(entry.getKey(), entry.getValue(), times.get(entry.getKey())));
-        }
+        Map<String, Double> executorUtilization =
+                (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
         //LOG.info("Show utilizations: " + executorUtilization);
         updateNetworkCalculus(time, partitionArrived, partitionProcessed);
         updateDelayEstimateModel(time, executorUtilization);
