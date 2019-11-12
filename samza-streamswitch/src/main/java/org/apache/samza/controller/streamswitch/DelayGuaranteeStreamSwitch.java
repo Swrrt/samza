@@ -668,6 +668,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
 
         private void DFSforBestLongtermDelay(int i, DFSState state) {
+
             if (state.srcArrivalRate > 1e-12 && state.srcArrivalRate < state.srcServiceRate && state.tgtArrivalRate < state.tgtServiceRate) { //Cannot move all partitions out
                 double estimateSrc = estimateSrcLongtermDelay(state), estimateTgt = estimateTgtLongtermDelay(state);
                 LOG.info("If migrating partitions " + state.migratingPartitions
@@ -790,13 +791,13 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
             if (dfsState.bestDelay > initialDelay - 1e-9) {
                 LOG.info("Cannot find any better migration");
-                MigrationResult result = new MigrationResult();
+                MigrationResult result =  new MigrationResult(MIGRATION_NEEDSCALEOUT, null);;
                 return result;
             }
 
             if(dfsState.bestDelay > longTermThreshold){
                 LOG.info("Cannot find migration smaller than threshold");
-                MigrationResult result = new MigrationResult();
+                MigrationResult result =  new MigrationResult(MIGRATION_NEEDSCALEOUT, null);;
                 return result;
             }
             LOG.info("Find best migration with delay: " + dfsState.bestDelay + ", from container " + dfsState.bestSrcContainer + " to container " + dfsState.bestTgtContainer + ", partitions: " + dfsState.bestMigration);
