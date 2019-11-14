@@ -1064,6 +1064,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     LOG.info("OK to migrate");
                     lastResult = result;
                     Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
+                    String srcExecutor = lastResult.migratingPartitions.entrySet().iterator().next().getValue().getKey();
+                    String tgtExecutor = lastResult.migratingPartitions.entrySet().iterator().next().getValue().getValue();
+                    System.out.println("Migration! Rebalance decision at time: " + time + " from executor " + srcExecutor + " to executor " + tgtExecutor);
                     listener.changePartitionAssignment(newAssignment);
                     needMigrate = true;
                 } else if (result.resultCode.equals(MIGRATION_NEEDSCALEOUT)) {
@@ -1073,6 +1076,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         LOG.info("OK to scale out!");
                         lastResult = result;
                         Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
+                        String srcExecutor = lastResult.migratingPartitions.entrySet().iterator().next().getValue().getKey();
+                        String tgtExecutor = lastResult.migratingPartitions.entrySet().iterator().next().getValue().getValue();
+                        System.out.println("Migration! Scale out decision at time: " + time + " from executor " + srcExecutor + " to executor " + tgtExecutor);
                         listener.scaling(newAssignment.size(), newAssignment);
                         needMigrate = true;
                     }
@@ -1085,6 +1091,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 if (result.equals(MIGRATION_SUCCEED)) {
                     LOG.info("OK to scale in");
                     lastResult = result;
+                    String srcExecutor = lastResult.migratingPartitions.entrySet().iterator().next().getValue().getKey();
+                    String tgtExecutor = lastResult.migratingPartitions.entrySet().iterator().next().getValue().getValue();
+                    System.out.println("Migration! Scale in decision at time: " + time + " from executor " + srcExecutor + " to executor " + tgtExecutor);
                     Map<String, List<String>> newAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, result.migratingPartitions);
                     listener.scaling(newAssignment.size(), newAssignment);
                     needMigrate = true;
@@ -1109,9 +1118,13 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 partitionAssignment = generatePartitionAssignmentWhenMigrating(partitionAssignment, lastResult.migratingPartitions);
                 long time = System.currentTimeMillis();
                 for (String partition : lastResult.migratingPartitions.keySet()) {
-                    LOG.info("Migrating " + partition + " from " + lastResult.migratingPartitions.get(partition).getKey() + " to " + lastResult.migratingPartitions.get(partition).getValue() );
+                    String srcExecutor = lastResult.migratingPartitions.get(partition).getKey();
+                    String tgtExecutor = lastResult.migratingPartitions.get(partition).getValue();
+                    LOG.info("Migrating " + partition + " from " + srcExecutor + " to " + tgtExecutor );
+                    System.out.println("Change implemented at time " + time + " : " + " from " + srcExecutor + " to " + tgtExecutor);
                     networkCalculusModel.migration(time, lastResult.migratingPartitions.get(partition).getKey(), lastResult.migratingPartitions.get(partition).getValue(), partition);
                 }
+
                 lastResult = new MigrationResult();
                 lastTime = time;
             }else{
