@@ -979,11 +979,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 double delay = networkCalculusModel.estimateDelay(executorId, time, time);
                 delays.put(executorId, delay);
             }
-            System.out.println("Network Calculus Model, time " + time + " , Arrived: " + networkCalculusModel.getExecutorsArrived(time));
-            System.out.println("Network Calculus Model, time " + time + " , Processed: " + networkCalculusModel.getExecutorsCompleted(time));
-            System.out.println("Network Calculus Model, time " + time + " , Delay: " + delays);
-            System.out.println("Network Calculus Model, time " + time + " , Partition Arrived: " + networkCalculusModel.getPartitionsArrived(time));
-            System.out.println("Network Calculus Model, time " + time + " , Partition Processed: " + networkCalculusModel.getPartitionsCompleted(time));
+            System.out.println("NetworkCalculusModel, time " + time + " , Arrived: " + networkCalculusModel.getExecutorsArrived(time));
+            System.out.println("NetworkCalculusModel, time " + time + " , Processed: " + networkCalculusModel.getExecutorsCompleted(time));
+            System.out.println("NetworkCalculusModel, time " + time + " , Delay: " + delays);
+            System.out.println("NetworkCalculusModel, time " + time + " , Partition Arrived: " + networkCalculusModel.getPartitionsArrived(time));
+            System.out.println("NetworkCalculusModel, time " + time + " , Partition Processed: " + networkCalculusModel.getPartitionsCompleted(time));
         }
     }
 
