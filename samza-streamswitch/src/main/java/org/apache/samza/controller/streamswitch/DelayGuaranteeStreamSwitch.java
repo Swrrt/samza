@@ -544,6 +544,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 LOG.info("Not enough executor to merge");
                 return new MigrationResult();
             }
+            String minsrc = "", mintgt = "";
+            double minLongtermDelay = -1;
             for(String src: partitionAssignment.keySet()){
                 double srcArrival = delayEstimateModel.getExecutorArrivalRate(src, time);
                 for(String tgt: partitionAssignment.keySet())
@@ -554,7 +556,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         if(tgtInstantDelay < instantaneousThreshold && srcArrival + tgtArrival < tgtService){
                             double estimatedLongtermDelay = estimateLongtermDelay(srcArrival + tgtArrival, tgtService);
                             //Scale In
-                            if(estimatedLongtermDelay < longTermThreshold){
+                            if(estimatedLongtermDelay < longTermThreshold && (minLongtermDelay < -1e-9 || estimatedLongtermDelay < minLongtermDelay)){
+                                minLongtermDelay = estimatedLongtermDelay;
+                                minsrc = src;
+                                mintgt = tgt;
+                                /*
                                 Map<String, Pair<String, String>> migratingPartitions = new HashMap<>();
                                 for(String partition: partitionAssignment.get(src)){
                                     migratingPartitions.put(partition, new Pair<>(src, tgt));
@@ -562,9 +568,19 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                                 LOG.info("Scale in! from " + src + " to " + tgt);
                                 LOG.info("Migrating partitions: " + migratingPartitions.keySet());
                                 return new MigrationResult(MIGRATION_SUCCEED, migratingPartitions);
+                                */
                             }
                         }
                     }
+            }
+            if(minLongtermDelay > -1e-9){
+                Map<String, Pair<String, String>> migratingPartitions = new HashMap<>();
+                for(String partition: partitionAssignment.get(minsrc)){
+                    migratingPartitions.put(partition, new Pair<>(minsrc, mintgt));
+                }
+                LOG.info("Scale in! from " + minsrc + " to " + mintgt);
+                LOG.info("Migrating partitions: " + migratingPartitions.keySet());
+                return new MigrationResult(MIGRATION_SUCCEED, migratingPartitions);
             }
             LOG.info("Cannot find any scale in");
             return new MigrationResult();

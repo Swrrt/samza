@@ -31,7 +31,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         protected YarnLogRetriever(){
             //YARNHomePage = config.get("yarn.web.address");
         }
-        protected String retrieveAppId(String YARNHomePage){
+        //Retrieve corresponding appid
+        protected String retrieveAppId(String YARNHomePage, String jobname){
             String newestAppId = null;
             String appPrefix = "[\"<a href='/cluster/app/application_";
             URLConnection connection = null;
@@ -43,7 +44,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 scanner.useDelimiter("\n");
                 while(scanner.hasNext()){
                     String content = scanner.next().trim();
-                    if(content.startsWith(appPrefix)){
+                    if(content.startsWith(appPrefix) && content.split(",")[2].equals("\"" + jobname + "\"")){
                         content = content.substring(appPrefix.length(), appPrefix.length() + 18);
                         if(newestAppId == null || content.compareTo(newestAppId) > 0){
                             newestAppId = content;
@@ -337,7 +338,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
         String YarnHomePage = config.get("yarn.web.address");
         String topic = config.get("topic.name");
-        String appId = yarnLogRetriever.retrieveAppId(YarnHomePage);
+        String jobName = config.get("job.name");
+        String jobId = config.get("job.id");
+        // In metrics, topic will be changed to lowercase
+        topic = topic.toLowerCase();
+        String appId = yarnLogRetriever.retrieveAppId(YarnHomePage,jobName + "_" + jobId);
         List<String> containers = yarnLogRetriever.retrieveContainersAddress(YarnHomePage, appId);
         containerRMI = yarnLogRetriever.retrieveContainerJMX(containers);
         Map<String, Long> checkpointOffset = yarnLogRetriever.retrieveCheckpointOffsets(containers, topic);
@@ -418,7 +423,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     public static void main(String args[]){
         YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
         System.out.println("Testing YarnLogRetriever from: " + args[0]);
-        String appId = yarnLogRetriever.retrieveAppId(args[0]);
+        String appId = yarnLogRetriever.retrieveAppId(args[0], args[0]);
         System.out.println("Retrieved appId is " + appId);
         List<String> containerAddress = yarnLogRetriever.retrieveContainersAddress(args[0], appId);
         System.out.println("Retrieved containers' address : " + containerAddress);
