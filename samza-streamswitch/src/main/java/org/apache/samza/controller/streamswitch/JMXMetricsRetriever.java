@@ -359,7 +359,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         if(nTopic == -1) {
             topics.add(config.get("topic.name").toLowerCase());
         }else{
-            for(int i=0;i<nTopic;i++){
+            //Start from 1.
+            for(int i=1;i<=nTopic;i++){
                 topics.add(config.get("topic."+i+".name").toLowerCase());
             }
         }
