@@ -449,7 +449,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }
         }
         //Why need this? Translate
-        for(String partitionId : partitionWatermark.keySet()){
+        for(String partitionId : partitionWatermark.get(topics.get(0)).keySet()){
             long arrived = 0;
             for(String topic: topics) {
                 long begin = partitionWatermark.get(topic).get(partitionId);
