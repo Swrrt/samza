@@ -458,7 +458,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }
             long processed = partitionProcessed.getOrDefault("Partition " + partitionId, 0l);
             if(arrived < processed){
-               arrived = processed;
+                LOG.info("Attention, partition " + partitionId + "'s arrival is smaller than processed, arrival: " + arrived + " processed: " + processed);
+                arrived = processed;
             }
             partitionArrived.put("Partition " + partitionId, arrived);
         }
