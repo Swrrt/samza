@@ -452,8 +452,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         for(String partitionId : partitionWatermark.get(topics.get(0)).keySet()){
             long arrived = 0;
             for(String topic: topics) {
-                long begin = partitionWatermark.get(topic).get(partitionId);
-                long watermark = partitionBeginOffset.get(topic).get(partitionId);
+                long watermark = partitionWatermark.get(topic).get(partitionId);
+                long begin = partitionBeginOffset.get(topic).get(partitionId);
                 arrived += watermark - begin;
             }
             long processed = partitionProcessed.getOrDefault("Partition " + partitionId, 0l);
