@@ -180,7 +180,7 @@ public class YarnApplicationMaster implements JobControllerListener {
     }
 
     private JobController createController(){
-        String controllerFactoryClassName = config.getOrDefault("job.controller.factory", "org.apache.samza.controller.DefaultControllerFactory");
+        String controllerFactoryClassName = config.getOrDefault("job.controller.factory", "org.apache.samza.controller.DefaultJobControllerFactory");
         return Util.getObj(controllerFactoryClassName, JobControllerFactory.class).getController(config);
     }
 

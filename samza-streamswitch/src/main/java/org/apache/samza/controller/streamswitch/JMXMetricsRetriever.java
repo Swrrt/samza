@@ -226,7 +226,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
         private boolean isWaterMark(ObjectName name, String topic){
             return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-high-watermark") && !name.getKeyProperty("name").contains("-messages-behind-high-watermark")
-                    && !name.getKeyProperty("name").contains("window-count") && !name.getKeyProperty("name").contains(topic + "-changelog-") ;
+                    && !name.getKeyProperty("name").contains("window-count") && !name.getKeyProperty("name").contains(topic + "-changelog-")
+                    && name.getKeyProperty("type").startsWith("samza-container-"); //For join operator
         }
         private boolean isNextOffset(ObjectName name, String topic){
             return name.getDomain().equals("org.apache.samza.system.kafka.KafkaSystemConsumerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").contains("-offset-change")
