@@ -301,7 +301,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 //LOG.info(mbean.toString());
                                 String ok = mbsc.getAttribute(name, "Value").toString();
                                 String partitionId = name.getKeyProperty("name");
-                                int i = partitionId.indexOf('-', 6);
+                                int i = partitionId.indexOf('-', 6 + topic.length());
                                 i++;
                                 int j = partitionId.indexOf('-', i);
                                 partitionId = partitionId.substring(i, j);
