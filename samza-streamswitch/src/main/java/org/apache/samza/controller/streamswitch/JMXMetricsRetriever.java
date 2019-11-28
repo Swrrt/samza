@@ -367,7 +367,6 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
         String jobName = config.get("job.name");
         String jobId = config.get("job.id");
-        boolean isJoin = config.getBoolean("job.join", false);
         // In metrics, topic will be changed to lowercase
         String appId = yarnLogRetriever.retrieveAppId(YarnHomePage,jobName + "_" + jobId);
         List<String> containers = yarnLogRetriever.retrieveContainersAddress(YarnHomePage, appId);
@@ -435,9 +434,6 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             if(t > 0) val += t;
 
                         }
-                    }
-                    if(isJoin){
-                        val/=2; //Join operator processed each tuple 2 times.
                     }
                     debugProcessed.put(containerId + partitionId, String.valueOf(val));
                     if (!partitionProcessed.containsKey(partitionId)) {
