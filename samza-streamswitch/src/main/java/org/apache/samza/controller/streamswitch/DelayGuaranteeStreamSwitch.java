@@ -31,10 +31,17 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         Map<String, PartitionState> partitionStates;
         Map<String, ExecutorState> executorStates;
         List<Long> timePoints;
+        boolean allValid;
+        long windowSize;
         public State(){
             partitionStates = new HashMap<>();
             executorStates = new HashMap<>();
             timePoints = new ArrayList<>();
+            allValid = false;
+            windowSize = 100000;
+        }
+        public void setWindowSize(long size){
+            windowSize = size;
         }
         protected List<Long> getTimePoints(){
             return timePoints;
@@ -129,6 +136,43 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
             return completed;
         }
+
+        /*
+            Remove state that older than lastTime
+         */
+        public void popOldState(long lastTime){
+            LinkedList<Long> removedTime = new LinkedList<>();
+            for(long time: timePoints) {
+                if(time < lastTime){
+                    removedTime.add(time);
+                    for(Map.Entry<String, PartitionState> entry: partitionStates.entrySet()){
+                        PartitionState state = entry.getValue();
+                        if(state.arrived.containsKey(time))state.arrived.remove(time);
+                        if(state.backlog.containsKey(time))state.backlog.remove(time);
+                        if(state.completed.containsKey(time))state.completed.remove(time);
+                    }
+                    for(Map.Entry<String, ExecutorState> entry: executorStates.entrySet()){
+                        ExecutorState state = entry.getValue();
+                        if(state.completed.containsKey(time))state.completed.remove(time);
+                    }
+                }
+            }
+            for(long time: removedTime){
+                timePoints.remove(time);
+            }
+        }
+        /*
+            Replace invalid data in state with valid estimation
+            when current snapshot is all valid
+         */
+        public void calibrate(long time){
+            //Calibrate partition state
+            for(String partitionId: partitionStates.keySet()){
+            }
+            //Calibrate executorId
+            allValid = true;
+        }
+
         public void updateAtTime(long time, Map<String, Long> taskArrived, Map<String, Long> taskProcessed, Map<String, List<String>> partitionAssignment) { //Normal update
             LOG.info("Debugging, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
             timePoints.add(time);
@@ -165,6 +209,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 //LOG.info("Debugging, executor " + executorId + " dcompleted: " + d_completed);
                 updateExecutorCompleted(executorId, time, d_completed);
             }
+            popOldState(time - windowSize - 1);
         }
         public double findArrivedTime(String executorId, long completed){
             long lastTime = 0;
@@ -938,7 +983,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         return true;
     }
 
-    private void updateNetworkCalculus(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed){
+    private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed){
         LOG.info("Updating network calculus model...");
         state.updateAtTime(time, partitionArrived, partitionProcessed, partitionAssignment);
 
@@ -967,7 +1012,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             HashMap<String, Double> serviceRate = new HashMap<>();
             HashMap<String, Double> avgDelay = new HashMap<>();
             HashMap<String, Double> longtermDelay = new HashMap<>();
-            HashMap<String, Double> residual = new HashMap<>();
             HashMap<String, Double> partitionArrivalRate = new HashMap<>();
             HashSet<String> partitions = new HashSet<>();
             for(String executorId: partitionAssignment.keySet()){
@@ -985,7 +1029,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             System.out.println("Model, time " + time + " : " + "Service Rate: " + serviceRate);
             System.out.println("Model, time " + time + " : " + "Average Delay: " + avgDelay);
             System.out.println("Model, time " + time + " : " + "Longterm Delay: " + longtermDelay);
-            System.out.println("Model, time " + time + " : " + "Residual: " + residual);
             for(String partitionId: partitions){
                 double arrivalR = model.getPartitionArriveRate(partitionId);
                 partitionArrivalRate.put(partitionId, arrivalR);
@@ -1012,7 +1055,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         Map<String, Double> executorUtilization =
                 (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
         //LOG.info("Show utilizations: " + executorUtilization);
-        updateNetworkCalculus(time, partitionArrived, partitionProcessed);
+        updateState(time, partitionArrived, partitionProcessed);
         updateDelayEstimateModel(time, executorUtilization);
 
         //Map<String, String> containerArrived = (HashMap<String, String>)(metrics.get(""))
@@ -1072,7 +1115,44 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
         return needMigrate;
     }
+    private void startExamine(){
+        int metricsRetreiveInterval = config.getInt("streamswitch.metrics.interval", 200);
+        int metricsWarmupTime = config.getInt("streamswitch.metrics.warmup.time", 60000);
+        boolean isWarmup = true;
+        waitForMigrationDeployed = false;
+        startTime = System.currentTimeMillis();
+        while(true) {
+            long time = System.currentTimeMillis();
+            if (time - startTime > metricsWarmupTime) isWarmup = false;
+            if (!isWarmup) {
+                Map<String, Object> metrics = retriever.retrieveMetrics();
+                //To prevent migration deployment during update process, use synchronization updateLock.
+                LOG.info("Try to acquire lock to update model...");
+                updateLock.lock();
+                try {
+                    LOG.info("Lock acquired, update model");
+                    if (updateModel(time, metrics)) {
+                        if (!waitForMigrationDeployed) waitForMigrationDeployed = true;
+                        else {
+                            LOG.info("Waring: new migration before last migration is deployed! Ignore old migration");
+                            //TODO: throw an error?
+                        }
+                    }
+                }finally {
+                    updateLock.unlock();
+                    LOG.info("Model update completed, unlock");
+                }
+            }
+            try {
+                Thread.sleep(metricsRetreiveInterval);
+            }catch (Exception e) { }
 
+        }
+    }
+    @Override
+    public void start(){
+        startExamine();
+    }
     //TODO
     @Override
     public synchronized void onChangeImplemented(){
