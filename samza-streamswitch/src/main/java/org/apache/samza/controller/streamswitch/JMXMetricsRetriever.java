@@ -450,19 +450,21 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }
         }
         //Why need this? Translate
-        for(String partitionId : partitionWatermark.get(topics.get(0)).keySet()){
-            long arrived = 0;
-            for(String topic: topics) {
-                long watermark = partitionWatermark.get(topic).get(partitionId);
-                long begin = partitionBeginOffset.get(topic).get(partitionId);
-                arrived += watermark - begin;
+        if(partitionWatermark.containsKey(topics.get(0))) {
+            for (String partitionId : partitionWatermark.get(topics.get(0)).keySet()) {
+                long arrived = 0;
+                for (String topic : topics) {
+                    long watermark = partitionWatermark.get(topic).get(partitionId);
+                    long begin = partitionBeginOffset.get(topic).get(partitionId);
+                    arrived += watermark - begin;
+                }
+                long processed = partitionProcessed.getOrDefault("Partition " + partitionId, 0l);
+                if (arrived < processed) {
+                    LOG.info("Attention, partition " + partitionId + "'s arrival is smaller than processed, arrival: " + arrived + " processed: " + processed);
+                    arrived = processed;
+                }
+                partitionArrived.put("Partition " + partitionId, arrived);
             }
-            long processed = partitionProcessed.getOrDefault("Partition " + partitionId, 0l);
-            if(arrived < processed){
-                LOG.info("Attention, partition " + partitionId + "'s arrival is smaller than processed, arrival: " + arrived + " processed: " + processed);
-                arrived = processed;
-            }
-            partitionArrived.put("Partition " + partitionId, arrived);
         }
 
         LOG.info("Debugging, watermark: " + debugWatermark);
