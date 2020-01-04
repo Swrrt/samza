@@ -1180,7 +1180,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             if(deltaT - time > metricsRetreiveInterval){
                 Log.warn("Run loop time is longer than interval, please consider to set larger interval");
             }
-            Log.info("Sleep for " + deltaT + "milliseconds");
+            Log.info("Sleep for " + (deltaT-time) + "milliseconds");
             try {
                 Thread.sleep(metricsRetreiveInterval - (deltaT - time));
             }catch (Exception e) {
