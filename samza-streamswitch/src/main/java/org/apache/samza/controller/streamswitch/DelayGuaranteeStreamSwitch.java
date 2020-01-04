@@ -492,11 +492,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
     }
 
-    State state;
-    Model model;
     long migrationWarmupTime, migrationInterval, lastTime;
     double instantaneousThreshold, longTermThreshold;
-
+    Examiner examiner;
     public DelayGuaranteeStreamSwitch(Config config){
         super(config);
 
@@ -504,12 +502,10 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         migrationInterval = config.getLong("streamswitch.migration.interval.time", 1000l);
         instantaneousThreshold = config.getDouble("streamswitch.delay.instant.threshold", 100.0);
         longTermThreshold = config.getDouble("streamswtich.delay.longterm.threshold", 100.0);
-
         lastTime = -1000000000l;
-        state = new State();
-        model = new Model();
-        model.setState(state);
-        model.setTimes(config.getLong("streamswitch.delay.interval", 500l), config.getInt("streamswitch.delay.alpha", 20), config.getInt("streamswitch.delay.beta", 10));
+        examiner = new Examiner(retriever);
+        examiner.model.setState(examiner.state);
+        examiner.model.setTimes(config.getLong("streamswitch.delay.interval", 500l), config.getInt("streamswitch.delay.alpha", 20), config.getInt("streamswitch.delay.beta", 10));
         algorithms = new Strategies();
         updateLock = new ReentrantLock();
     }
@@ -537,7 +533,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 LOG.info("No executor to move");
                 return new ExamineResult(new Prescription(), null);
             }
-            long time = model.getCurrentTime();
+            long time = examiner.model.getCurrentTime();
             Pair<String, Double> a = findMaxLongtermDelayExecutor(partitionAssignment, time);
             String srcExecutor = a.getKey();
             double initialDelay = a.getValue();
@@ -562,7 +558,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
         public ExamineResult tryToScaleIn(){
             LOG.info("Try to scale in");
-            long time = model.getCurrentTime();
+            long time = examiner.model.getCurrentTime();
             if(partitionAssignment.size() <= 1){
                 LOG.info("Not enough executor to merge");
                 return new ExamineResult(new Prescription(), null);
@@ -570,12 +566,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             String minsrc = "", mintgt = "";
             double minLongtermDelay = -1;
             for(String src: partitionAssignment.keySet()){
-                double srcArrival = model.getExecutorArrivalRate(src);
+                double srcArrival = examiner.model.getExecutorArrivalRate(src);
                 for(String tgt: partitionAssignment.keySet())
                     if(!src.equals(tgt)){
-                        double tgtArrival = model.getExecutorArrivalRate(tgt);
-                        double tgtService = model.getExecutorServiceRate(tgt);
-                        double tgtInstantDelay = model.getAvgDelay(tgt);
+                        double tgtArrival = examiner.model.getExecutorArrivalRate(tgt);
+                        double tgtService = examiner.model.getExecutorServiceRate(tgt);
+                        double tgtInstantDelay = examiner.model.getAvgDelay(tgt);
                         if(tgtInstantDelay < instantaneousThreshold && srcArrival + tgtArrival < tgtService){
                             double estimatedLongtermDelay = estimateLongtermDelay(srcArrival + tgtArrival, tgtService);
                             //Scale In
@@ -629,21 +625,21 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
 
             protected boolean okToMigratePartition(String partition) {
-                double partitionArrivalRate = model.getPartitionArriveRate(partition);
+                double partitionArrivalRate = examiner.model.getPartitionArriveRate(partition);
                 return (partitionArrivalRate + tgtArrivalRate < tgtServiceRate - 1e-12);
 
             }
 
             protected void migratingPartition(String partition) {
                 migratingPartitions.add(partition);
-                double arrivalRate = model.getPartitionArriveRate(partition);
+                double arrivalRate = examiner.model.getPartitionArriveRate(partition);
                 srcArrivalRate -= arrivalRate;
                 tgtArrivalRate += arrivalRate;
             }
 
             protected void unmigratingPartition(String partition) {
                 migratingPartitions.remove(partition);
-                double arrivalRate = model.getPartitionArriveRate(partition);
+                double arrivalRate = examiner.model.getPartitionArriveRate(partition);
                 srcArrivalRate += arrivalRate;
                 tgtArrivalRate -= arrivalRate;
             }
@@ -655,10 +651,10 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             for (String container : containerTasks.keySet()) {
                 if (container.equals(srcContainer)) continue;
                 double n1 = dfsState.srcArrivalRate;
-                double n2 = model.getExecutorArrivalRate(container);
+                double n2 = examiner.model.getExecutorArrivalRate(container);
                 double u1 = dfsState.srcServiceRate;
-                double u2 = model.getExecutorServiceRate(container);
-                double instantDelay = model.getAvgDelay(container);
+                double u2 = examiner.model.getExecutorServiceRate(container);
+                double instantDelay = examiner.model.getAvgDelay(container);
                 LOG.info("Debugging, try to move to executor " + container + ", (a1, a2, u1, u2) are: " + n1 + ", " + n2 + ", " + u1 + ", " + u2 + ", instant delay: " + instantDelay);
                 if(instantDelay < instantaneousThreshold && u2 > n2 && u2 - n2 > u1 - n1){
                     double x = ((u2 - n2) - (u1 - n1))/2;
@@ -734,7 +730,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             double initialDelay = -1.0;
             String maxContainer = "";
             for (String containerId : containerTasks.keySet()) {
-                double delay = model.getLongTermDelay(containerId);
+                double delay = examiner.model.getLongTermDelay(containerId);
                 if (delay > initialDelay && !checkDelay(containerId)) {
                     initialDelay = delay;
                     maxContainer = containerId;
@@ -748,7 +744,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             LOG.info("Try to migrate");
             LOG.info("Migrating once based on assignment: " + partitionAssignment);
             Map<String, List<String>> containerTasks = new HashMap<>();
-            long time = model.getCurrentTime();
+            long time = examiner.model.getCurrentTime();
             containerTasks = partitionAssignment;
             if (containerTasks.keySet().size() == 0) { //No executor to move
                 ExamineResult result = new ExamineResult(new Prescription(), null);
@@ -779,8 +775,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             dfsState.bestMigration.clear();
             //Migrating this container
             dfsState.srcContainer = srcContainer;
-            dfsState.srcArrivalRate = model.getExecutorArrivalRate(srcContainer);
-            dfsState.srcServiceRate = model.getExecutorServiceRate(srcContainer);
+            dfsState.srcArrivalRate = examiner.model.getExecutorArrivalRate(srcContainer);
+            dfsState.srcServiceRate = examiner.model.getExecutorServiceRate(srcContainer);
             dfsState.srcPartitions = containerTasks.get(srcContainer);
             //Choose target container based on ideal delay (minimize ideal delay)
             a = findIdealLongtermContainer(dfsState, srcContainer, containerTasks, time);
@@ -794,8 +790,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             LOG.info("Find minimal ideal container " + tgtContainer + " , ideal delay: " + minIdealDelay);
 /*        for (String tgtContainer : containerTasks.keySet())
             if (!srcContainer.equals(tgtContainer)) {*/
-            double tgtArrivalRate = model.getExecutorArrivalRate(tgtContainer);
-            double tgtServiceRate = model.getExecutorServiceRate(tgtContainer);
+            double tgtArrivalRate = examiner.model.getExecutorArrivalRate(tgtContainer);
+            double tgtServiceRate = examiner.model.getExecutorServiceRate(tgtContainer);
             if (tgtArrivalRate < tgtServiceRate - 1e-9) {
                 int srcSize = containerTasks.get(srcContainer).size();
                 dfsState.tgtPartitions = containerTasks.get(tgtContainer);
@@ -855,7 +851,10 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         private Prescription pendingPres;
         Examiner(StreamSwitchMetricsRetriever metricsRetriever){
             this.metricsRetriever = metricsRetriever;
-            isValid = true;
+            this.state = new State();
+            this.model = new Model();
+
+            isValid = false;//No data, should be false
         }
         private long examine(){
             long time = System.currentTimeMillis();
@@ -866,10 +865,71 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             Map<String, Double> executorUtilization =
                     (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
             //TODO: check valid or not here
-
             updateState(time, partitionArrived, partitionProcessed);
             updateDelayEstimateModel(time, executorUtilization);
+            boolean isAllOk = true;
+            for(String executor: partitionAssignment.keySet()){
+                if(!model.executors.containsKey(executor)){
+                    LOG.info("Current model is not valid, because " + executor + " is not ready.");
+                    isAllOk = false;
+                    break;
+                }
+            }
+            if(isAllOk)isValid = true;
             return time;
+        }
+        private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed){
+            LOG.info("Updating network calculus model...");
+            state.updateAtTime(time, partitionArrived, partitionProcessed, partitionAssignment);
+
+            //Debug & Statistics
+            if(true){
+                HashMap<String, Double> delays = new HashMap<>();
+                for(String executorId: partitionAssignment.keySet()){
+                    double delay = state.estimateDelay(executorId, time, time);
+                    delays.put(executorId, delay);
+                }
+                System.out.println("State, time " + time + " , Arrived: " + state.getExecutorsArrived(time));
+                System.out.println("State, time " + time + " , Processed: " + state.getExecutorsCompleted(time));
+                System.out.println("State, time " + time + " , Delay: " + delays);
+                System.out.println("State, time " + time + " , Partition Arrived: " + state.getPartitionsArrived(time));
+                System.out.println("State, time " + time + " , Partition Processed: " + state.getPartitionsCompleted(time));
+            }
+        }
+
+        private void updateDelayEstimateModel(long time, Map<String, Double> executorUtilization){
+            LOG.info("Updating Delay Estimating model");
+            model.updateAtTime(time, executorUtilization, partitionAssignment);
+
+            //Debug & Statistics
+            if(true){
+                HashMap<String, Double> arrivalRate = new HashMap<>();
+                HashMap<String, Double> serviceRate = new HashMap<>();
+                HashMap<String, Double> avgDelay = new HashMap<>();
+                HashMap<String, Double> longtermDelay = new HashMap<>();
+                HashMap<String, Double> partitionArrivalRate = new HashMap<>();
+                HashSet<String> partitions = new HashSet<>();
+                for(String executorId: partitionAssignment.keySet()){
+                    double arrivalR = model.getExecutorArrivalRate(executorId);
+                    arrivalRate.put(executorId, arrivalR);
+                    double serviceR = model.getExecutorServiceRate(executorId);
+                    serviceRate.put(executorId, serviceR);
+                    double delay = model.getAvgDelay(executorId);
+                    avgDelay.put(executorId, delay);
+                    delay = model.getLongTermDelay(executorId);
+                    longtermDelay.put(executorId, delay);
+                    partitions.addAll(partitionAssignment.get(executorId));
+                }
+                System.out.println("Model, time " + time + " : " + "Arrival Rate: " + arrivalRate);
+                System.out.println("Model, time " + time + " : " + "Service Rate: " + serviceRate);
+                System.out.println("Model, time " + time + " : " + "Average Delay: " + avgDelay);
+                System.out.println("Model, time " + time + " : " + "Longterm Delay: " + longtermDelay);
+                for(String partitionId: partitions){
+                    double arrivalR = model.getPartitionArriveRate(partitionId);
+                    partitionArrivalRate.put(partitionId, arrivalR);
+                }
+                System.out.println("Model, time " + time + " : " + "Partition Arrival Rate: " + partitionArrivalRate);
+            }
         }
         private List<Pair<String, Double>> getInstantDelay(){
             List<Pair<String, Double>> delay = new LinkedList<>();
@@ -902,8 +962,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
     //Return false if both instantaneous and long-term thresholds are violated
     public boolean checkDelay(String containerId){
-        double delay = model.getAvgDelay(containerId);
-        double longTermDelay = model.getLongTermDelay(containerId);
+        double delay = examiner.model.getAvgDelay(containerId);
+        double longTermDelay = examiner.model.getLongTermDelay(containerId);
         if(delay > instantaneousThreshold && longTermDelay > longTermThreshold){
             return false;
         }
@@ -924,7 +984,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         double initialDelay = -1.0;
         String maxExecutor = "";
         for (String executor : partitionAssignment.keySet()) {
-            double delay = model.getAvgDelay(executor);
+            double delay = examiner.model.getAvgDelay(executor);
             if (delay > initialDelay && !checkDelay(executor)) {
                 initialDelay = delay;
                 maxExecutor = executor;
@@ -937,7 +997,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         double initialDelay = -1.0;
         String maxExecutor = "";
         for (String executor : partitionAssignment.keySet()) {
-            double longtermDelay = model.getLongTermDelay(executor);
+            double longtermDelay = examiner.model.getLongTermDelay(executor);
             if (longtermDelay > initialDelay && !checkDelay(executor)) {
                 initialDelay = longtermDelay;
                 maxExecutor = executor;
@@ -966,90 +1026,15 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     Map<String, Long> lastProcessCPUtime, lastProcessTime;
 
     private boolean checkDelayGuarantee(String executorId){
-        double delay = model.getAvgDelay(executorId);
-        double longTermDelay = model.getLongTermDelay(executorId);
+        double delay = examiner.model.getAvgDelay(executorId);
+        double longTermDelay = examiner.model.getLongTermDelay(executorId);
         if(delay > instantaneousThreshold && longTermDelay > longTermThreshold){
             return false;
         }
         return true;
     }
-    //True if delay guarantee is not violated.
-    private boolean checkDelayGuarantee(){
-        List<String> decreasingExecutors = new ArrayList<>();
-        for(String executorId: partitionAssignment.keySet()){
-            double delay = model.getAvgDelay(executorId);
-            double arrival = model.getExecutorArrivalRate(executorId);
-            double service = model.getExecutorServiceRate(executorId);
-            double longtermDelay = model.getLongTermDelay(executorId);
-            if(!checkDelayGuarantee(executorId)){
-                System.out.println("Executor " + executorId
-                        + " instant delay is " + delay + " exceeds threshold: " + instantaneousThreshold
-                        + " longterm delay is " + longtermDelay + " exceeds threshold: " + longTermThreshold
-                        + ", arrival is " + arrival + ", service is " + service);
-                return false;
-            }else if(delay > instantaneousThreshold){
-                decreasingExecutors.add(executorId);
-            }
-        }
-        if(decreasingExecutors.size()==0)System.out.println("All containers' delay is smaller than threshold");
-        else System.out.println("Containers delay is greater than threshold, but estimated to decrease: " + decreasingExecutors);
 
-        return true;
-    }
 
-    private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed){
-        LOG.info("Updating network calculus model...");
-        state.updateAtTime(time, partitionArrived, partitionProcessed, partitionAssignment);
-
-        //Debug & Statistics
-        if(true){
-            HashMap<String, Double> delays = new HashMap<>();
-            for(String executorId: partitionAssignment.keySet()){
-                double delay = state.estimateDelay(executorId, time, time);
-                delays.put(executorId, delay);
-            }
-            System.out.println("State, time " + time + " , Arrived: " + state.getExecutorsArrived(time));
-            System.out.println("State, time " + time + " , Processed: " + state.getExecutorsCompleted(time));
-            System.out.println("State, time " + time + " , Delay: " + delays);
-            System.out.println("State, time " + time + " , Partition Arrived: " + state.getPartitionsArrived(time));
-            System.out.println("State, time " + time + " , Partition Processed: " + state.getPartitionsCompleted(time));
-        }
-    }
-
-    private void updateDelayEstimateModel(long time, Map<String, Double> executorUtilization){
-        LOG.info("Updating Delay Estimating model");
-        model.updateAtTime(time, executorUtilization, partitionAssignment);
-
-        //Debug & Statistics
-        if(true){
-            HashMap<String, Double> arrivalRate = new HashMap<>();
-            HashMap<String, Double> serviceRate = new HashMap<>();
-            HashMap<String, Double> avgDelay = new HashMap<>();
-            HashMap<String, Double> longtermDelay = new HashMap<>();
-            HashMap<String, Double> partitionArrivalRate = new HashMap<>();
-            HashSet<String> partitions = new HashSet<>();
-            for(String executorId: partitionAssignment.keySet()){
-                double arrivalR = model.getExecutorArrivalRate(executorId);
-                arrivalRate.put(executorId, arrivalR);
-                double serviceR = model.getExecutorServiceRate(executorId);
-                serviceRate.put(executorId, serviceR);
-                double delay = model.getAvgDelay(executorId);
-                avgDelay.put(executorId, delay);
-                delay = model.getLongTermDelay(executorId);
-                longtermDelay.put(executorId, delay);
-                partitions.addAll(partitionAssignment.get(executorId));
-            }
-            System.out.println("Model, time " + time + " : " + "Arrival Rate: " + arrivalRate);
-            System.out.println("Model, time " + time + " : " + "Service Rate: " + serviceRate);
-            System.out.println("Model, time " + time + " : " + "Average Delay: " + avgDelay);
-            System.out.println("Model, time " + time + " : " + "Longterm Delay: " + longtermDelay);
-            for(String partitionId: partitions){
-                double arrivalR = model.getPartitionArriveRate(partitionId);
-                partitionArrivalRate.put(partitionId, arrivalR);
-            }
-            System.out.println("Model, time " + time + " : " + "Partition Arrival Rate: " + partitionArrivalRate);
-        }
-    }
 
     //We do not use this method anymore in paper's version
     @Override
@@ -1069,7 +1054,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         return instantExceeded + longtermExceeded;
     }
 
-    private Prescription diagnose(long time, Examiner examiner){
+    private Prescription diagnose(Examiner examiner){
         int healthiness = checkHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay());
         Prescription pres = new Prescription(null, null, null);
 
@@ -1145,7 +1130,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             listener.changePartitionAssignment(newAssignment);
         }
     }
-    Examiner examiner;
     //Main logic:  examine->diagnose->treatment->sleep
     @Override
     public void start(){
@@ -1168,23 +1152,27 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
         }while(isWarmup);
         LOG.info("Warm up completed.");
-        examiner = new Examiner(retriever);
         while(true) {
             //Examine
             Log.info("Examine...");
             long time = examiner.examine();
             Log.info("Diagnose...");
-            Prescription pres = diagnose(time, examiner);
-            if(pres.migratingPartitions != null){ //Not do nothing
-                //Acquire lock for migration flag
-                updateLock.lock();
-                try {
-                    doTreatment(pres);
-                }finally {
-                    updateLock.unlock();
+            if(examiner.isValid && !examiner.isMigrating) {
+                Prescription pres = diagnose(examiner);
+                if (pres.migratingPartitions != null) { //Not do nothing
+                    //Acquire lock for migration flag
+                    updateLock.lock();
+                    try {
+                        doTreatment(pres);
+                    } finally {
+                        updateLock.unlock();
+                    }
+                } else {
+                    Log.info("Nothing to do this time.");
                 }
             }else{
-                Log.info("Nothing to do this time.");
+                if(!examiner.isValid)LOG.info("Current examine data is not valid, need to wait until valid");
+                else LOG.info("One migration is in process");
             }
             long deltaT = System.currentTimeMillis();
             if(deltaT - time > metricsRetreiveInterval){
@@ -1228,12 +1216,5 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             updateLock.unlock();
             LOG.info("Migration complete, unlock");
         }
-    }
-
-    public void showData(){
-        LOG.info("Show data:");
-        state.showExecutors("");
-        model.showData();
-
     }
 }
