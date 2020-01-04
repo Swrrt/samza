@@ -503,9 +503,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         instantaneousThreshold = config.getDouble("streamswitch.delay.instant.threshold", 100.0);
         longTermThreshold = config.getDouble("streamswtich.delay.longterm.threshold", 100.0);
         lastTime = -1000000000l;
-        examiner = new Examiner(retriever);
-        examiner.model.setState(examiner.state);
-        examiner.model.setTimes(config.getLong("streamswitch.delay.interval", 500l), config.getInt("streamswitch.delay.alpha", 20), config.getInt("streamswitch.delay.beta", 10));
         algorithms = new Strategies();
         updateLock = new ReentrantLock();
     }
@@ -1151,6 +1148,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 }
             }
         }while(isWarmup);
+        examiner = new Examiner(retriever);
+        examiner.model.setState(examiner.state);
+        examiner.model.setTimes(config.getLong("streamswitch.delay.interval", 500l), config.getInt("streamswitch.delay.alpha", 20), config.getInt("streamswitch.delay.beta", 10));
         LOG.info("Warm up completed.");
         while(true) {
             //Examine
