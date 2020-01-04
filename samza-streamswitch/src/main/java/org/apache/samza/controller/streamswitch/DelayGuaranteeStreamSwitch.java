@@ -1070,25 +1070,27 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         if(healthiness == 0){
             //Try scale in
             ExamineResult result = examiner.scaleIn();
-            int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getLongtermDelay());
-            if(thealthiness == 0){  //Scale in OK
-                return result.getPres();
-            }else{
-                //Do nothing
-                return pres;
+            if(result.longtermDelay != null) {
+                int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getLongtermDelay());
+                if (thealthiness == 0) {  //Scale in OK
+                    return result.getPres();
+                }
             }
+            //Do nothing
+            return pres;
         }
         //Severe
         else{
             ExamineResult result = examiner.loadBalance();
-            int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getLongtermDelay());
-            if(thealthiness == 1){  //Load balance OK
-                return result.getPres();
-            }else{
-                //Scale out
-                result = examiner.scaleOut();
-                return result.getPres();
+            if(result.longtermDelay != null) {
+                int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getLongtermDelay());
+                if (thealthiness == 1) {  //Load balance OK
+                    return result.getPres();
+                }
             }
+            //Scale out
+            result = examiner.scaleOut();
+            return result.getPres();
         }
     }
     //Treatment for Samza
