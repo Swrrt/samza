@@ -21,7 +21,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     Examiner examiner;
     public DelayGuaranteeStreamSwitch(Config config){
         super(config);
-
         migrationWarmupTime = config.getLong("streamswitch.migration.warmup.time", 1000000000l);
         migrationInterval = config.getLong("streamswitch.migration.interval.time", 1000l);
         instantaneousThreshold = config.getDouble("streamswitch.delay.instant.threshold", 100.0);
@@ -412,38 +411,24 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
     class Examiner{
         class State {
-            private class PartitionState{
-                Map<Long, Long> arrived, completed;
-                Map<Long, HashMap<String, Long>> backlog;
-                PartitionState(){
-                    arrived = new HashMap<>();
-                    completed = new HashMap<>();
-                    backlog = new HashMap<>();
-                }
-            }
-            private class ExecutorState{
-                Map<Long, Long> completed;
-                public ExecutorState(){
-                    completed = new HashMap<>();
-                }
-            }
-            Map<String, PartitionState> partitionStates;
-            Map<String, ExecutorState> executorStates;
-            List<Long> timePoints;
-            boolean allValid;
+            Map<String, Map<Long, Long>> partitionArrived, partitionCompleted; //Instead of actual time, use the n-th time point as key
+            Map<String, Double> executorUtilization;
+            Map<Long, Long> timePoints; //Actual time of n-th time point.
             long windowSize;
-            public State(){
-                partitionStates = new HashMap<>();
-                executorStates = new HashMap<>();
-                timePoints = new ArrayList<>();
-                allValid = false;
+            long currentTimeIndex;
+            public State() {
+                timePoints = new HashMap<>();
                 windowSize = 100000;
+                currentTimeIndex = -1;
             }
             public void setWindowSize(long size){
                 windowSize = size;
             }
-            protected List<Long> getTimePoints(){
+            protected Map<Long, Long> getTimePoints(){
                 return timePoints;
+            }
+            protected long getTimepoint(long n){
+                return timePoints.get(n);
             }
             private long getLastTime(long time){
                 long lastTime = 0;
@@ -454,111 +439,47 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     }
                 return lastTime;
             }
-            public void updatePartitionArrived(String partitionId, long time, long arrived){
-                partitionStates.putIfAbsent(partitionId, new PartitionState());
-                partitionStates.get(partitionId).arrived.put(time, arrived);
+            public void updatePartitionArrived(String partitionId, long n, long arrived){
+                partitionArrived.putIfAbsent(partitionId, new TreeMap<>());
+                partitionArrived.get(partitionId).put(n, arrived);
             }
-            public void updatePartitionCompleted(String partitionId, long time, long completed){
-                partitionStates.putIfAbsent(partitionId, new PartitionState());
-                partitionStates.get(partitionId).completed.put(time, completed);
+            public void updatePartitionCompleted(String partitionId, long n, long completed){
+                partitionCompleted.putIfAbsent(partitionId, new TreeMap<>());
+                partitionCompleted.get(partitionId).put(n, completed);
             }
-            public void updatePartitionBacklog(String partitionId, long time, String executorId, long backlog){
-                partitionStates.putIfAbsent(partitionId, new PartitionState());
-                partitionStates.get(partitionId).backlog.putIfAbsent(time, new HashMap<>());
-                partitionStates.get(partitionId).backlog.get(time).put(executorId, backlog);
+            public void updateUtilization(String executorId, double utilization){
+                executorUtilization.put(executorId, utilization);
             }
-            public void updateExecutorCompleted(String executorId, long time, long completed){
-                executorStates.putIfAbsent(executorId, new ExecutorState());
-                executorStates.get(executorId).completed.put(time, completed);
-            }
-            public long getExecutorCompleted(String executorId, long time){
-                long completed = 0;
-                if(executorStates.containsKey(executorId) && executorStates.get(executorId).completed.containsKey(time)){
-                    completed = executorStates.get(executorId).completed.get(time);
-                }
-                return completed;
-            }
-            //Use last
-            public long getPartitionArrived(String partitionId, long time){
+            public long getPartitionArrived(String partitionId, long n){
                 long arrived = 0;
-                if(partitionStates.containsKey(partitionId) && partitionStates.get(partitionId).arrived.containsKey(time)){
-                    arrived = partitionStates.get(partitionId).arrived.get(time);
+                if(partitionArrived.containsKey(partitionId)){
+                    arrived = partitionArrived.get(partitionId).getOrDefault(n, 0l);
                 }
                 return arrived;
             }
-            public Map<String, Long> getPartitionsArrived(long time){
-                HashMap<String, Long> arrived = new HashMap<>();
-                for(String id: partitionStates.keySet()){
-                    arrived.put(id, getPartitionArrived(id, time));
+            public long getPartitionCompleted(String partitionId, long n){
+                long arrived = 0;
+                if(partitionArrived.containsKey(partitionId)){
+                    arrived = partitionArrived.get(partitionId).getOrDefault(n, 0l);
                 }
                 return arrived;
             }
-            public Map<String, Long> getPartitionsCompleted(long time){
-                HashMap<String, Long> completed = new HashMap<>();
-                for(String id: partitionStates.keySet()){
-                    completed.put(id, getPartitionCompleted(id, time));
-                }
-                return completed;
+            //Return -1 for no utilization
+            public double getUtilization(String executorId){
+                return executorUtilization.getOrDefault(executorId, -1.0);
             }
-            public long getPartitionCompleted(String partitionId, long time){
-                long completed = 0;
-                if(partitionStates.containsKey(partitionId) && partitionStates.get(partitionId).completed.containsKey(time)){
-                    completed = partitionStates.get(partitionId).completed.get(time);
+            //Remove data older than current index - window size
+            private void popOldState(){
+                for(String partition: partitionArrived.keySet()){
+                    partitionArrived.get(partition).remove(currentTimeIndex - windowSize);
+                    partitionCompleted.get(partition).remove(currentTimeIndex - windowSize);
                 }
-                return completed;
             }
-            public long getPartitionBacklog(String partitionId, long time, String executorId){
-                long backlog = 0;
-                if(partitionStates.containsKey(partitionId) && partitionStates.get(partitionId).backlog.containsKey(time)){
-                    backlog = partitionStates.get(partitionId).backlog.get(time).getOrDefault(executorId, 0l);
+            public long calculateArrivalTime(String partition, long r){
+                for(Map.Entry<Long, Long> entry: partitionArrived.get(partition).entrySet()){
+                    if(r <= entry.getValue())return entry.getKey();
                 }
-                return backlog;
-            }
-            public long getExecutorArrived(String executorId, long time){
-                long arrived = getExecutorCompleted(executorId, time);
-                for(String id:partitionStates.keySet()){
-                    arrived += getPartitionBacklog(id, time, executorId);
-                }
-                return arrived;
-            }
-            public Map<String, Long> getExecutorsArrived(long time){
-                HashMap<String, Long> arrived = new HashMap<>();
-                for(String executorId: executorStates.keySet()){
-                    arrived.put(executorId, getExecutorArrived(executorId, time));
-                }
-                return arrived;
-            }
-            public Map<String, Long> getExecutorsCompleted(long time){
-                HashMap<String, Long> completed = new HashMap<>();
-                for(String executorId: executorStates.keySet()){
-                    completed.put(executorId, getExecutorCompleted(executorId, time));
-                }
-                return completed;
-            }
-
-            /*
-                Remove state that older than lastTime
-             */
-            public void popOldState(long lastTime){
-                LinkedList<Long> removedTime = new LinkedList<>();
-                for(long time: timePoints) {
-                    if(time < lastTime){
-                        removedTime.add(time);
-                        for(Map.Entry<String, PartitionState> entry: partitionStates.entrySet()){
-                            PartitionState state = entry.getValue();
-                            if(state.arrived.containsKey(time))state.arrived.remove(time);
-                            if(state.backlog.containsKey(time))state.backlog.remove(time);
-                            if(state.completed.containsKey(time))state.completed.remove(time);
-                        }
-                        for(Map.Entry<String, ExecutorState> entry: executorStates.entrySet()){
-                            ExecutorState state = entry.getValue();
-                            if(state.completed.containsKey(time))state.completed.remove(time);
-                        }
-                    }
-                }
-                for(long time: removedTime){
-                    timePoints.remove(time);
-                }
+                return 0;
             }
             /*
                 Replace invalid data in state with valid estimation
@@ -566,173 +487,55 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
              */
             public void calibrate(long time){
                 //Calibrate partition state
-                for(String partitionId: partitionStates.keySet()){
+                for(String executor: partitionAssignment.keySet()){
+                    for(String partitionId: partitionAssignment.get(executor)) {
+
+                    }
                 }
                 //Calibrate executorId
-                allValid = true;
             }
 
-            public void updateAtTime(long time, Map<String, Long> taskArrived, Map<String, Long> taskProcessed, Map<String, List<String>> partitionAssignment) { //Normal update
+            public void updateAtTime(long time, Map<String, Long> taskArrived, Map<String, Long> taskProcessed, Map<String, Double> utilization, Map<String, List<String>> partitionAssignment) { //Normal update
                 LOG.info("Debugging, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
-                timePoints.add(time);
-                for (String executorId : partitionAssignment.keySet()) {
-                    long d_completed = 0;
-                    for (String id : partitionAssignment.get(executorId)) {
-                        long arrived = taskArrived.getOrDefault(id, -1l);
-                        long processed = taskProcessed.getOrDefault(id, -1l);
-                        long lastArrived = 0;
-                        if(timePoints.size() > 1) lastArrived = getPartitionArrived(id, timePoints.get(timePoints.size() - 2));
-                        if(arrived < lastArrived) arrived = lastArrived;
-                        updatePartitionArrived(id, time, arrived);
-                        long lastProcessed = 0;
-                        if(timePoints.size() > 1) lastProcessed = getPartitionCompleted(id, timePoints.get(timePoints.size() - 2));
-                        if(processed < lastProcessed) processed = lastProcessed;
-                        updatePartitionCompleted(id, time, processed);
-                        //Update partition backlog
-                        long backlog = 0;
-                        if (timePoints.size() > 1) {
-                            long lastTime = timePoints.get(timePoints.size() - 2);
-                            backlog = getPartitionBacklog(id, lastTime, executorId);
-                            backlog -= getPartitionArrived(id, lastTime);
-                            backlog += getPartitionCompleted(id, lastTime);
-                            d_completed -= getPartitionCompleted(id, lastTime);
+                currentTimeIndex++;
+                if(currentTimeIndex == 0){ //Initialize
+                    for(String executor: partitionAssignment.keySet()){
+                        for(String partition: partitionAssignment.get(executor)){
+                            updatePartitionCompleted(partition, 0, 0);
+                            updatePartitionArrived(partition, 0, 0);
                         }
-                        backlog += arrived - processed;
-                        d_completed += processed;
-                        updatePartitionBacklog(id, time, executorId, backlog);
                     }
-                    if (timePoints.size() > 1) {
-                        long lastTime = timePoints.get(timePoints.size() - 2);
-                        d_completed += getExecutorCompleted(executorId, lastTime);
-                    }
-                    //LOG.info("Debugging, executor " + executorId + " dcompleted: " + d_completed);
-                    updateExecutorCompleted(executorId, time, d_completed);
+                    timePoints.put(0l, 0l);
+                    currentTimeIndex++;
                 }
-                popOldState(time - windowSize - 1);
-            }
-            public double findArrivedTime(String executorId, long completed){
-                long lastTime = 0;
-                long lastArrived = 0;
-                if(completed == 0)return 0;
-                for(int i = timePoints.size() - 1; i>=0; i--){
-                    long time = timePoints.get(i);
-                    long arrived = getExecutorArrived(executorId, time);
-                    if(arrived <= completed){
-                        if(arrived == completed)return time;
-                        return lastTime - (lastArrived - completed) *  (double)(lastTime - time) / (double)(lastArrived - arrived) ;
-                    }
-                    lastTime = time;
-                    lastArrived = arrived;
+                timePoints.put(currentTimeIndex, time);
+                for(String partition: taskArrived.keySet()){
+                    updatePartitionArrived(partition, currentTimeIndex, taskArrived.get(partition));
                 }
-                return -1;
-            }
-
-            public double estimateDelay(String executorId, long time, long lastTime){
-                double delay = 0;
-                long size = 0;
-                long tTime, tLastTime = 0;
-                int startPoint = timePoints.size() - 1;
-                while(startPoint > 0){
-                    if(timePoints.get(startPoint) < lastTime)break;
-                    startPoint--;
+                for(String partition: taskProcessed.keySet()){
+                    updatePartitionCompleted(partition, currentTimeIndex, taskProcessed.get(partition));
                 }
-                for(int i = startPoint; i < timePoints.size(); i++){
-                    tTime = timePoints.get(i);
-                    if(tTime > time){
-                        break;
-                    }
-                    if(tTime >= lastTime){
-                        long completed = getExecutorCompleted(executorId, tTime);
-                        long lastCompleted = getExecutorCompleted(executorId, tLastTime);
-                        double estimateArrive = findArrivedTime(executorId, completed);
-                        delay += (completed - lastCompleted) * (tTime - estimateArrive);
-                        size += completed - lastCompleted;
-                        //writeLog("For container " + executorId + ", estimated arrive time for completed " + completed + "(at time " + tTime + " is: " + estimateArrive + ", size is: " + (completed - lastCompleted));
-                    }
-                    tLastTime = tTime;
-                }
-                if(size <= 0)return -1; //No processed :(
-                if(size > 0) delay /= size;
-                if(delay < 1e-10) delay = 0;
-                return delay;
-            }
-            public void migration(long time, String srcExecutorId, String tgtExecutorId, String partionId){
-                for(int i = timePoints.size() - 1; i >= 0;i--){
-                    if(time >= timePoints.get(i)){
-                        time = timePoints.get(i);
-                        break;
-                    }
+                for(String executor: utilization.keySet()){
+                    updateUtilization(executor, utilization.get(executor));
                 }
 
-                long backlog = getPartitionBacklog(partionId, time, srcExecutorId);
-                long arrived = getPartitionArrived(partionId, time);
-                for(int i = timePoints.size() - 1 ; i >=0 ; i--){
-                    long tTime = timePoints.get(i);
-                    long tArrived = getPartitionArrived(partionId, tTime);
-                    if(tArrived < arrived - backlog){
-                        break;
-                    }
-                    long sBacklog = getPartitionBacklog(partionId, tTime, srcExecutorId);
-                    long tBacklog = getPartitionBacklog(partionId, tTime, tgtExecutorId);
-                    updatePartitionBacklog(partionId, tTime, srcExecutorId, sBacklog - (tArrived - (arrived - backlog)));
-                    updatePartitionBacklog(partionId, tTime, tgtExecutorId, tBacklog + (tArrived - (arrived - backlog)));
-                }
             }
-            public void showExecutors(String label){
-                for(String id: executorStates.keySet()){
-                    showExecutor(id, label);
-                }
-            }
-            public void showExecutor(String executorId, String label){
-                HashMap<String, Long> backlog = new HashMap<>();
-                writeLog("DelayEstimator, show executor " + executorId + " " + label);
-                for(int i=0;i<timePoints.size();i++){
-                    long time = timePoints.get(i);
-                    backlog.clear();
-                    for(int partition = 0; partition < partitionStates.keySet().size(); partition ++){
-                        String id = "Partition " + partition;
-                        backlog.put(String.valueOf(partition), getPartitionBacklog(id, time, executorId));
-                    }
-                    writeLog("DelayEstimator, time: " + time + " Arrived: " + getExecutorArrived(executorId, time) + " Completed: " + getExecutorCompleted(executorId, time) + " Backlog: " + backlog);
-                }
-                writeLog("DelayEstimator, end of executor " + executorId);
-            }
-
             private void writeLog(String string){
                 System.out.println("DelayEstimator: " + string);
             }
         }
         class Model {
-            private class PartitionData{
-                double arrivalRate;
-                PartitionData(){
-                    arrivalRate = -1.0;
-                }
-            }
-            private class ExecutorData{
-                double arrivalRate;
-                double serviceRate;
-                double avgDelay;
-                Deque<Pair<Long, Double>> utilization;
-                ExecutorData(){
-                    arrivalRate = -1.0;
-                    serviceRate = -1.0;
-                    avgDelay = -1.0;
-                    utilization = new LinkedList<>();
-                }
-            }
-            private Map<String, ExecutorData> executors;
-            private Map<String, PartitionData> partitions;
             private long lastTime;
             private State state;
-            private Map<String, Deque<Pair<Long, Double>>> delayWindows;
+            Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, instantaneousDelay;
+            private Map<String, Deque<Pair<Long, Double>>> delayWindow; //Delay window stores <processed, delay> pair
+            private Map<String, Deque<Pair<Long, Double>>> utilizationWindow; //Utilization stores <time, utilization> pair
+            private Map<String, Deque<Pair<Long, Double>>> serviceWindow; //Utilization stores <time, processed> pair
             private int alpha = 1, beta = 2;
             private long interval = 0;
             public Model(){
                 lastTime = -1;
-                executors = new HashMap<>();
-                partitions = new HashMap<>();
-                delayWindows = new HashMap<>();
+                delayWindow = new HashMap<>();
             }
             public void setTimes(long interval, int a, int b){
                 this.interval = interval;
@@ -746,128 +549,162 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 this.state = state;
             }
 
+            private double calculatePartitionInstantDelay(String partition, long n){
+                long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
+                long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
+                long am0 = state.getPartitionArrived(partition, m0), am1 = state.getPartitionArrived(partition, m1);
+                long M = (am0 - cn_1) * m0 - (am1 - cn) * m1;
+                for(long m = state.calculateArrivalTime(partition, cn_1) + 1; m <= m1; m++){
+                    long am = state.getPartitionArrived(partition, m), am_1 = state.getPartitionArrived(partition, m - 1);
+                    M += (am - am_1) * m;
+                }
+                long T = state.getTimepoint(n) - state.getTimepoint(n - 1);
+                return (n + 1 - M / ((double)(cn - cn_1))) * T;
+            }
+
+            private double calculateExecutorInstantDelay(String executor, long n){
+                double totalDelay = 0;
+                long totalCompleted = 0;
+                for(String partition: partitionAssignment.get(executor)){
+                    long completed = state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n-1);
+                    totalDelay += calculatePartitionInstantDelay(partition, n) * completed;
+                    totalCompleted += completed;
+                }
+                double delay = 0;
+                if(totalCompleted > 0)delay = totalDelay / totalCompleted;
+                return delay;
+            }
+
+
             // 1 / ( u - n ). Return  1e100 if u <= n
-            public double getLongTermDelay(String executorId){
-                double arrival = getExecutorArrivalRate(executorId);
-                double service = getExecutorServiceRate(executorId);
+            private double getLongTermDelay(String executorId){
+                double arrival = executorArrivalRate.get(executorId);
+                double service = serviceRate.get(executorId);
                 if(service < arrival + 1e-15)return 1e100;
                 return 1.0/(service - arrival);
             }
 
-            public double getExecutorArrivalRate(String executorId){
-                return executors.get(executorId).arrivalRate;
+            private double getPartitionArrivalRate(String partition, long n0, long n1){
+                long totalArrived = 0;
+                double time = state.getTimepoint(n1) - state.getTimepoint(n0);
+                totalArrived = state.getPartitionArrived(partition, n1) - state.getPartitionArrived(partition, n0);
+                double arrivalRate = 0;
+                if(time > 1e-9)arrivalRate = totalArrived / time;
+                return arrivalRate;
             }
-            public double getExecutorServiceRate(String executorId) {
-                return executors.get(executorId).serviceRate;
-            }
-            public double getAvgDelay(String executorId){
-                return executors.get(executorId).avgDelay;
-            }
-            public double getUtilization(String executorId){
-                return executors.get(executorId).utilization.getLast().getValue();
-            }
-            public double getWindowedUtilization(String executorId, long time, long lastTime){
-                double sum = 0;
-                int numberOfInterval = 0;
-                for(Iterator<Pair<Long,Double>> i = executors.get(executorId).utilization.iterator();i.hasNext();){
-                    Pair<Long, Double> pair = i.next();
-                    if(pair.getKey() <= time){
-                        sum += pair.getValue();
-                        numberOfInterval++;
-                        if(pair.getKey() < lastTime)break;
-                    }
+            // Calculate window arrival rate of tn0 ~ tn1 (exclude tn0)
+            private double getExecutorArrivalRate(String executorId, long n0, long n1, Map<String, List<String>> partitionAssignment){
+                double arrivalRate = 0;
+                for(String partition: partitionAssignment.get(executorId)){
+                    arrivalRate += getPartitionArrivalRate(partition, n0, n1);
                 }
-                if(numberOfInterval == 0)return 0;
-                else return sum/numberOfInterval;
+                return arrivalRate;
             }
-            public double getPartitionArriveRate(String paritionId){
-                return partitions.get(paritionId).arrivalRate;
-            }
-            public void updatePartitionArriveRate(String partitionId, double value){
-                if(!partitions.containsKey(partitionId)){
-                    partitions.put(partitionId, new PartitionData());
-                }
-                partitions.get(partitionId).arrivalRate = value;
-            }
-            public void updateExecutorArriveRate(String executorId, double value){
-                if(!executors.containsKey(executorId)){
-                    executors.put(executorId, new ExecutorData());
-                }
-                executors.get(executorId).arrivalRate = value;
-            }
-            public void updateExecutorServiceRate(String executorId, double value){
-                if(!executors.containsKey(executorId)){
-                    executors.put(executorId, new ExecutorData());
-                }
-                executors.get(executorId).serviceRate = value;
-            }
-            public void updateExecutorUtilization(String executorId, long time, long lastTime, double value){
-                if(!executors.containsKey(executorId)){
-                    executors.put(executorId, new ExecutorData());
-                }
-                executors.get(executorId).utilization.addLast(new Pair(time, value));
-                while(executors.get(executorId).utilization.getFirst().getKey() < lastTime){
-                    executors.get(executorId).utilization.pollFirst();
-                }
-            }
-            public void updateAvgDelay(String executorId, double value){
-                if(!executors.containsKey(executorId)){
-                    executors.put(executorId, new ExecutorData());
-                }
-                executors.get(executorId).avgDelay = value;
-            }
-            public long getLastTime(long time){
-                return state.getLastTime(time);
-            }
-            public void updateAtTime(long time, Map<String, Double> containerUtilization, Map<String, List<String>> partitionAssignment){
-                for(Map.Entry<String, List<String>> entry: partitionAssignment.entrySet()) {
-                    String containerId = entry.getKey();
-                    double s_arrivalRate = 0;
-                    long lastTime = getLastTime(time - beta * interval);
-                    for (String partitionId  : entry.getValue()) {
-                        long arrived = state.getPartitionArrived(partitionId, time);
-                        long lastArrived = state.getPartitionArrived(partitionId, lastTime);
-                        double arrivalRate = 0;
-                        if(time > lastTime) arrivalRate = (arrived - lastArrived) / ((double) time - lastTime);
-                        //LOG.info("Debugging,  time: " + time + " last time: " + lastTime + " arrived: " + arrived + "lastArrived: " + lastArrived + " arrivalRate: " + arrivalRate);
-                        updatePartitionArriveRate(partitionId, arrivalRate);
-                        s_arrivalRate += arrivalRate;
-                    }
-                    //LOG.info("Debugging,  time: " + time + " last time: " + lastTime + " s_arrivalRate: " + s_arrivalRate);
-                    updateExecutorArriveRate(containerId, s_arrivalRate);
 
-                    //Update actual service rate (capability)
-                    long completed = state.getExecutorCompleted(containerId, time);
-                    long lastCompleted = state.getExecutorCompleted(containerId, lastTime);
-                    double util = containerUtilization.getOrDefault(containerId, 1.0);
-                    updateExecutorUtilization(containerId, time, lastTime, util);
-                    util = getWindowedUtilization(containerId, time, lastTime);
-                    if(util < 1e-10){
-                        //TODO: change this
-                        util = 1;
-                    }
-                    double serviceRate = 0;
-                    if(time > lastTime) serviceRate = (completed - lastCompleted)/(((double)time - lastTime) * util);
-                    updateExecutorServiceRate(containerId, serviceRate);
+            private void updateWindowExecutorServiced(String executor, long n, Map<String, List<String>> partitionAssignment){
+                long processed = 0;
+                for(String partition: partitionAssignment.get(executor)){
+                    processed = state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
+                }
 
-                    //Update avg delay
-                    double delay = state.estimateDelay(containerId, time, time);
-                    if(!delayWindows.containsKey(containerId)){
-                        delayWindows.put(containerId, new LinkedList<>());
+                if(!serviceWindow.containsKey(executor)){
+                    serviceWindow.put(executor, new LinkedList<>());
+                }
+                serviceWindow.get(executor).addLast(new Pair(n, processed));
+                if(serviceWindow.size() > beta){
+                    serviceWindow.get(executor).pollFirst();
+                }
+            }
+
+            // Calculate window service rate of tn0 ~ tn1 (exclude tn0)
+            private double getExecutorServiceRate(String executorId){
+                double totalService = 0;
+                long totalTime = 0;
+                for(Pair<Long, Double> entry: serviceWindow.get(executorId)){
+                    long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
+                    totalTime += time;
+                    totalService += entry.getValue() * time;
+                }
+                if(totalTime > 0) totalService /= totalTime;
+                return totalService;
+            }
+
+            private void updateWindowExecutorUtilization(String executor, long n){
+                double util = state.getUtilization(executor);
+                if(!utilizationWindow.containsKey(executor)){
+                    utilizationWindow.put(executor, new LinkedList<>());
+                }
+                utilizationWindow.get(executor).addLast(new Pair(n, util));
+                if(utilizationWindow.size() > beta){
+                    utilizationWindow.get(executor).pollFirst();
+                }
+            }
+
+            // Window average utilization
+            private double getWindowExecutorUtilization(String executorId){
+                double totalUtilization = 0;
+                long totalTime = 0;
+                for(Pair<Long, Double> entry: utilizationWindow.get(executorId)){
+                    long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
+                    totalTime += time;
+                    totalUtilization += entry.getValue() * time;
+                }
+                if(totalTime > 0) totalUtilization/= totalTime;
+                return totalUtilization;
+            }
+            private void updateWindowExecutorInstantaneousDelay(String executor, long n, Map<String, List<String>> partitionAssignment){
+                double instantDelay = calculateExecutorInstantDelay(executor, n);
+                if(!delayWindow.containsKey(executor)){
+                    delayWindow.put(executor, new LinkedList<>());
+                }
+                long processed = 0;
+                for(String partition: partitionAssignment.get(executor)){
+                    processed += state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
+                }
+                delayWindow.get(executor).addLast(new Pair(processed, instantDelay));
+                if(delayWindow.size() > beta){
+                    delayWindow.get(executor).pollFirst();
+                }
+            }
+            //Window average delay
+            public double getWindowExecutorInstantaneousDelay(String executorId){
+                double totalDelay = 0;
+                long totalProcessed = 0;
+                for(Pair<Long, Double> entry: delayWindow.get(executorId)){
+                    long processed = entry.getKey();
+                    totalProcessed += processed;
+                    totalDelay += entry.getValue() * processed;
+                }
+                if(totalProcessed > 0) totalDelay/=totalProcessed;
+                return totalDelay;
+            }
+
+            //Update snapshots from state
+            public void updateModelSnapshot(long n, Map<String, List<String>> partitionAssignment){
+
+                partitionArrivalRate.clear();
+                executorArrivalRate.clear();
+                serviceRate.clear();
+                instantaneousDelay.clear();
+
+                for(String executor: partitionAssignment.keySet()){
+                    double arrivalRate = 0;
+                    for(String partition: partitionAssignment.get(executor)){
+                        double t = getPartitionArrivalRate(partition, n, n - beta);
+                        partitionArrivalRate.put(partition, t);
+                        arrivalRate += t;
                     }
-                    Deque<Pair<Long, Double>> window = delayWindows.get(containerId);
-                    if(delay > -1e-9) window.addLast(new Pair(time, delay)); //Only if it has processed
-                    while(window.size() > 0 && time - window.getFirst().getKey() > alpha * interval){
-                        window.pollFirst();
+                    executorArrivalRate.put(executor, arrivalRate);
+                    updateWindowExecutorUtilization(executor, n);
+                    double util = getWindowExecutorUtilization(executor);
+                    updateWindowExecutorServiced(executor, n, partitionAssignment);
+                    double mu = getExecutorServiceRate(executor);
+                    if(util > 1e-9 && util <= 1){
+                        mu /= util;
                     }
-                    Iterator<Pair<Long, Double>> iterator = window.iterator();
-                    double s_Delay = 0;
-                    while(iterator.hasNext()){
-                        s_Delay += iterator.next().getValue();
-                    }
-                    double avgDelay = 0;
-                    if(window.size() > 0)avgDelay = s_Delay / window.size();
-                    updateAvgDelay(containerId, avgDelay);
+                    serviceRate.put(executor, mu);
+                    updateWindowExecutorInstantaneousDelay(executor, n, partitionAssignment);
+                    instantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor));
                 }
             }
             public void showData(){
@@ -896,11 +733,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             Map<String, Double> executorUtilization =
                     (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
             //TODO: check valid or not here
-            updateState(time, partitionArrived, partitionProcessed);
-            updateDelayEstimateModel(time, executorUtilization);
+            updateState(time, partitionArrived, partitionProcessed, executorUtilization);
+            updateModel(time);
             isValid = true;
             for(String executor: partitionAssignment.keySet()){
-                if(!model.executors.containsKey(executor)){
+                if(!model.executorArrivalRate.containsKey(executor)){
                     LOG.info("Current model is not valid, because " + executor + " is not ready.");
                     isValid = false;
                     break;
@@ -925,63 +762,33 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 if(!isValid)break;
             }
         }
-        private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed){
+        private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization){
             LOG.info("Updating network calculus model...");
-            state.updateAtTime(time, partitionArrived, partitionProcessed, partitionAssignment);
-
-            //Debug & Statistics
-            if(true){
-                HashMap<String, Double> delays = new HashMap<>();
-                for(String executorId: partitionAssignment.keySet()){
-                    double delay = state.estimateDelay(executorId, time, time);
-                    delays.put(executorId, delay);
-                }
-                System.out.println("State, time " + time + " , Arrived: " + state.getExecutorsArrived(time));
-                System.out.println("State, time " + time + " , Processed: " + state.getExecutorsCompleted(time));
-                System.out.println("State, time " + time + " , Delay: " + delays);
-                System.out.println("State, time " + time + " , Partition Arrived: " + state.getPartitionsArrived(time));
-                System.out.println("State, time " + time + " , Partition Processed: " + state.getPartitionsCompleted(time));
-            }
+            state.updateAtTime(time, partitionArrived, partitionProcessed, executorUtilization, partitionAssignment);
         }
 
-        private void updateDelayEstimateModel(long time, Map<String, Double> executorUtilization){
+        private void updateModel(long time){
             LOG.info("Updating Delay Estimating model");
-            model.updateAtTime(time, executorUtilization, partitionAssignment);
+            model.updateModelSnapshot(time, partitionAssignment);
 
             //Debug & Statistics
             if(true){
-                HashMap<String, Double> arrivalRate = new HashMap<>();
-                HashMap<String, Double> serviceRate = new HashMap<>();
-                HashMap<String, Double> avgDelay = new HashMap<>();
                 HashMap<String, Double> longtermDelay = new HashMap<>();
-                HashMap<String, Double> partitionArrivalRate = new HashMap<>();
-                HashSet<String> partitions = new HashSet<>();
                 for(String executorId: partitionAssignment.keySet()){
-                    double arrivalR = model.getExecutorArrivalRate(executorId);
-                    arrivalRate.put(executorId, arrivalR);
-                    double serviceR = model.getExecutorServiceRate(executorId);
-                    serviceRate.put(executorId, serviceR);
-                    double delay = model.getAvgDelay(executorId);
-                    avgDelay.put(executorId, delay);
-                    delay = model.getLongTermDelay(executorId);
+                    double delay = model.getLongTermDelay(executorId);
                     longtermDelay.put(executorId, delay);
-                    partitions.addAll(partitionAssignment.get(executorId));
                 }
-                System.out.println("Model, time " + time + " : " + "Arrival Rate: " + arrivalRate);
-                System.out.println("Model, time " + time + " : " + "Service Rate: " + serviceRate);
-                System.out.println("Model, time " + time + " : " + "Average Delay: " + avgDelay);
+                System.out.println("Model, time " + time + " : " + "Arrival Rate: " + model.executorArrivalRate);
+                System.out.println("Model, time " + time + " : " + "Service Rate: " + model.serviceRate);
+                System.out.println("Model, time " + time + " : " + "Average Delay: " + model.instantaneousDelay);
                 System.out.println("Model, time " + time + " : " + "Longterm Delay: " + longtermDelay);
-                for(String partitionId: partitions){
-                    double arrivalR = model.getPartitionArriveRate(partitionId);
-                    partitionArrivalRate.put(partitionId, arrivalR);
-                }
-                System.out.println("Model, time " + time + " : " + "Partition Arrival Rate: " + partitionArrivalRate);
+                System.out.println("Model, time " + time + " : " + "Partition Arrival Rate: " + model.partitionArrivalRate);
             }
         }
         private List<Pair<String, Double>> getInstantDelay(){
             List<Pair<String, Double>> delay = new LinkedList<>();
             for(String executor: partitionAssignment.keySet()){
-                delay.add(new Pair(executor, model.getAvgDelay(executor)));
+                delay.add(new Pair(executor, model.instantaneousDelay.get(executor)));
             }
             return delay;
         }
@@ -1006,8 +813,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     }
 
     Algorithms algorithms;
-
-
 
 
     //We do not use this method anymore in paper's version
@@ -1070,7 +875,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
     }
     //Treatment for Samza
-    private void doTreatment(Prescription pres){
+    private void treat(Prescription pres){
         if(pres.migratingPartitions == null){
             Log.warn("Prescription has nothing, so do no treatment");
             return ;
@@ -1127,7 +932,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             if(examiner.isValid && !examiner.isMigrating) {
                 Prescription pres = diagnose(examiner);
                 if (pres.migratingPartitions != null) { //Not do nothing
-                    doTreatment(pres);
+                    treat(pres);
                 } else {
                     Log.info("Nothing to do this time.");
                 }
