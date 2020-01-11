@@ -14,8 +14,6 @@ import java.util.concurrent.locks.ReentrantLock;
 public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(DelayGuaranteeStreamSwitch.class);
 
-
-
     long migrationWarmupTime, migrationInterval, lastTime;
     double instantaneousThreshold, longTermThreshold;
     Examiner examiner;
@@ -28,7 +26,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         lastTime = -1000000000l;
         algorithms = new Algorithms();
         updateLock = new ReentrantLock();
-        examiner = new Examiner(retriever);
+        examiner = new Examiner();
         examiner.model.setState(examiner.state);
         examiner.model.setTimes(config.getLong("streamswitch.delay.interval", 500l), config.getInt("streamswitch.delay.alpha", 20), config.getInt("streamswitch.delay.beta", 10));
     }
@@ -609,12 +607,13 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         private StreamSwitchMetricsRetriever metricsRetriever;
         private boolean isValid, isMigrating;
         private Prescription pendingPres;
-        Examiner(StreamSwitchMetricsRetriever metricsRetriever){
-            this.metricsRetriever = metricsRetriever;
+        Examiner(){
             this.state = new State();
             this.model = new Model();
-
             isValid = false;//No data, should be false
+        }
+        public void setMetricsRetriever(StreamSwitchMetricsRetriever metricsRetriever){
+            this.metricsRetriever = metricsRetriever;
         }
         private void examine(long time){
             Map<String, Object> metrics = metricsRetriever.retrieveMetrics();
@@ -801,6 +800,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         int metricsRetreiveInterval = config.getInt("streamswitch.metrics.interval", 200);
         int metricsWarmupTime = config.getInt("streamswitch.metrics.warmup.time", 60000);
         startTime = System.currentTimeMillis();
+        examiner.setMetricsRetriever(retriever);
         //Warm up phase
         LOG.info("Warm up for " + metricsWarmupTime + " milliseconds...");
         do{
