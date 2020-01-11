@@ -617,6 +617,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
         private void examine(long time){
             Map<String, Object> metrics = metricsRetriever.retrieveMetrics();
+            LOG.info("Debugging: " + metrics);
             Map<String, Long> partitionArrived =
                     (HashMap<String, Long>) (metrics.get("PartitionArrived"));
             Map<String, Long> partitionProcessed =
