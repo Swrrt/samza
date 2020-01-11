@@ -61,6 +61,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
     //Algorithms packed
     protected class Algorithms {
+        // Find the subset which minimizes delay by greedy:
+        // Sort arrival rate from largest to smallest, cut them in somewhere
         public Pair<Prescription, List<Pair<String, Double>>> tryToScaleOut(){
             LOG.info("Scale out by one container");
 
@@ -69,7 +71,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
             }
             long time = examiner.model.getCurrentTime();
-            Pair<String, Double> a = findMaxLongtermDelayExecutor(partitionAssignment, time);
+            Pair<String, Double> a = findMaxLongtermDelayExecutor(partitionAssignment);
             String srcExecutor = a.getKey();
             double initialDelay = a.getValue();
             if(srcExecutor == null || srcExecutor.equals("") || partitionAssignment.get(srcExecutor).size() <=1){
@@ -77,20 +79,55 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
             }
 
+            PriorityQueue<Pair<String, Double>> priorityQueue = new PriorityQueue<>((x,y)-> {
+                if(x.getValue() - 1e-9 > y.getValue())return 1;
+                if(y.getValue() - 1e-9 > x.getValue())return -1;
+                return x.getKey().compareTo(y.getKey());
+            });
+            for(String partition: partitionAssignment.get(srcExecutor)){
+                priorityQueue.add(new Pair(partition, examiner.model.partitionArrivalRate.get(partition)));
+            }
+
+            double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor), arrivalrate1 = 0;
+            double serviceRate = examiner.model.serviceRate.get(srcExecutor);
+            double best = 1e100;
             List<String> migratingPartitions = new ArrayList<>();
+            while(priorityQueue.size() > 0){
+                Pair<String, Double> t = priorityQueue.poll();
+                arrivalrate0 -= t.getValue();
+                arrivalrate1 += t.getValue();
+                double delay0 = estimateLongtermDelay(arrivalrate0, serviceRate), delay1 = estimateLongtermDelay(arrivalrate1, serviceRate);
+                if(delay0 < best && delay1 < best){
+                    best = Math.min(delay0, delay1);
+                    migratingPartitions.add(t.getKey());
+                }else break;
+            }
+
             long newExecutorId = getNextExecutorID();
             String tgtExecutor = String.format("%06d", newExecutorId);
-            int numToMigrate = partitionAssignment.get(srcExecutor).size()/2;
-            for(String partition: partitionAssignment.get(srcExecutor)){
-                if(numToMigrate > 0){
-                    migratingPartitions.add(partition);
-                    numToMigrate--;
-                }
-            }
             setNextExecutorId(newExecutorId + 1);
             LOG.info("Debugging, scaling out migrating partitions: " + migratingPartitions);
             return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(srcExecutor, tgtExecutor, migratingPartitions), null); //TODO: add here
         }
+
+        //Compare two delay vector, assume they are sorted
+        public boolean vectorGreaterThan(PriorityQueue<Pair<String, Double>> v1, PriorityQueue<Pair<String, Double>> v2){
+            Iterator<Pair<String,Double>> i1 = v1.iterator(), i2 = v2.iterator();
+            while(i1.hasNext()){
+                double t1 = i1.next().getValue(), t2 = i2.next().getValue();
+                if(t1 - 1e-9 > t2)return true;
+                if(t2 - 1e-9 > t1)return false;
+            }
+            i1 = v1.iterator();
+            i2 = v2.iterator();
+            while(i1.hasNext()) {
+                int t = i1.next().getKey().compareTo(i2.next().getKey());
+                if(t > 0)return true;
+                if(t < 0)return false;
+            }
+            return false;
+        }
+        //Iterate all pairs of source and targe OE, find the one minimize delay vector
         public Pair<Prescription, List<Pair<String, Double>>> tryToScaleIn(){
             LOG.info("Try to scale in");
             long time = examiner.model.getCurrentTime();
@@ -98,123 +135,54 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 LOG.info("Not enough executor to merge");
                 return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
             }
+
             String minsrc = "", mintgt = "";
-            double minLongtermDelay = -1;
+            PriorityQueue<Pair<String, Double>> best = null;
+
             for(String src: partitionAssignment.keySet()){
-                double srcArrival = examiner.model.getExecutorArrivalRate(src);
+                double srcArrival = examiner.model.executorArrivalRate.get(src);
                 for(String tgt: partitionAssignment.keySet())
                     if(!src.equals(tgt)){
-                        double tgtArrival = examiner.model.getExecutorArrivalRate(tgt);
-                        double tgtService = examiner.model.getExecutorServiceRate(tgt);
-                        double tgtInstantDelay = examiner.model.getAvgDelay(tgt);
-                        if(tgtInstantDelay < instantaneousThreshold && srcArrival + tgtArrival < tgtService){
+                        double tgtArrival = examiner.model.executorArrivalRate.get(tgt);
+                        double tgtService = examiner.model.serviceRate.get(tgt);
+                        if(srcArrival + tgtArrival < tgtService){
                             double estimatedLongtermDelay = estimateLongtermDelay(srcArrival + tgtArrival, tgtService);
-                            //Scale In
-                            if(estimatedLongtermDelay < longTermThreshold && (minLongtermDelay < -1e-9 || estimatedLongtermDelay < minLongtermDelay)){
-                                minLongtermDelay = estimatedLongtermDelay;
+                            PriorityQueue<Pair<String, Double>> current = new PriorityQueue<>((x,y)-> {
+                                if(x.getValue() - 1e-9 > y.getValue())return -1;
+                                if(y.getValue() - 1e-9 > x.getValue())return 1;
+                                return x.getKey().compareTo(y.getKey());
+                            });
+                            for(String executor: partitionAssignment.keySet()){
+                                if(executor.equals(src)){
+                                    current.add(new Pair(executor, 0));
+                                }else if(executor.equals(tgt)){
+                                    current.add(new Pair(executor, estimatedLongtermDelay));
+                                }else{
+                                    current.add(new Pair(executor, examiner.model.getLongTermDelay(executor)));
+                                }
+                            }
+
+                            if(best == null || vectorGreaterThan(best, current)){
+                                best = current;
                                 minsrc = src;
                                 mintgt = tgt;
-                                /*
-                                Map<String, Pair<String, String>> migratingPartitions = new HashMap<>();
-                                for(String partition: partitionAssignment.get(src)){
-                                    migratingPartitions.put(partition, new Pair<>(src, tgt));
-                                }
-                                LOG.info("Scale in! from " + src + " to " + tgt);
-                                LOG.info("Migrating partitions: " + migratingPartitions.keySet());
-                                return new Prescription(MIGRATION_SUCCEED, migratingPartitions);
-                                */
                             }
                         }
                     }
             }
-            if(minLongtermDelay > -1e-9){
+
+
+            if(best != null){
                 List<String> migratingPartitions = new ArrayList<>(partitionAssignment.get(minsrc));
                 LOG.info("Scale in! from " + minsrc + " to " + mintgt);
                 LOG.info("Migrating partitions: " + migratingPartitions);
-                return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(minsrc, mintgt, migratingPartitions), null); //TODO: add here
+                return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(minsrc, mintgt, migratingPartitions), new ArrayList(best));
             }
             LOG.info("Cannot find any scale in");
             return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
         }
 
-        /*
 
-            Followings are used for re-balance algorithm
-
-         */
-        private class DFSState {
-            String srcContainer, tgtContainer;
-            double srcArrivalRate, tgtArrivalRate, srcServiceRate, tgtServiceRate;
-            long time;
-            List<String> srcPartitions;
-            List<String> tgtPartitions;
-            Set<String> migratingPartitions;
-            double bestDelay;
-            Set<String> bestMigration;
-            String bestSrcContainer, bestTgtContainer;
-
-            DFSState() {
-                bestDelay = 1e100;
-                migratingPartitions = new HashSet<>();
-                bestMigration = new HashSet<>();
-            }
-
-            protected boolean okToMigratePartition(String partition) {
-                double partitionArrivalRate = examiner.model.getPartitionArriveRate(partition);
-                return (partitionArrivalRate + tgtArrivalRate < tgtServiceRate - 1e-12);
-
-            }
-
-            protected void migratingPartition(String partition) {
-                migratingPartitions.add(partition);
-                double arrivalRate = examiner.model.getPartitionArriveRate(partition);
-                srcArrivalRate -= arrivalRate;
-                tgtArrivalRate += arrivalRate;
-            }
-
-            protected void unmigratingPartition(String partition) {
-                migratingPartitions.remove(partition);
-                double arrivalRate = examiner.model.getPartitionArriveRate(partition);
-                srcArrivalRate += arrivalRate;
-                tgtArrivalRate -= arrivalRate;
-            }
-        }
-
-        private Pair<String, Double> findIdealLongtermContainer(DFSState dfsState, String srcContainer, Map<String, List<String>> containerTasks, long time) {
-            double minIdealDelay = 1e100;
-            String tgtContainer = "";
-            for (String container : containerTasks.keySet()) {
-                if (container.equals(srcContainer)) continue;
-                double n1 = dfsState.srcArrivalRate;
-                double n2 = examiner.model.getExecutorArrivalRate(container);
-                double u1 = dfsState.srcServiceRate;
-                double u2 = examiner.model.getExecutorServiceRate(container);
-                double instantDelay = examiner.model.getAvgDelay(container);
-                LOG.info("Debugging, try to move to executor " + container + ", (a1, a2, u1, u2) are: " + n1 + ", " + n2 + ", " + u1 + ", " + u2 + ", instant delay: " + instantDelay);
-                if(instantDelay < instantaneousThreshold && u2 > n2 && u2 - n2 > u1 - n1){
-                    double x = ((u2 - n2) - (u1 - n1))/2;
-                    if(u2 > n2 + x && u1 > n1 - x){
-                        double d1 = 1/(u2 - (n2 + x));
-                        double d2 = 1/(u1 - (n1 - x));
-                        LOG.info("Estimate ideal long term delay: " + d1 + " , " + d2);
-                        if(d1 < minIdealDelay){
-                            minIdealDelay = d1;
-                            tgtContainer = container;
-                        }
-                    }
-                }
-            }
-            return new Pair(tgtContainer, minIdealDelay);
-        }
-        //Return false if both instantaneous and long-term thresholds are violated
-        public boolean checkDelay(String containerId){
-            double delay = examiner.model.getAvgDelay(containerId);
-            double longTermDelay = examiner.model.getLongTermDelay(containerId);
-            if(delay > instantaneousThreshold && longTermDelay > longTermThreshold){
-                return false;
-            }
-            return true;
-        }
         private long getNextExecutorID(){
             return nextExecutorID.get();
         }
@@ -225,12 +193,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
         }
 
-        private Pair<String, Double> findMaxLongtermDelayExecutor(Map<String, List<String>> partitionAssignment, long time){
+        private Pair<String, Double> findMaxLongtermDelayExecutor(Map<String, List<String>> partitionAssignment){
             double initialDelay = -1.0;
             String maxExecutor = "";
             for (String executor : partitionAssignment.keySet()) {
                 double longtermDelay = examiner.model.getLongTermDelay(executor);
-                if (longtermDelay > initialDelay && !checkDelay(executor)) {
+                if (longtermDelay > initialDelay) {
                     initialDelay = longtermDelay;
                     maxExecutor = executor;
                 }
@@ -243,168 +211,90 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             return 1.0/(serviceRate - arrivalRate);
         }
 
-        private double estimateSrcLongtermDelay(DFSState state) {
-            return estimateLongtermDelay(state.srcArrivalRate, state.srcServiceRate);
-        }
-
-        private double estimateTgtLongtermDelay(DFSState state) {
-            return estimateLongtermDelay(state.tgtArrivalRate, state.tgtServiceRate);
-        }
-
-
-        private void DFSforBestLongtermDelay(int i, DFSState state) {
-
-            if (state.srcArrivalRate > 1e-12 && state.srcArrivalRate < state.srcServiceRate && state.tgtArrivalRate < state.tgtServiceRate) { //Cannot move all partitions out
-                double estimateSrc = estimateSrcLongtermDelay(state), estimateTgt = estimateTgtLongtermDelay(state);
-                LOG.info("If migrating partitions " + state.migratingPartitions
-                        + " from " + state.srcContainer
-                        + " to " + state.tgtContainer
-                        + ", estimate source delay: " + estimateSrc
-                        + ", estimate target delay: " + estimateTgt
-                        + ", current best delay: " + state.bestDelay
-                        + ", srcArrivalRate: " + state.srcArrivalRate
-                        + ", tgtArrivalRate: " + state.tgtArrivalRate
-                        + ", srcServiceRate: " + state.srcServiceRate
-                        + ", tgtServiceRate: " + state.tgtServiceRate
-                );
-                if (estimateTgt > estimateSrc && estimateSrc > state.bestDelay) return;
-                if (estimateSrc < state.bestDelay && estimateTgt < state.bestDelay) {
-                    state.bestDelay = Math.max(estimateSrc, estimateTgt);
-                    state.bestMigration.clear();
-                    state.bestMigration.addAll(state.migratingPartitions);
-                    state.bestTgtContainer = state.tgtContainer;
-                    state.bestSrcContainer = state.srcContainer;
-                }
-            }
-            if (i < 0) {
-                return;
-            }
-
-            //String partitionId = state.srcPartitions.get(i);
-
-            for (int j = i - 1; j >= 0; j--) {
-                String partitionId = state.srcPartitions.get(j);
-                if (state.okToMigratePartition(partitionId)) { //Migrate j
-                    state.migratingPartition(partitionId);
-                    DFSforBestLongtermDelay(j, state);
-                    state.unmigratingPartition(partitionId);
-                }
-            }
-        }
-
-        private Pair<String, Double> findMaxLongtermDelay(Map<String, List<String>> containerTasks, long time){
-            double initialDelay = -1.0;
-            String maxContainer = "";
-            for (String containerId : containerTasks.keySet()) {
-                double delay = examiner.model.getLongTermDelay(containerId);
-                if (delay > initialDelay && !checkDelay(containerId)) {
-                    initialDelay = delay;
-                    maxContainer = containerId;
-                }
-            }
-            return new Pair(maxContainer, initialDelay);
-        }
-
         //TODO: implement DFS
         public Pair<Prescription, List<Pair<String, Double>>> tryToMigrate(){
             LOG.info("Try to migrate");
             LOG.info("Migrating once based on assignment: " + partitionAssignment);
-            Map<String, List<String>> containerTasks = new HashMap<>();
-            long time = examiner.model.getCurrentTime();
-            containerTasks = partitionAssignment;
-            if (containerTasks.keySet().size() == 0) { //No executor to move
+            if (partitionAssignment.size() == 0) { //No executor to move
                 Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
                 return result;
             }
-            DFSState dfsState = new DFSState();
-            dfsState.time = time;
 
             //Find container with maximum delay
-            Pair<String, Double> a = findMaxLongtermDelay(containerTasks, time);
-            String srcContainer = a.getKey();
+            Pair<String, Double> a = findMaxLongtermDelayExecutor(partitionAssignment);
+            String srcExecutor = a.getKey();
             double initialDelay = a.getValue();
-            if (srcContainer.equals("")) { //No correct container
+            if (srcExecutor.equals("")) { //No correct container
                 LOG.info("Cannot find the container that exceeds threshold");
                 Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
                 return result;
             }
 
-            if (containerTasks.get(srcContainer).size() <= 1) { //Container has only one partition
-                LOG.info("Largest delay container " + srcContainer + " has only " + containerTasks.get(srcContainer).size());
+            if (partitionAssignment.get(srcExecutor).size() <= 1) { //Container has only one partition
+                LOG.info("Largest delay container " + srcExecutor + " has only " + partitionAssignment.get(srcExecutor).size());
                 Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
                 return result;
             }
-            LOG.info("Try to migrate from largest delay container " + srcContainer);
-            dfsState.bestDelay = initialDelay;
-            dfsState.bestSrcContainer = srcContainer;
-            dfsState.bestTgtContainer = srcContainer;
-            dfsState.bestMigration.clear();
-            //Migrating this container
-            dfsState.srcContainer = srcContainer;
-            dfsState.srcArrivalRate = examiner.model.getExecutorArrivalRate(srcContainer);
-            dfsState.srcServiceRate = examiner.model.getExecutorServiceRate(srcContainer);
-            dfsState.srcPartitions = containerTasks.get(srcContainer);
-            //Choose target container based on ideal delay (minimize ideal delay)
-            a = findIdealLongtermContainer(dfsState, srcContainer, containerTasks, time);
-            String tgtContainer = a.getKey();
-            double minIdealDelay = a.getValue();
-            if(tgtContainer.equals("")){
-                LOG.info("Cannot find available migration");
-                Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
-                return result;
-            }
-            LOG.info("Find minimal ideal container " + tgtContainer + " , ideal delay: " + minIdealDelay);
-/*        for (String tgtContainer : containerTasks.keySet())
-            if (!srcContainer.equals(tgtContainer)) {*/
-            double tgtArrivalRate = examiner.model.getExecutorArrivalRate(tgtContainer);
-            double tgtServiceRate = examiner.model.getExecutorServiceRate(tgtContainer);
-            if (tgtArrivalRate < tgtServiceRate - 1e-9) {
-                int srcSize = containerTasks.get(srcContainer).size();
-                dfsState.tgtPartitions = containerTasks.get(tgtContainer);
-                dfsState.tgtArrivalRate = tgtArrivalRate;
-                dfsState.tgtServiceRate = tgtServiceRate;
-                dfsState.migratingPartitions.clear();
-                dfsState.tgtContainer = tgtContainer;
-                DFSforBestLongtermDelay(srcSize, dfsState);
-                //Bruteforce(srcSize, dfsState);
-            }
-            /*            } */
+            LOG.info("Try to migrate from largest delay container " + srcExecutor);
+            String bestTgtExecutor = null;
+            PriorityQueue<Pair<String, Double>> best = null;
+            List<String> bestMigratingPartitions = null;
+            for (String tgtExecutor : partitionAssignment.keySet())
+                if (!srcExecutor.equals(tgtExecutor)) {
+                    double tgtArrivalRate = examiner.model.executorArrivalRate.get(tgtExecutor);
+                    double tgtServiceRate = examiner.model.serviceRate.get(tgtExecutor);
+                    if (tgtArrivalRate < tgtServiceRate - 1e-9) {
+                        PriorityQueue<Pair<String, Double>> partitions = new PriorityQueue<>((x,y)-> {
+                            if(x.getValue() - 1e-9 > y.getValue())return 1;
+                            if(y.getValue() - 1e-9 > x.getValue())return -1;
+                            return x.getKey().compareTo(y.getKey());
+                        });
+                        for(String partition: partitionAssignment.get(srcExecutor)){
+                            partitions.add(new Pair(partition, examiner.model.partitionArrivalRate.get(partition)));
+                        }
 
-            if (dfsState.bestDelay > initialDelay - 1e-9) {
-                LOG.info("Cannot find any better migration");
-                Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
-                return result;
-            }
-
-            if(dfsState.bestDelay > longTermThreshold){
-                LOG.info("Cannot find migration smaller than threshold");
-                Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
-                return result;
-            }
-            LOG.info("Find best migration with delay: " + dfsState.bestDelay + ", from container " + dfsState.bestSrcContainer + " to container " + dfsState.bestTgtContainer + ", partitions: " + dfsState.bestMigration);
-
-            List<String> migratingTasks = new ArrayList<>(dfsState.bestMigration);
-            PriorityQueue<Pair<String, Double>> priorityQueue = new PriorityQueue<>((x,y)-> {
-                    if(x.getValue() - 1e-9 > y.getValue())return 1;
-                    if(y.getValue() - 1e-9 > x.getValue())return -1;
-                    return 0;
-            });
-            String src = dfsState.bestSrcContainer, tgt = dfsState.bestTgtContainer;
-            //Calculate new longterm delay vector
-            for(String executor: partitionAssignment.keySet()){
-                if(executor.equals(dfsState.srcContainer)){ //Source executor
-                    priorityQueue.add(new Pair<>(executor, dfsState.bestDelay));
-                }else if(executor.equals(dfsState.tgtContainer)){ //Target executor
-                    priorityQueue.add(new Pair<>(executor, dfsState.bestDelay));
-                }else{ //Not touched executor
-                    priorityQueue.add(new Pair<>(executor, examiner.model.getLongTermDelay(executor)));
+                        double srcArrivalRate = examiner.model.executorArrivalRate.get(srcExecutor);
+                        double srcServiceRate = examiner.model.serviceRate.get(srcExecutor);
+                        List<String> migrating = new ArrayList<>();
+                        while(partitions.size() > 0){
+                            Pair<String, Double> t = partitions.poll();
+                            srcArrivalRate -= t.getValue();
+                            tgtArrivalRate += t.getValue();
+                            migrating.add(t.getKey());
+                            if(srcArrivalRate < srcServiceRate && tgtArrivalRate < tgtServiceRate){
+                                double srcDelay = estimateLongtermDelay(srcArrivalRate, srcServiceRate), tgtDelay = estimateLongtermDelay(tgtArrivalRate, tgtServiceRate);
+                                PriorityQueue<Pair<String, Double>> current = new PriorityQueue<>((x,y)-> {
+                                    if(x.getValue() - 1e-9 > y.getValue())return -1;
+                                    if(y.getValue() - 1e-9 > x.getValue())return 1;
+                                    return x.getKey().compareTo(y.getKey());
+                                });
+                                for(String executor: partitionAssignment.keySet()){
+                                    if(executor.equals(srcExecutor)){
+                                        current.add(new Pair(executor, srcDelay));
+                                    }else if(executor.equals(tgtExecutor)){
+                                        current.add(new Pair(executor, tgtDelay));
+                                    }else{
+                                        current.add(new Pair(executor, examiner.model.getLongTermDelay(executor)));
+                                    }
+                                }
+                                if(best == null || vectorGreaterThan(best, current)){
+                                    best = current;
+                                    bestTgtExecutor = tgtExecutor;
+                                    bestMigratingPartitions = migrating;
+                                }
+                                if(tgtDelay > srcDelay)break;
+                            }
+                            if(tgtArrivalRate > tgtServiceRate)break;
+                        }
+                    }
                 }
+            if(best == null){
+                LOG.info("Cannot find any migration");
+                Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
+                return result;
             }
-            List<Pair<String, Double>> longtermDelay = new ArrayList<>();
-            while(!priorityQueue.isEmpty()){
-                longtermDelay.add(priorityQueue.poll());
-            }
-            Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(src, tgt, migratingTasks),longtermDelay);
+            LOG.info("Find best migration with delay: " + best + ", from executor " + srcExecutor + " to executor " + bestTgtExecutor + " migrating Partitions: " + bestMigratingPartitions);
+            Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(srcExecutor, bestTgtExecutor, bestMigratingPartitions), new ArrayList<>(best));
             return result;
         }
     }
@@ -484,6 +374,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             /*
                 Replace invalid data in state with valid estimation
                 when current snapshot is all valid
+                
+
              */
             public void calibrate(long time){
                 //Calibrate partition state
@@ -785,12 +677,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 System.out.println("Model, time " + time + " : " + "Partition Arrival Rate: " + model.partitionArrivalRate);
             }
         }
-        private List<Pair<String, Double>> getInstantDelay(){
-            List<Pair<String, Double>> delay = new LinkedList<>();
-            for(String executor: partitionAssignment.keySet()){
-                delay.add(new Pair(executor, model.instantaneousDelay.get(executor)));
-            }
-            return delay;
+        private Map<String, Double> getInstantDelay(){
+            return examiner.model.instantaneousDelay;
         }
 
         private List<Pair<String, Double>> getLongtermDelay(){
@@ -821,16 +709,22 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         return false;
     }
     //Check healthisness of input delay vectors: 0 for Good, 1 for Moderate, 2 for Severe
-    private int checkHealthiness(List<Pair<String, Double>> instantDelay, List<Pair<String, Double>> longtermDelay){
+    private int checkHealthiness(Map<String, Double> instantDelay, List<Pair<String, Double>> longtermDelay){
         int instantExceeded = 0;
         int longtermExceeded = 0;
-        for(Pair<String, Double> entry: instantDelay){
+        int both = 0;
+        for(Map.Entry<String, Double> entry: instantDelay.entrySet()){
             if(entry.getValue() > instantaneousThreshold)instantExceeded = 1;
         }
         for(Pair<String, Double> entry: longtermDelay){
-            if(entry.getValue() > longTermThreshold)longtermExceeded = 1;
+            if(entry.getValue() > longTermThreshold){
+                longtermExceeded = 1;
+                if(instantDelay.get(entry.getKey()) > instantaneousThreshold)both = 1;
+            }
         }
-        return instantExceeded + longtermExceeded;
+        if(both == 1)return 2;
+        if(instantExceeded > 0 && longtermExceeded > 0)return 1;
+        return 0;
     }
     private Prescription diagnose(Examiner examiner){
         int healthiness = checkHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay());
