@@ -655,9 +655,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             state.updateAtTime(time, partitionArrived, partitionProcessed, executorUtilization, partitionAssignment);
         }
 
-        private void updateModel(long time){
+        private void updateModel(){
             LOG.info("Updating Delay Estimating model");
-            model.updateModelSnapshot(time, partitionAssignment);
+            model.updateModelSnapshot(state.currentTimeIndex, partitionAssignment);
 
             //Debug & Statistics
             if(true){
@@ -666,11 +666,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     double delay = model.getLongTermDelay(executorId);
                     longtermDelay.put(executorId, delay);
                 }
-                System.out.println("Model, time " + time + " : " + "Arrival Rate: " + model.executorArrivalRate);
-                System.out.println("Model, time " + time + " : " + "Service Rate: " + model.serviceRate);
-                System.out.println("Model, time " + time + " : " + "Average Delay: " + model.instantaneousDelay);
-                System.out.println("Model, time " + time + " : " + "Longterm Delay: " + longtermDelay);
-                System.out.println("Model, time " + time + " : " + "Partition Arrival Rate: " + model.partitionArrivalRate);
+                System.out.println("Model : " + "Arrival Rate: " + model.executorArrivalRate);
+                System.out.println("Model : " + "Service Rate: " + model.serviceRate);
+                System.out.println("Model : " + "Average Delay: " + model.instantaneousDelay);
+                System.out.println("Model : " + "Longterm Delay: " + longtermDelay);
+                System.out.println("Model : " + "Partition Arrival Rate: " + model.partitionArrivalRate);
             }
         }
         private Map<String, Double> getInstantDelay(){
