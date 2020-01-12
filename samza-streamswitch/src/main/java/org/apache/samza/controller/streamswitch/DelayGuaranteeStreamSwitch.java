@@ -474,6 +474,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             private double getLongTermDelay(String executorId){
                 double arrival = executorArrivalRate.get(executorId);
                 double service = serviceRate.get(executorId);
+                if(arrival < 1e-15)return 0.0;
                 if(service < arrival + 1e-15)return 1e100;
                 return 1.0/(service - arrival);
             }
@@ -789,6 +790,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         examiner.pendingPres = pres;
         examiner.isMigrating = true;
 
+        LOG.info("Old mapping: " + partitionAssignment);
         Map<String, List<String>> newAssignment = pres.generateNewPartitionAssignment(partitionAssignment);
         LOG.info("Old mapping: " + partitionAssignment);
         LOG.info("Prescription : src: " + pres.source + " , tgt: " + pres.target + " , migrating: " + pres.migratingPartitions);
