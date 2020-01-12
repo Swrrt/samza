@@ -790,7 +790,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         examiner.isMigrating = true;
 
         Map<String, List<String>> newAssignment = pres.generateNewPartitionAssignment(partitionAssignment);
-        LOG.info("Prescription : " + pres);
+        LOG.info("Old mapping: " + partitionAssignment);
+        LOG.info("Prescription : src: " + pres.source + " , tgt: " + pres.target + " , migrating: " + pres.migratingPartitions);
         LOG.info("New mapping: " + newAssignment);
         //Scale out
         if (!partitionAssignment.containsKey(pres.target)) {
@@ -798,7 +799,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             listener.scaling(newAssignment.size(), newAssignment);
         }
         //Scale in
-        else if (partitionAssignment.get(pres.source).size() == pres.migratingPartitions.size()) {
+        else if(partitionAssignment.get(pres.source).size() == pres.migratingPartitions.size()) {
             LOG.info("Scale in");
             listener.scaling(newAssignment.size(), newAssignment);
         }
