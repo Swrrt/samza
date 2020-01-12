@@ -652,6 +652,15 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization){
             LOG.info("Updating network calculus model...");
             state.updateAtTime(time, partitionArrived, partitionProcessed, executorUtilization, partitionAssignment);
+
+            //Debug & Statistics
+            HashMap<String, Long> arrived = new HashMap<>(), completed = new HashMap<>();
+            for(String partition: state.partitionArrived.keySet()) {
+                arrived.put(partition, state.partitionArrived.get(partition).get(state.currentTimeIndex));
+                completed.put(partition, state.partitionCompleted.get(partition).get(state.currentTimeIndex));
+            }
+            System.out.println("State, time " + time  + " , Partition arrived: " + arrived);
+            System.out.println("State, time " + time  + " , Partition completed: " + completed);
         }
 
         private void updateModel(){
@@ -665,11 +674,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     double delay = model.getLongTermDelay(executorId);
                     longtermDelay.put(executorId, delay);
                 }
-                System.out.println("Model : " + "Arrival Rate: " + model.executorArrivalRate);
-                System.out.println("Model : " + "Service Rate: " + model.serviceRate);
-                System.out.println("Model : " + "Average Delay: " + model.instantaneousDelay);
-                System.out.println("Model : " + "Longterm Delay: " + longtermDelay);
-                System.out.println("Model : " + "Partition Arrival Rate: " + model.partitionArrivalRate);
+                long time = state.getTimepoint(state.currentTimeIndex);
+                System.out.println("Model, time " + time  + " , Arrival Rate: " + model.executorArrivalRate);
+                System.out.println("Model, time " + time  + " , Service Rate: " + model.serviceRate);
+                System.out.println("Model, time " + time  + " , Instantaneous Delay: " + model.instantaneousDelay);
+                System.out.println("Model, time " + time  + " , Longterm Delay: " + longtermDelay);
+                System.out.println("Model, time " + time  + " , Partition Arrival Rate: " + model.partitionArrivalRate);
             }
         }
         private Map<String, Double> getInstantDelay(){
