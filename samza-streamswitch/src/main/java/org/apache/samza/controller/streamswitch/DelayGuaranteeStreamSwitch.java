@@ -312,7 +312,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 timePoints = new HashMap<>();
                 windowSize = 100000;
                 currentTimeIndex = -1;
-                partitionArrived = new HashMap<>();
+                partitionArrived = new TreeMap<>();
                 partitionCompleted = new HashMap<>();
                 executorUtilization = new HashMap<>();
             }
