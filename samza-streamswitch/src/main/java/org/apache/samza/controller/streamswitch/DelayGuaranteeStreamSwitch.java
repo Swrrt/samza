@@ -505,15 +505,15 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
             // Calculate window service rate of tn0 ~ tn1 (exclude tn0)
             private double getExecutorServiceRate(String executorId){
-                double totalService = 0;
+                long totalServiced = 0;
                 long totalTime = 0;
                 for(Pair<Long, Long> entry: serviceWindow.get(executorId)){
                     long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
                     totalTime += time;
-                    totalService += ((double)entry.getValue()) * time;
+                    totalServiced += entry.getValue();
                 }
-                if(totalTime > 0) totalService /= totalTime;
-                return totalService;
+                if(totalTime > 0) return totalServiced/((double)totalTime);
+                return 0;
             }
 
             private void updateWindowExecutorUtilization(String executor, long n){
@@ -578,7 +578,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     double arrivalRate = 0;
                     for(String partition: partitionAssignment.get(executor)){
                         double t = getPartitionArrivalRate(partition, n - beta, n);
-                        LOG.info("Partition arrival rate: " + t);
                         partitionArrivalRate.put(partition, t);
                         arrivalRate += t;
                     }
@@ -587,6 +586,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     double util = getWindowExecutorUtilization(executor);
                     updateWindowExecutorServiced(executor, n, partitionAssignment);
                     double mu = getExecutorServiceRate(executor);
+                    LOG.info(executor + " mu=" + mu + " util=" + util);
                     if(util > 1e-9 && util <= 1){
                         mu /= util;
                     }
@@ -594,6 +594,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     updateWindowExecutorInstantaneousDelay(executor, n, partitionAssignment);
                     instantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor));
                 }
+                LOG.info("Debugging, executorUtilizationWindow: " + utilizationWindow);
+                LOG.info("Debugging, executorDelayWindow: " + delayWindow);
+                LOG.info("Debugging, executorServiceWindow: " + serviceWindow);
             }
             public void showData(){
                 LOG.info("Show delay estimation data...");
