@@ -417,6 +417,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             public Model(){
                 lastTime = -1;
                 delayWindow = new HashMap<>();
+                utilizationWindow = new HashMap<>();
+                serviceWindow = new HashMap<>();
+                partitionArrivalRate = new HashMap<>();
+                executorArrivalRate = new HashMap<>();
+                serviceRate = new HashMap<>();
+                instantaneousDelay = new HashMap<>();
             }
             public void setTimes(long interval, int a, int b){
                 this.interval = interval;
