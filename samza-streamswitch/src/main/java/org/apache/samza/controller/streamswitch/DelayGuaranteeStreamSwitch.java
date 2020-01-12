@@ -316,6 +316,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 windowSize = size;
             }
             protected long getTimepoint(long n){
+                //Debugging
+                if(!timePoints.containsKey(n)){
+                    LOG.error("Time not contains index " + n);
+                }
+
                 return timePoints.get(n);
             }
             public void updatePartitionArrived(String partitionId, long n, long arrived){
@@ -504,7 +509,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 for(Pair<Long, Double> entry: serviceWindow.get(executorId)){
                     long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
                     totalTime += time;
-                    totalService += entry.getValue() * time;
+                    totalService += entry.getValue() * ((double)time);
                 }
                 if(totalTime > 0) totalService /= totalTime;
                 return totalService;
