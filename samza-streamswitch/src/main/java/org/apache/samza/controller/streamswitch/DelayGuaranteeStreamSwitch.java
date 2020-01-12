@@ -380,6 +380,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 LOG.info("Debugging, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
                 currentTimeIndex++;
                 if(currentTimeIndex == 0){ //Initialize
+                    LOG.info("Initialize time point 0...");
                     for(String executor: partitionAssignment.keySet()){
                         for(String partition: partitionAssignment.get(executor)){
                             updatePartitionCompleted(partition, 0, 0);
@@ -473,18 +474,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
             private double getPartitionArrivalRate(String partition, long n0, long n1){
                 long totalArrived = 0;
+                if(n1 < 0)n1 = 0;
                 double time = state.getTimepoint(n1) - state.getTimepoint(n0);
                 totalArrived = state.getPartitionArrived(partition, n1) - state.getPartitionArrived(partition, n0);
                 double arrivalRate = 0;
                 if(time > 1e-9)arrivalRate = totalArrived / time;
-                return arrivalRate;
-            }
-            // Calculate window arrival rate of tn0 ~ tn1 (exclude tn0)
-            private double getExecutorArrivalRate(String executorId, long n0, long n1, Map<String, List<String>> partitionAssignment){
-                double arrivalRate = 0;
-                for(String partition: partitionAssignment.get(executorId)){
-                    arrivalRate += getPartitionArrivalRate(partition, n0, n1);
-                }
                 return arrivalRate;
             }
 
