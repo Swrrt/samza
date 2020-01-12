@@ -447,8 +447,21 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 this.state = state;
             }
 
+
             private double calculatePartitionInstantDelay(String partition, long n){
-                long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
+                long l0 = 0, l1 = 0;
+                for(long t = 0; t < n; t++)
+                    if(state.getPartitionArrived(partition, n - 1 - t) < state.getPartitionCompleted(partition, n - 1)) {
+                        l0 = t + 1;
+                        break;
+                    }
+                for(long t = n;t>=0;t--)
+                    if(state.getPartitionArrived(partition, n - t) >= state.getPartitionCompleted(partition, n)){
+                        l1 = t - 1;
+                        break;
+                    }
+                return (l0 + l1) / 2.0;
+            /*    long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
                 long am0 = state.getPartitionArrived(partition, m0), am1 = state.getPartitionArrived(partition, m1);
                 long M = (am0 - cn_1) * m0 - (am1 - cn) * m1;
@@ -458,7 +471,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 }
                 LOG.info("Debugging, partition " + partition + " cn: " + cn + " cn-1:" + cn_1 + " m0: " + m0 + " m1:" + m1 + " am0: " + am0 + " am1: " + am1 + " M: " + M );
                 long T = state.getTimepoint(n) - state.getTimepoint(n - 1);
-                return (n + 1 - M / ((double)(cn - cn_1))) * T;
+                return (n + 1 - M / ((double)(cn - cn_1))) * T;*/
             }
 
             private double calculateExecutorInstantDelay(String executor, long n){
