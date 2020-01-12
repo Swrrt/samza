@@ -382,7 +382,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
 
             public void updateAtTime(long time, Map<String, Long> taskArrived, Map<String, Long> taskProcessed, Map<String, Double> utilization, Map<String, List<String>> partitionAssignment) { //Normal update
-                LOG.info("Debugging, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
+                LOG.info("Debugging, metrics retrieved data, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
                 currentTimeIndex++;
                 if(currentTimeIndex == 0){ //Initialize
                     LOG.info("Initialize time point 0...");
@@ -491,7 +491,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             private void updateWindowExecutorServiced(String executor, long n, Map<String, List<String>> partitionAssignment){
                 long processed = 0;
                 for(String partition: partitionAssignment.get(executor)){
-                    processed = state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
+                    processed += state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
                 }
 
                 if(!serviceWindow.containsKey(executor)){
@@ -736,7 +736,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     private Prescription diagnose(Examiner examiner){
         int healthiness = checkHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay());
         Prescription pres = new Prescription(null, null, null);
-
+        LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
         if(examiner.isMigrating){
             LOG.info("Migration does not complete, cannot diagnose");
             return pres;
@@ -750,6 +750,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
         //Good
         if(healthiness == 0){
+            LOG.info("Current healthiness is Good");
             //Try scale in
             Pair<Prescription, List<Pair<String, Double>>> result = examiner.scaleIn();
             if(result.getValue() != null) {
@@ -763,6 +764,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
         //Severe
         else{
+            LOG.info("Current healthiness is Servere");
             Pair<Prescription, List<Pair<String, Double>>> result = examiner.loadBalance();
             if(result.getValue() != null) {
                 int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getValue());
@@ -827,16 +829,16 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         LOG.info("Warm up completed.");
         while(true) {
             //Examine
-            Log.info("Examine...");
+            LOG.info("Examine...");
             long time = System.currentTimeMillis();
             examiner.examine(time);
-            Log.info("Diagnose...");
+            LOG.info("Diagnose...");
             if(examiner.isValid && !examiner.isMigrating) {
                 Prescription pres = diagnose(examiner);
                 if (pres.migratingPartitions != null) { //Not do nothing
                     treat(pres);
                 } else {
-                    Log.info("Nothing to do this time.");
+                    LOG.info("Nothing to do this time.");
                 }
             }else{
                 if(!examiner.isValid)LOG.info("Current examine data is not valid, need to wait until valid");
@@ -844,13 +846,13 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
             long deltaT = System.currentTimeMillis() - time;
             if(deltaT > metricsRetreiveInterval){
-                Log.warn("Run loop time is longer than interval, please consider to set larger interval");
+                LOG.warn("Run loop time is longer than interval, please consider to set larger interval");
             }
-            Log.info("Sleep for " + (metricsRetreiveInterval - deltaT) + "milliseconds");
+            LOG.info("Sleep for " + (metricsRetreiveInterval - deltaT) + "milliseconds");
             try {
                 Thread.sleep(metricsRetreiveInterval - deltaT);
             }catch (Exception e) {
-                Log.warn("Exception happens between run loop interval, ", e);
+                LOG.warn("Exception happens between run loop interval, ", e);
             }
         }
     }
