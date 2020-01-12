@@ -308,24 +308,15 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 timePoints = new HashMap<>();
                 windowSize = 100000;
                 currentTimeIndex = -1;
+                partitionArrived = new HashMap<>();
+                partitionCompleted = new HashMap<>();
+                executorUtilization = new HashMap<>();
             }
             public void setWindowSize(long size){
                 windowSize = size;
             }
-            protected Map<Long, Long> getTimePoints(){
-                return timePoints;
-            }
             protected long getTimepoint(long n){
                 return timePoints.get(n);
-            }
-            private long getLastTime(long time){
-                long lastTime = 0;
-                for(int i = timePoints.size() - 1; i>=0; i--)
-                    if(timePoints.get(i) <= time){
-                        lastTime = timePoints.get(i);
-                        break;
-                    }
-                return lastTime;
             }
             public void updatePartitionArrived(String partitionId, long n, long arrived){
                 partitionArrived.putIfAbsent(partitionId, new TreeMap<>());
@@ -617,7 +608,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
         private void examine(long time){
             Map<String, Object> metrics = metricsRetriever.retrieveMetrics();
-            LOG.info("Debugging: " + metrics);
             Map<String, Long> partitionArrived =
                     (HashMap<String, Long>) (metrics.get("PartitionArrived"));
             Map<String, Long> partitionProcessed =
