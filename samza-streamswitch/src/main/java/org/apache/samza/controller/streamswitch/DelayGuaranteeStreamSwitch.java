@@ -498,7 +498,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     serviceWindow.put(executor, new LinkedList<>());
                 }
                 serviceWindow.get(executor).addLast(new Pair(n, processed));
-                if(serviceWindow.size() > beta){
+                if(serviceWindow.get(executor).size() > beta){
                     serviceWindow.get(executor).pollFirst();
                 }
             }
@@ -522,7 +522,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     utilizationWindow.put(executor, new LinkedList<>());
                 }
                 utilizationWindow.get(executor).addLast(new Pair(n, util));
-                if(utilizationWindow.size() > beta){
+                if(utilizationWindow.get(executor).size() > beta){
                     utilizationWindow.get(executor).pollFirst();
                 }
             }
@@ -549,7 +549,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     processed += state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
                 }
                 delayWindow.get(executor).addLast(new Pair(processed, instantDelay));
-                if(delayWindow.size() > beta){
+                if(delayWindow.get(executor).size() > beta){
                     delayWindow.get(executor).pollFirst();
                 }
             }
