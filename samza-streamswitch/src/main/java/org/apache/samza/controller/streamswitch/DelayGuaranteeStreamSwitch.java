@@ -312,7 +312,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 timePoints = new HashMap<>();
                 windowSize = 100000;
                 currentTimeIndex = -1;
-                partitionArrived = new TreeMap<>();
+                partitionArrived = new HashMap<>();
                 partitionCompleted = new HashMap<>();
                 executorUtilization = new HashMap<>();
             }
@@ -365,7 +365,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
             public long calculateArrivalTime(String partition, long r){
                 for(Map.Entry<Long, Long> entry: partitionArrived.get(partition).entrySet()){
-                    if(r <= entry.getValue())return entry.getKey();
+                    if(r <= entry.getValue() && r > partitionArrived.get(partition).get(entry.getKey() - 1))return entry.getKey();
                 }
                 return 0;
             }
