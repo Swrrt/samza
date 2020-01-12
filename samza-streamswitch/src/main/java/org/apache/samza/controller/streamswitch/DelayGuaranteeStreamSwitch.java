@@ -480,7 +480,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
             private double getPartitionArrivalRate(String partition, long n0, long n1){
                 long totalArrived = 0;
-                if(n1 < 0)n1 = 0;
+                if(n0 < 0)n0 = 0;
                 double time = state.getTimepoint(n1) - state.getTimepoint(n0);
                 totalArrived = state.getPartitionArrived(partition, n1) - state.getPartitionArrived(partition, n0);
                 double arrivalRate = 0;
