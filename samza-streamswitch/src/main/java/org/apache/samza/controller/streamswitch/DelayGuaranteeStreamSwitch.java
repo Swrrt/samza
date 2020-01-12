@@ -586,7 +586,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     double util = getWindowExecutorUtilization(executor);
                     updateWindowExecutorServiced(executor, n, partitionAssignment);
                     double mu = getExecutorServiceRate(executor);
-                    LOG.info(executor + " mu=" + mu + " util=" + util);
                     if(util > 1e-9 && util <= 1){
                         mu /= util;
                     }
@@ -594,9 +593,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     updateWindowExecutorInstantaneousDelay(executor, n, partitionAssignment);
                     instantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor));
                 }
-                LOG.info("Debugging, executorUtilizationWindow: " + utilizationWindow);
+                /*LOG.info("Debugging, executorUtilizationWindow: " + utilizationWindow);
                 LOG.info("Debugging, executorDelayWindow: " + delayWindow);
-                LOG.info("Debugging, executorServiceWindow: " + serviceWindow);
+                LOG.info("Debugging, executorServiceWindow: " + serviceWindow);*/
             }
             public void showData(){
                 LOG.info("Show delay estimation data...");
@@ -783,7 +782,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     //Treatment for Samza
     private void treat(Prescription pres){
         if(pres.migratingPartitions == null){
-            Log.warn("Prescription has nothing, so do no treatment");
+            LOG.warn("Prescription has nothing, so do no treatment");
             return ;
         }
 
@@ -791,19 +790,21 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         examiner.isMigrating = true;
 
         Map<String, List<String>> newAssignment = pres.generateNewPartitionAssignment(partitionAssignment);
+        LOG.info("Prescription : " + pres);
+        LOG.info("New mapping: " + newAssignment);
         //Scale out
         if (!partitionAssignment.containsKey(pres.target)) {
-            Log.info("Scale out");
+            LOG.info("Scale out");
             listener.scaling(newAssignment.size(), newAssignment);
         }
         //Scale in
         else if (partitionAssignment.get(pres.source).size() == pres.migratingPartitions.size()) {
-            Log.info("Scale in");
+            LOG.info("Scale in");
             listener.scaling(newAssignment.size(), newAssignment);
         }
         //Load balance
         else {
-            Log.info("Load balance");
+            LOG.info("Load balance");
             listener.changePartitionAssignment(newAssignment);
         }
     }
@@ -850,12 +851,14 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             long deltaT = System.currentTimeMillis() - time;
             if(deltaT > metricsRetreiveInterval){
                 LOG.warn("Run loop time is longer than interval, please consider to set larger interval");
-            }
-            LOG.info("Sleep for " + (metricsRetreiveInterval - deltaT) + "milliseconds");
-            try {
-                Thread.sleep(metricsRetreiveInterval - deltaT);
-            }catch (Exception e) {
-                LOG.warn("Exception happens between run loop interval, ", e);
+                LOG.info("No sleeping this time ");
+            }else {
+                LOG.info("Sleep for " + (metricsRetreiveInterval - deltaT) + "milliseconds");
+                try {
+                    Thread.sleep(metricsRetreiveInterval - deltaT);
+                } catch (Exception e) {
+                    LOG.warn("Exception happens between run loop interval, ", e);
+                }
             }
         }
     }
@@ -874,6 +877,14 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 examiner.isMigrating = false;
                 Prescription pres = examiner.pendingPres;
                 LOG.info("Migrating " + pres.migratingPartitions + " from " + pres.source + " to " + pres.target);
+
+                //Scale in, remove useless information
+                if(pres.migratingPartitions.size() == partitionAssignment.get(pres.source).size()){
+                    examiner.model.serviceWindow.remove(pres.source);
+                    examiner.model.delayWindow.remove(pres.source);
+                    examiner.model.utilizationWindow.remove(pres.source);
+                }
+
                 partitionAssignment = pres.generateNewPartitionAssignment(partitionAssignment);
                 examiner.pendingPres = null;
             }
