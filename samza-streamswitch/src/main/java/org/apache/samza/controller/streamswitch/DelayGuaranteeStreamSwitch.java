@@ -365,7 +365,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
             public long calculateArrivalTime(String partition, long r){
                 for(Map.Entry<Long, Long> entry: partitionArrived.get(partition).entrySet()){
-                    if(r <= entry.getValue() && r > partitionArrived.get(partition).get(entry.getKey() - 1))return entry.getKey();
+                    if(entry.getKey() > 0 && r <= entry.getValue() && r > partitionArrived.get(partition).get(entry.getKey() - 1))return entry.getKey();
                 }
                 return 0;
             }
