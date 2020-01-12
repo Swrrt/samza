@@ -452,6 +452,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
                 long am0 = state.getPartitionArrived(partition, m0), am1 = state.getPartitionArrived(partition, m1);
                 long M = (am0 - cn_1) * m0 - (am1 - cn) * m1;
+                LOG.info("Debugging, partition " + partition + " cn: " + cn + " cn-1:" + cn_1 + " m0: " + m0 + " m1:" + m1 + " am0: " + am0 + " am1: " + am1 + " M: " + M );
                 for(long m = state.calculateArrivalTime(partition, cn_1) + 1; m <= m1; m++){
                     long am = state.getPartitionArrived(partition, m), am_1 = state.getPartitionArrived(partition, m - 1);
                     M += (am - am_1) * m;
