@@ -396,6 +396,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     currentTimeIndex++;
                 }
                 timePoints.put(currentTimeIndex, time);
+                LOG.info("Current time ");
                 for(String partition: taskArrived.keySet()){
                     updatePartitionArrived(partition, currentTimeIndex, taskArrived.get(partition));
                 }
@@ -567,7 +568,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
             //Update snapshots from state
             public void updateModelSnapshot(long n, Map<String, List<String>> partitionAssignment){
-
+                LOG.info("Updating model snapshot, clear old data...");
                 partitionArrivalRate.clear();
                 executorArrivalRate.clear();
                 serviceRate.clear();
@@ -576,7 +577,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 for(String executor: partitionAssignment.keySet()){
                     double arrivalRate = 0;
                     for(String partition: partitionAssignment.get(executor)){
-                        double t = getPartitionArrivalRate(partition, n, n - beta);
+                        double t = getPartitionArrivalRate(partition, n - beta, n);
+                        LOG.info("Partition arrival rate: " + t);
                         partitionArrivalRate.put(partition, t);
                         arrivalRate += t;
                     }
@@ -659,8 +661,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 arrived.put(partition, state.partitionArrived.get(partition).get(state.currentTimeIndex));
                 completed.put(partition, state.partitionCompleted.get(partition).get(state.currentTimeIndex));
             }
-            System.out.println("State, time " + time  + " , Partition arrived: " + arrived);
-            System.out.println("State, time " + time  + " , Partition completed: " + completed);
+            System.out.println("State, time " + time  + " , Partition Arrived: " + arrived);
+            System.out.println("State, time " + time  + " , Partition Completed: " + completed);
         }
 
         private void updateModel(){
