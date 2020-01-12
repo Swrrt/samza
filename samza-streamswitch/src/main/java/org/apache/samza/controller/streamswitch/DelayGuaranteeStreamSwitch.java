@@ -622,7 +622,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
             //TODO: check valid or not here
             updateState(time, partitionArrived, partitionProcessed, executorUtilization);
-            updateModel(time);
+            updateModel();
             isValid = true;
             for(String executor: partitionAssignment.keySet()){
                 if(!model.executorArrivalRate.containsKey(executor)){
