@@ -759,13 +759,13 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         if(healthiness == 0){
             LOG.info("Current healthiness is Good");
             //Try scale in
-            Pair<Prescription, List<Pair<String, Double>>> result = examiner.scaleIn();
+            /*Pair<Prescription, List<Pair<String, Double>>> result = examiner.scaleIn();
             if(result.getValue() != null) {
                 int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getValue());
                 if (thealthiness == 0) {  //Scale in OK
                     return result.getKey();
                 }
-            }
+            }*/
             //Do nothing
             return pres;
         }
