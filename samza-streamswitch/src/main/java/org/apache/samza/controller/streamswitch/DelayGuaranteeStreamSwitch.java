@@ -152,7 +152,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                             });
                             for(String executor: partitionAssignment.keySet()){
                                 if(executor.equals(src)){
-                                    current.add(new Pair(executor, 0));
+                                    current.add(new Pair(executor, 0.0));
                                 }else if(executor.equals(tgt)){
                                     current.add(new Pair(executor, estimatedLongtermDelay));
                                 }else{
