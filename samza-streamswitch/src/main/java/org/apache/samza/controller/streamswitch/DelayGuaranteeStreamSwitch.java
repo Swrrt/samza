@@ -417,7 +417,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, instantaneousDelay;
             private Map<String, Deque<Pair<Long, Double>>> delayWindow; //Delay window stores <processed, delay> pair
             private Map<String, Deque<Pair<Long, Double>>> utilizationWindow; //Utilization stores <time, utilization> pair
-            private Map<String, Deque<Pair<Long, Double>>> serviceWindow; //Utilization stores <time, processed> pair
+            private Map<String, Deque<Pair<Long, Long>>> serviceWindow; //Utilization stores <time, processed> pair
             private int alpha = 1, beta = 2;
             private long interval = 0;
             public Model(){
@@ -506,10 +506,10 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             private double getExecutorServiceRate(String executorId){
                 double totalService = 0;
                 long totalTime = 0;
-                for(Pair<Long, Double> entry: serviceWindow.get(executorId)){
+                for(Pair<Long, Long> entry: serviceWindow.get(executorId)){
                     long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
                     totalTime += time;
-                    totalService += entry.getValue() * ((double)time);
+                    totalService += ((double)entry.getValue()) * time;
                 }
                 if(totalTime > 0) totalService /= totalTime;
                 return totalService;
