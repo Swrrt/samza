@@ -43,7 +43,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             this.migratingPartitions = migratingPartitions;
         }
         Map<String, List<String>> generateNewPartitionAssignment(Map<String, List<String>> oldAssignment){
-            Map<String, List<String>> newAssignment = new HashMap<>(oldAssignment);
+            Map<String, List<String>> newAssignment = new HashMap<>();
+            for(String executor: oldAssignment.keySet()){
+                List<String> partitions = new ArrayList<>(oldAssignment.get(executor));
+                newAssignment.put(executor, partitions);
+            }
             if (!newAssignment.containsKey(target)) newAssignment.put(target, new LinkedList<>());
             for (String partition : migratingPartitions) {
                 newAssignment.get(source).remove(partition);
