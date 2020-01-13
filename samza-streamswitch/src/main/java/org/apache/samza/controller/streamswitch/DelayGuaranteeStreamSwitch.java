@@ -72,7 +72,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 LOG.info("No executor to move");
                 return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
             }
-            long time = examiner.model.getCurrentTime();
             Pair<String, Double> a = findMaxLongtermDelayExecutor(partitionAssignment);
             String srcExecutor = a.getKey();
             double initialDelay = a.getValue();
@@ -132,7 +131,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         //Iterate all pairs of source and targe OE, find the one minimize delay vector
         public Pair<Prescription, List<Pair<String, Double>>> tryToScaleIn(){
             LOG.info("Try to scale in");
-            long time = examiner.model.getCurrentTime();
             if(partitionAssignment.size() <= 1){
                 LOG.info("Not enough executor to merge");
                 return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
@@ -417,7 +415,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
         }
         class Model {
-            private long lastTime;
             private State state;
             Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, instantaneousDelay;
             private Map<String, Deque<Pair<Long, Double>>> delayWindow; //Delay window stores <processed, delay> pair
@@ -426,7 +423,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             private int alpha = 1, beta = 2;
             private long interval = 0;
             public Model(){
-                lastTime = -1;
                 delayWindow = new HashMap<>();
                 utilizationWindow = new HashMap<>();
                 serviceWindow = new HashMap<>();
@@ -440,9 +436,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 alpha = a;
                 beta = b;
             }
-            public long getCurrentTime(){
-                return lastTime;
-            }
             public void setState(State state){
                 this.state = state;
             }
@@ -455,8 +448,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         l0 = t + 1;
                         break;
                     }
-                for(long t = n;t >= 0;t--)
+                for(long t = n; t >= 0;t--)
                     if(state.getPartitionArrived(partition, n - t) >= state.getPartitionCompleted(partition, n)){
+                        LOG.info("What happened: t=" + t + " n=" + n + " arrived: " + state.partitionArrived.get(partition) + " completed: " + state.partitionCompleted.get(partition));
                         l1 = t - 1;
                         break;
                     }
