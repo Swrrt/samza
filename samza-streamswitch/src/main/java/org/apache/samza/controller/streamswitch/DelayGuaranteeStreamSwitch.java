@@ -2,7 +2,6 @@ package org.apache.samza.controller.streamswitch;
 
 import javafx.util.Pair;
 import org.apache.samza.config.Config;
-import org.mortbay.log.Log;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -416,12 +415,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         }
         class Model {
             private State state;
-            Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, instantaneousDelay;
+            Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, executorInstantaneousDelay;
             private Map<String, Deque<Pair<Long, Double>>> delayWindow; //Delay window stores <processed, delay> pair
             private Map<String, Deque<Pair<Long, Double>>> utilizationWindow; //Utilization stores <time, utilization> pair
             private Map<String, Deque<Pair<Long, Long>>> serviceWindow; //Utilization stores <time, processed> pair
             private int alpha = 1, beta = 2;
-            private long interval = 0;
             public Model(){
                 delayWindow = new HashMap<>();
                 utilizationWindow = new HashMap<>();
@@ -429,10 +427,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 partitionArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
                 serviceRate = new HashMap<>();
-                instantaneousDelay = new HashMap<>();
+                executorInstantaneousDelay = new HashMap<>();
             }
             public void setTimes(long interval, int a, int b){
-                this.interval = interval;
                 alpha = a;
                 beta = b;
             }
@@ -441,21 +438,27 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
 
 
-            private double calculatePartitionInstantDelay(String partition, long n){
-                long l0 = 0, l1 = 0;
-                for(long t = 0; t < n; t++)
-                    if(state.getPartitionArrived(partition, n - 1 - t) < state.getPartitionCompleted(partition, n - 1)) {
-                        l0 = t + 1;
+            //Calculate instant delay in for c(t-1) ~ c(t)
+            private double calculatePartitionInstantDelay(String partition, long t){
+                long l0 = 1, l1 = 0;
+                if(t <= 0)return 0;
+                if(state.getPartitionCompleted(partition, t - 1) == state.getPartitionCompleted(partition, t)){
+                    return 0;
+                }
+
+                for(long l = 0; l < t; l++)
+                    if(state.getPartitionArrived(partition, t - 1 - l) < state.getPartitionCompleted(partition, t - 1)) {
+                        l0 = l + 1;
                         break;
                     }
-                for(long t = n; t >= 0;t--)
-                    if(state.getPartitionArrived(partition, n - t) >= state.getPartitionCompleted(partition, n)){
-                        LOG.info("What happened: t=" + t + " n=" + n + " arrived: " + state.partitionArrived.get(partition) + " completed: " + state.partitionCompleted.get(partition));
+                for(long l = t; l >= 0 ; l--)
+                    if(state.getPartitionArrived(partition, t - l) >= state.getPartitionCompleted(partition, t)){
+                        LOG.info("What happened: t=" + t + " l=" + l + " arrived: " + state.partitionArrived.get(partition) + " completed: " + state.partitionCompleted.get(partition));
                         l1 = t - 1;
                         break;
                     }
-                LOG.info("Debugging: partition " + partition + " n-th: " + n + " is between " + l0 + " and " + l1);
-                return (state.getTimepoint(l0) + state.getTimepoint(l1)) / 2.0;
+                LOG.info("Debugging: partition " + partition + " t " + t + " is between " + l0 + " and " + l1);
+                return (state.getTimepoint(t - 1 - l0) + state.getTimepoint(t - l1)) / 2.0;
             /*    long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
                 long am0 = state.getPartitionArrived(partition, m0), am1 = state.getPartitionArrived(partition, m1);
@@ -588,7 +591,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 partitionArrivalRate.clear();
                 executorArrivalRate.clear();
                 serviceRate.clear();
-                instantaneousDelay.clear();
+                executorInstantaneousDelay.clear();
 
                 for(String executor: partitionAssignment.keySet()){
                     double arrivalRate = 0;
@@ -607,7 +610,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     }
                     serviceRate.put(executor, mu);
                     updateWindowExecutorInstantaneousDelay(executor, n, partitionAssignment);
-                    instantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor));
+                    executorInstantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor));
                 }
                 /*LOG.info("Debugging, executorUtilizationWindow: " + utilizationWindow);
                 LOG.info("Debugging, executorDelayWindow: " + delayWindow);
@@ -697,13 +700,13 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 long time = state.getTimepoint(state.currentTimeIndex);
                 System.out.println("Model, time " + time  + " , Arrival Rate: " + model.executorArrivalRate);
                 System.out.println("Model, time " + time  + " , Service Rate: " + model.serviceRate);
-                System.out.println("Model, time " + time  + " , Instantaneous Delay: " + model.instantaneousDelay);
+                System.out.println("Model, time " + time  + " , Instantaneous Delay: " + model.executorInstantaneousDelay);
                 System.out.println("Model, time " + time  + " , Longterm Delay: " + longtermDelay);
                 System.out.println("Model, time " + time  + " , Partition Arrival Rate: " + model.partitionArrivalRate);
             }
         }
         private Map<String, Double> getInstantDelay(){
-            return examiner.model.instantaneousDelay;
+            return examiner.model.executorInstantaneousDelay;
         }
 
         private List<Pair<String, Double>> getLongtermDelay(){
