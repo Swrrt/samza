@@ -455,12 +455,13 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         l0 = t + 1;
                         break;
                     }
-                for(long t = n;t>=0;t--)
+                for(long t = n;t >= 0;t--)
                     if(state.getPartitionArrived(partition, n - t) >= state.getPartitionCompleted(partition, n)){
                         l1 = t - 1;
                         break;
                     }
-                return (l0 + l1) / 2.0;
+                LOG.info("Debugging: partition " + partition + " n-th: " + n + " is between " + l0 + " and " + l1);
+                return (state.getTimepoint(l0) + state.getTimepoint(l1)) / 2.0;
             /*    long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
                 long am0 = state.getPartitionArrived(partition, m0), am1 = state.getPartitionArrived(partition, m1);
