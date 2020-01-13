@@ -479,10 +479,10 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 double totalDelay = 0;
                 long totalCompleted = 0;
                 for(String partition: partitionAssignment.get(executor)){
-                    long completed = state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n-1);
+                    long completed = state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
                     double delay = calculatePartitionInstantDelay(partition, n);
                     totalDelay += delay * completed;
-                    LOG.info("Debugging, partition " + partition + "delay: " + delay + " processed: " + completed);
+                    LOG.info("Debugging, partition " + partition + " delay: " + delay + " processed: " + completed);
                     totalCompleted += completed;
                 }
                 double delay = 0;
@@ -790,13 +790,16 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         else{
             LOG.info("Current healthiness is Servere");
             Pair<Prescription, List<Pair<String, Double>>> result = examiner.loadBalance();
+            LOG.info("The result of load-balance: " + result);
             if(result.getValue() != null) {
                 int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getValue());
+                LOG.info("If we migrating, healthiness is " + thealthiness);
                 if (thealthiness == 1) {  //Load balance OK
                     return result.getKey();
                 }
             }
             //Scale out
+            LOG.info("Cannot load-balance, need to scale out");
             result = examiner.scaleOut();
             return result.getKey();
         }
