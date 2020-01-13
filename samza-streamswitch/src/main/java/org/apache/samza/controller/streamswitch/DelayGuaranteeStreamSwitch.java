@@ -440,25 +440,28 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
             //Calculate instant delay in for c(t-1) ~ c(t)
             private double calculatePartitionInstantDelay(String partition, long t){
-                long l0 = 1, l1 = 0;
+                long l0 = 0, l1 = 0;
                 if(t <= 0)return 0;
                 if(state.getPartitionCompleted(partition, t - 1) == state.getPartitionCompleted(partition, t)){
+                    return 0;
+                }
+                if(state.getPartitionCompleted(partition, t) == 0){
                     return 0;
                 }
 
                 for(long l = 0; l < t; l++)
                     if(state.getPartitionArrived(partition, t - 1 - l) < state.getPartitionCompleted(partition, t - 1)) {
-                        l0 = l + 1;
+                        l0 = l;
                         break;
                     }
                 for(long l = t; l >= 0 ; l--)
                     if(state.getPartitionArrived(partition, t - l) >= state.getPartitionCompleted(partition, t)){
                         LOG.info("What happened: t=" + t + " l=" + l + " arrived: " + state.partitionArrived.get(partition) + " completed: " + state.partitionCompleted.get(partition));
-                        l1 = t - 1;
+                        l1 = l;
                         break;
                     }
-                LOG.info("Debugging: partition " + partition + " t " + t + " is between " + l0 + " and " + l1);
-                return (state.getTimepoint(t - 1 - l0) + state.getTimepoint(t - l1)) / 2.0;
+                LOG.info("Debugging: partition " + partition + " t " + t + " is between " + (t - 1 - l0) + " and " + (t - l1));
+                return (state.getTimepoint(t - l1 ) - state.getTimepoint(t - 1 - l0)) / 2.0;
             /*    long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
                 long am0 = state.getPartitionArrived(partition, m0), am1 = state.getPartitionArrived(partition, m1);
@@ -479,7 +482,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     long completed = state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n-1);
                     double delay = calculatePartitionInstantDelay(partition, n);
                     totalDelay += delay * completed;
-                    LOG.info("Debugging, partition " + partition + "delay: " + delay);
+                    LOG.info("Debugging, partition " + partition + "delay: " + delay + " processed: " + completed);
                     totalCompleted += completed;
                 }
                 double delay = 0;
