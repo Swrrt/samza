@@ -753,9 +753,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 if(instantDelay.get(entry.getKey()) > instantaneousThreshold)both = 1;
             }
         }
-        LOG.info("Debugging: instant delay=" + instantDelay + " longterm delay=" + longtermDelay);
         if(both == 1)return 2;
-        if(instantExceeded > 0 && longtermExceeded > 0)return 1;
+        if(instantExceeded > 0 || longtermExceeded > 0)return 1;
         return 0;
     }
     private Prescription diagnose(Examiner examiner){
@@ -791,11 +790,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         else{
             LOG.info("Current healthiness is Servere");
             Pair<Prescription, List<Pair<String, Double>>> result = examiner.loadBalance();
-            LOG.info("The result of load-balance: " + result.getValue());
+            //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
                 int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getValue());
-                LOG.info("If we migrating, healthiness is " + thealthiness);
+                //LOG.info("If we migrating, healthiness is " + thealthiness);
                 if (thealthiness == 1) {  //Load balance OK
+                    LOG.info("Load-balance is OK");
                     return result.getKey();
                 }
             }
