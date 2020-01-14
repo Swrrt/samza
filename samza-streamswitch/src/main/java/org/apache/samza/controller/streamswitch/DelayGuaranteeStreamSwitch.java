@@ -458,8 +458,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 }
                 long T = examiner.timeSlotSize;
                 long delay = (n + 1 - M / (cn - cn_1)) * T;
-                LOG.info("Debugging, partition " + partition + " completed=" + cn + " m0=" + m0 + " m1=" + m1 + " a1=" + a1 + " a3=" + a3 + " M= " + M + " Delay=" + delay);
-                return (n + 1 - M / (cn - cn_1)) * T;
+                LOG.info("Debugging, partition " + partition + " n=" + n + " cn=" + cn + " cn_1=" + cn_1 + " m0=" + m0 + " m1=" + m1 + " a1=" + a1 + " a3=" + a3 + " M= " + M + " Delay=" + delay);
+                return delay;
             }
 
             private double calculateExecutorInstantDelay(String executor, long n){
