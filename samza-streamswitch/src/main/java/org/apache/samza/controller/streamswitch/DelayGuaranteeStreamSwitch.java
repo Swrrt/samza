@@ -313,6 +313,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 partitionCompleted = new HashMap<>();
                 executorUtilization = new HashMap<>();
             }
+
             public void setWindowSize(long size){
                 windowSize = size;
             }
@@ -438,41 +439,27 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
 
 
-            //Calculate instant delay in for c(t-1) ~ c(t)
-            private double calculatePartitionInstantDelay(String partition, long t){
-                long l0 = 0, l1 = 0;
-                if(t <= 0)return 0;
-                if(state.getPartitionCompleted(partition, t - 1) == state.getPartitionCompleted(partition, t)){
+            //Calculate instant delay for tuples (c(n-1), c(n)]
+            private double calculatePartitionInstantDelay(String partition, long n){
+                if(n <= 0)return 0;
+                //No completed in n-1 ~ n
+                if(state.getPartitionCompleted(partition, n - 1) == state.getPartitionCompleted(partition, n)){
                     return 0;
                 }
-                if(state.getPartitionCompleted(partition, t) == 0){
-                    return 0;
-                }
-
-                for(long l = 0; l < t; l++)
-                    if(state.getPartitionArrived(partition, t - 1 - l) < state.getPartitionCompleted(partition, t - 1)) {
-                        l0 = l;
-                        break;
-                    }
-                for(long l = t; l >= 0 ; l--)
-                    if(state.getPartitionArrived(partition, t - l) >= state.getPartitionCompleted(partition, t)){
-                        LOG.info("What happened: t=" + t + " l=" + l + " arrived: " + state.partitionArrived.get(partition) + " completed: " + state.partitionCompleted.get(partition));
-                        l1 = l;
-                        break;
-                    }
-                LOG.info("Debugging: partition " + partition + " t " + t + " is between " + (t - 1 - l0) + " and " + (t - l1));
-                return (state.getTimepoint(t - l1 ) - state.getTimepoint(t - 1 - l0)) / 2.0;
-            /*    long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
+                long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
+                //m(c(n-1)+ 1), m(c(n))
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
-                long am0 = state.getPartitionArrived(partition, m0), am1 = state.getPartitionArrived(partition, m1);
-                long M = (am0 - cn_1) * m0 - (am1 - cn) * m1;
-                for(long m = state.calculateArrivalTime(partition, cn_1) + 1; m <= m1; m++){
+                long a0 = state.getPartitionArrived(partition, m0 - 1), a1 = state.getPartitionArrived(partition, m0),
+                        a2 = state.getPartitionArrived(partition, m1 - 1), a3 = state.getPartitionArrived(partition, m1);
+                long M = (a1 - cn_1) * m0 - (a3 - cn) * m1;
+                for(long m = m0; m <= m1; m++){
                     long am = state.getPartitionArrived(partition, m), am_1 = state.getPartitionArrived(partition, m - 1);
                     M += (am - am_1) * m;
                 }
-                LOG.info("Debugging, partition " + partition + " cn: " + cn + " cn-1:" + cn_1 + " m0: " + m0 + " m1:" + m1 + " am0: " + am0 + " am1: " + am1 + " M: " + M );
-                long T = state.getTimepoint(n) - state.getTimepoint(n - 1);
-                return (n + 1 - M / ((double)(cn - cn_1))) * T;*/
+                long T = examiner.timeSlotSize;
+                long delay = (n + 1 - M / (cn - cn_1)) * T;
+                LOG.info("Debugging, partition " + partition + " completed=" + cn + " m0=" + m0 + " m1=" + m1 + " a1=" + a1 + " a3=" + a3 + " M= " + M + " Delay=" + delay);
+                return (n + 1 - M / (cn - cn_1)) * T;
             }
 
             private double calculateExecutorInstantDelay(String executor, long n){
@@ -629,13 +616,18 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         private StreamSwitchMetricsRetriever metricsRetriever;
         private boolean isValid, isMigrating;
         private Prescription pendingPres;
+        private long timeSlotSize;
         Examiner(){
             this.state = new State();
             this.model = new Model();
             isValid = false;//No data, should be false
+            timeSlotSize = 200l; //Default
         }
         public void setMetricsRetriever(StreamSwitchMetricsRetriever metricsRetriever){
             this.metricsRetriever = metricsRetriever;
+        }
+        public void setTimeSlotSize(long size){
+            timeSlotSize = size;
         }
         private void examine(long time){
             Map<String, Object> metrics = metricsRetriever.retrieveMetrics();
@@ -843,6 +835,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         int metricsWarmupTime = config.getInt("streamswitch.metrics.warmup.time", 60000);
         startTime = System.currentTimeMillis();
         examiner.setMetricsRetriever(retriever);
+        examiner.setTimeSlotSize(metricsRetreiveInterval);
         //Warm up phase
         LOG.info("Warm up for " + metricsWarmupTime + " milliseconds...");
         do{
