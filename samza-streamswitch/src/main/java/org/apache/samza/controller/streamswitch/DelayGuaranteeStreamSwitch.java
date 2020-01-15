@@ -66,7 +66,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         // Sort arrival rate from largest to smallest, cut them in somewhere
         public Pair<Prescription, List<Pair<String, Double>>> tryToScaleOut(){
             LOG.info("Scale out by one container");
-
             if(partitionAssignment.size() <= 0){
                 LOG.info("No executor to move");
                 return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
@@ -79,9 +78,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
             }
 
+            LOG.info("Migrating out from executor " + srcExecutor);
+
+            //Try from lightest arrival to heaviest arrival
             PriorityQueue<Pair<String, Double>> priorityQueue = new PriorityQueue<>((x,y)-> {
-                if(x.getValue() - 1e-9 > y.getValue())return 1;
-                if(y.getValue() - 1e-9 > x.getValue())return -1;
+                if(x.getValue() - 1e-9 > y.getValue())return -1;
+                if(y.getValue() - 1e-9 > x.getValue())return 1;
                 return x.getKey().compareTo(y.getKey());
             });
             for(String partition: partitionAssignment.get(srcExecutor)){
@@ -89,18 +91,21 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
 
             double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor), arrivalrate1 = 0;
-            double serviceRate = examiner.model.serviceRate.get(srcExecutor);
+            double serviceRate = examiner.model.serviceRate.get(srcExecutor); //Assume new executor has same service rate
             double best = 1e100;
             List<String> migratingPartitions = new ArrayList<>();
             while(priorityQueue.size() > 0){
                 Pair<String, Double> t = priorityQueue.poll();
                 arrivalrate0 -= t.getValue();
                 arrivalrate1 += t.getValue();
-                double delay0 = estimateLongtermDelay(arrivalrate0, serviceRate), delay1 = estimateLongtermDelay(arrivalrate1, serviceRate);
-                if(delay0 < best && delay1 < best){
-                    best = Math.min(delay0, delay1);
-                    migratingPartitions.add(t.getKey());
-                }else break;
+                LOG.info("Debugging: current partition " + t.getKey() + " arrival rate=" + t.getValue() + ", src=" + arrivalrate0 + ", tgt=" + arrivalrate1);
+                if(arrivalrate0 < serviceRate && arrivalrate1 < serviceRate) {
+                    double delay0 = estimateLongtermDelay(arrivalrate0, serviceRate), delay1 = estimateLongtermDelay(arrivalrate1, serviceRate);
+                    if (delay0 < best && delay1 < best) {
+                        best = Math.min(delay0, delay1);
+                        migratingPartitions.add(t.getKey());
+                    }else break;
+                }
             }
 
             long newExecutorId = getNextExecutorID();
@@ -831,7 +836,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         if (!partitionAssignment.containsKey(pres.target)) {
             LOG.info("Scale out");
             //For drawing figure
-            System.out.println("Migration! Scale out prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.source);
+            System.out.println("Migration! Scale out prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.target);
 
             listener.scaling(newAssignment.size(), newAssignment);
         }
@@ -839,7 +844,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         else if(partitionAssignment.get(pres.source).size() == pres.migratingPartitions.size()) {
             LOG.info("Scale in");
             //For drawing figure
-            System.out.println("Migration! Scale in prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.source);
+            System.out.println("Migration! Scale in prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.target);
 
             listener.scaling(newAssignment.size(), newAssignment);
         }
@@ -847,7 +852,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         else {
             LOG.info("Load balance");
             //For drawing figure
-            System.out.println("Migration! Load balance prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.source);
+            System.out.println("Migration! Load balance prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.target);
 
             listener.changePartitionAssignment(newAssignment);
         }
