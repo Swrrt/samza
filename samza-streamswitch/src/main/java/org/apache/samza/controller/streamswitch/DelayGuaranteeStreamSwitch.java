@@ -19,7 +19,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
     public DelayGuaranteeStreamSwitch(Config config){
         super(config);
         migrationWarmupTime = config.getLong("streamswitch.migration.warmup.time", 1000000000l);
-        migrationInterval = config.getLong("streamswitch.migration.interval.time", 1000l);
+        migrationInterval = config.getLong("streamswitch.migration.interval.time", 5000l);
         instantaneousThreshold = config.getDouble("streamswitch.delay.instant.threshold", 400.0);
         longTermThreshold = config.getDouble("streamswtich.delay.longterm.threshold", 400.0);
         lastTime = -1000000000l;
@@ -260,8 +260,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         double srcArrivalRate = examiner.model.executorArrivalRate.get(srcExecutor);
                         double srcServiceRate = examiner.model.serviceRate.get(srcExecutor);
                         List<String> migrating = new ArrayList<>();
-                        LOG.info("Debugging, try to migrate to " + tgtExecutor + "src mu=" + srcServiceRate + "tgt mu=" + tgtServiceRate);
-                        while(partitions.size() > 0){
+                        LOG.info("Debugging, try to migrate to " + tgtExecutor + "tgt la=" + tgtArrivalRate + "tgt mu=" + tgtServiceRate);
+                        while(partitions.size() > 1){ //Cannot migrate all partitions out?
                             Pair<String, Double> t = partitions.poll();
                             srcArrivalRate -= t.getValue();
                             tgtArrivalRate += t.getValue();
@@ -640,11 +640,13 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         private boolean isValid, isMigrating;
         private Prescription pendingPres;
         private long timeSlotSize;
+        private long lastDeployed;
         Examiner(){
             this.state = new State();
             this.model = new Model();
             isValid = false;//No data, should be false
             timeSlotSize = 200l; //Default
+            lastDeployed = 0l;
         }
         public void setMetricsRetriever(StreamSwitchMetricsRetriever metricsRetriever){
             this.metricsRetriever = metricsRetriever;
@@ -890,7 +892,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             long time = System.currentTimeMillis();
             examiner.examine(time);
             LOG.info("Diagnose...");
-            if(examiner.isValid && !examiner.isMigrating) {
+            if(examiner.isValid && !examiner.isMigrating && time - examiner.lastDeployed > migrationInterval) {
                 Prescription pres = diagnose(examiner);
                 if (pres.migratingPartitions != null) { //Not do nothing
                     treat(pres);
@@ -903,7 +905,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
             long deltaT = System.currentTimeMillis() - time;
             if(deltaT > metricsRetreiveInterval){
-                LOG.warn("Run loop time is longer than interval, please consider to set larger interval");
+                LOG.warn("Run loop time (" + deltaT + ") is longer than interval(" + metricsRetreiveInterval + "), please consider to set larger interval");
                 LOG.info("No sleeping this time ");
             }else {
                 LOG.info("Sleep for " + (metricsRetreiveInterval - deltaT) + "milliseconds");
@@ -928,6 +930,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 LOG.warn("There is no pending migration, please checkout");
             } else {
                 examiner.isMigrating = false;
+                examiner.lastDeployed = System.currentTimeMillis();
                 Prescription pres = examiner.pendingPres;
                 LOG.info("Migrating " + pres.migratingPartitions + " from " + pres.source + " to " + pres.target);
                 //For drawing figre
