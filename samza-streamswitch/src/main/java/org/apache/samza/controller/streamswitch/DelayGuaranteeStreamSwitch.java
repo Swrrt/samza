@@ -830,16 +830,25 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         //Scale out
         if (!partitionAssignment.containsKey(pres.target)) {
             LOG.info("Scale out");
+            //For drawing figure
+            System.out.println("Migration! Scale out prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.source);
+
             listener.scaling(newAssignment.size(), newAssignment);
         }
         //Scale in
         else if(partitionAssignment.get(pres.source).size() == pres.migratingPartitions.size()) {
             LOG.info("Scale in");
+            //For drawing figure
+            System.out.println("Migration! Scale in prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.source);
+
             listener.scaling(newAssignment.size(), newAssignment);
         }
         //Load balance
         else {
             LOG.info("Load balance");
+            //For drawing figure
+            System.out.println("Migration! Load balance prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.source);
+
             listener.changePartitionAssignment(newAssignment);
         }
     }
@@ -913,6 +922,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 examiner.isMigrating = false;
                 Prescription pres = examiner.pendingPres;
                 LOG.info("Migrating " + pres.migratingPartitions + " from " + pres.source + " to " + pres.target);
+                //For drawing figre
+                System.out.println("Change implemented at time " + System.currentTimeMillis() + " :  from " + pres.source + " to " + pres.target);
 
                 //Scale in, remove useless information
                 if(pres.migratingPartitions.size() == partitionAssignment.get(pres.source).size()){
