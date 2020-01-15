@@ -446,19 +446,33 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 if(state.getPartitionCompleted(partition, n - 1) == state.getPartitionCompleted(partition, n)){
                     return 0;
                 }
+                /*long ct_1 = state.getPartitionCompleted(partition, n - 1), ct = state.getPartitionCompleted(partition, n);
+                long xt_1 = state.calculateArrivalTime(partition, ct_1 + 1), xt = state.calculateArrivalTime(partition, ct);
+                long l = 0;
+                if(xt_1 != xt){
+
+                }else{
+                    l = n - xt + 1;
+                }*/
                 long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
                 //m(c(n-1)+ 1), m(c(n))
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
-                long a0 = state.getPartitionArrived(partition, m0 - 1), a1 = state.getPartitionArrived(partition, m0),
-                        a2 = state.getPartitionArrived(partition, m1 - 1), a3 = state.getPartitionArrived(partition, m1);
-                long M = (a1 - cn_1) * m0 - (a3 - cn) * m1;
-                for(long m = state.calculateArrivalTime(partition, cn_1) + 1; m <= m1; m++){
-                    long am = state.getPartitionArrived(partition, m), am_1 = state.getPartitionArrived(partition, m - 1);
-                    M += (am - am_1) * m;
-                }
+                long l = 0;
+                if(m0 != m1) {
+                    long a0 = state.getPartitionArrived(partition, m0 - 1), a1 = state.getPartitionArrived(partition, m0),
+                            a2 = state.getPartitionArrived(partition, m1 - 1), a3 = state.getPartitionArrived(partition, m1);
+                    long M = (a1 - cn_1) * m0 - (a3 - cn) * m1;
+                    long aa0 = state.calculateArrivalTime(partition, cn_1) + 1;
+                    for (long m = aa0; m <= m1; m++) {
+                        long am = state.getPartitionArrived(partition, m), am_1 = state.getPartitionArrived(partition, m - 1);
+                        M += (am - am_1) * m;
+                    }
+                    l = (n + 1 - M / (cn - cn_1));
+                    LOG.info("Debugging, partition " + partition + " n=" + n + " cn=" + cn + " cn_1=" + cn_1 + " m0=" + m0 + " m1=" + m1 + " a1=" + a1 + " a3=" + a3 + " aa0=" + aa0 + " M=" + M );
+                }else l = n - m1 + 1;
                 long T = examiner.timeSlotSize;
-                long delay = (n + 1 - M / (cn - cn_1)) * T;
-                LOG.info("Debugging, partition " + partition + " n=" + n + " cn=" + cn + " cn_1=" + cn_1 + " m0=" + m0 + " m1=" + m1 + " a1=" + a1 + " a3=" + a3 + " M= " + M + " Delay=" + delay);
+                long delay =  l * T;
+                LOG.info("Debugging, l="+ l + " delay=" + delay);
                 return delay;
             }
 
