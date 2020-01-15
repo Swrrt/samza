@@ -102,7 +102,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 if(arrivalrate0 < serviceRate && arrivalrate1 < serviceRate) {
                     double delay0 = estimateLongtermDelay(arrivalrate0, serviceRate), delay1 = estimateLongtermDelay(arrivalrate1, serviceRate);
                     if (delay0 < best && delay1 < best) {
-                        best = Math.min(delay0, delay1);
+                        best = Math.max(delay0, delay1);
                         migratingPartitions.add(t.getKey());
                     }else break;
                 }
