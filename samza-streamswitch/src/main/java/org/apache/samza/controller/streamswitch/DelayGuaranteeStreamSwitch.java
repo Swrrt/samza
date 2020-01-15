@@ -344,11 +344,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 return arrived;
             }
             public long getPartitionCompleted(String partitionId, long n){
-                long arrived = 0;
-                if(partitionArrived.containsKey(partitionId)){
-                    arrived = partitionArrived.get(partitionId).getOrDefault(n, 0l);
+                long completed = 0;
+                if(partitionCompleted.containsKey(partitionId)){
+                    completed = partitionCompleted.get(partitionId).getOrDefault(n, 0l);
                 }
-                return arrived;
+                return completed;
             }
             //Return -1 for no utilization
             public double getUtilization(String executorId){
