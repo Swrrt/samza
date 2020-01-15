@@ -89,12 +89,16 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             for(String partition: partitionAssignment.get(srcExecutor)){
                 priorityQueue.add(new Pair(partition, examiner.model.calculatePartitionInstantDelay(partition, examiner.state.currentTimeIndex)));
             }
+            //Debugging
+            for(Pair<String, Double> x: priorityQueue){
+                LOG.info("Partition " + x.getKey() + " delay=" + x.getValue());
+            }
 
             double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor), arrivalrate1 = 0;
             double serviceRate = examiner.model.serviceRate.get(srcExecutor); //Assume new executor has same service rate
             double best = 1e100;
             List<String> migratingPartitions = new ArrayList<>();
-            while(priorityQueue.size() > 0){
+            while(priorityQueue.size() > 1){
                 Pair<String, Double> t = priorityQueue.poll();
                 double arrival = examiner.model.partitionArrivalRate.get(t.getKey());
                 arrivalrate0 -= arrival;
