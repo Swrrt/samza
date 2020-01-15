@@ -82,12 +82,12 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
             //Try from lightest arrival to heaviest arrival
             PriorityQueue<Pair<String, Double>> priorityQueue = new PriorityQueue<>((x,y)-> {
-                if(x.getValue() - 1e-9 > y.getValue())return -1;
-                if(y.getValue() - 1e-9 > x.getValue())return 1;
+                if(x.getValue() - 1e-9 > y.getValue())return 1;
+                if(y.getValue() - 1e-9 > x.getValue())return -1;
                 return x.getKey().compareTo(y.getKey());
             });
             for(String partition: partitionAssignment.get(srcExecutor)){
-                priorityQueue.add(new Pair(partition, examiner.model.partitionArrivalRate.get(partition)));
+                priorityQueue.add(new Pair(partition, examiner.model.calculatePartitionInstantDelay(partition, examiner.state.currentTimeIndex)));
             }
 
             double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor), arrivalrate1 = 0;
@@ -96,8 +96,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             List<String> migratingPartitions = new ArrayList<>();
             while(priorityQueue.size() > 0){
                 Pair<String, Double> t = priorityQueue.poll();
-                arrivalrate0 -= t.getValue();
-                arrivalrate1 += t.getValue();
+                double arrival = examiner.model.partitionArrivalRate.get(t.getKey());
+                arrivalrate0 -= arrival;
+                arrivalrate1 += arrival;
                 LOG.info("Debugging: current partition " + t.getKey() + " arrival rate=" + t.getValue() + ", src=" + arrivalrate0 + ", tgt=" + arrivalrate1);
                 if(arrivalrate0 < serviceRate && arrivalrate1 < serviceRate) {
                     double delay0 = estimateLongtermDelay(arrivalrate0, serviceRate), delay1 = estimateLongtermDelay(arrivalrate1, serviceRate);
@@ -113,7 +114,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             String tgtExecutor = String.format("%06d", newExecutorId);
             setNextExecutorId(newExecutorId + 1);
             LOG.info("Debugging, scaling out migrating partitions: " + migratingPartitions);
-            return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(srcExecutor, tgtExecutor, migratingPartitions), null); //TODO: add here
+            return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(srcExecutor, tgtExecutor, migratingPartitions), null);
         }
 
         //Compare two delay vector, assume they are sorted
@@ -153,8 +154,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         if(srcArrival + tgtArrival < tgtService){
                             double estimatedLongtermDelay = estimateLongtermDelay(srcArrival + tgtArrival, tgtService);
                             PriorityQueue<Pair<String, Double>> current = new PriorityQueue<>((x,y)-> {
-                                if(x.getValue() - 1e-9 > y.getValue())return -1;
-                                if(y.getValue() - 1e-9 > x.getValue())return 1;
+                                if(x.getValue() - 1e-9 > y.getValue())return 1;
+                                if(y.getValue() - 1e-9 > x.getValue())return -1;
                                 return x.getKey().compareTo(y.getKey());
                             });
                             for(String executor: partitionAssignment.keySet()){
@@ -216,7 +217,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             return 1.0/(serviceRate - arrivalRate);
         }
 
-        //TODO: implement DFS
         public Pair<Prescription, List<Pair<String, Double>>> tryToMigrate(){
             LOG.info("Try to migrate");
             LOG.info("Migrating once based on assignment: " + partitionAssignment);
@@ -254,17 +254,24 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                             if(y.getValue() - 1e-9 > x.getValue())return 1;
                             return x.getKey().compareTo(y.getKey());
                         });
+
                         for(String partition: partitionAssignment.get(srcExecutor)){
-                            partitions.add(new Pair(partition, examiner.model.partitionArrivalRate.get(partition)));
+                            partitions.add(new Pair(partition, examiner.model.calculatePartitionInstantDelay(partition, examiner.state.currentTimeIndex)));
                         }
+                        //Debugging
+                        for(Pair<String, Double> x:partitions){
+                            LOG.info("Partition " + x.getKey() + " delay=" + x.getValue());
+                        }
+
                         double srcArrivalRate = examiner.model.executorArrivalRate.get(srcExecutor);
                         double srcServiceRate = examiner.model.serviceRate.get(srcExecutor);
                         List<String> migrating = new ArrayList<>();
                         LOG.info("Debugging, try to migrate to " + tgtExecutor + "tgt la=" + tgtArrivalRate + "tgt mu=" + tgtServiceRate);
                         while(partitions.size() > 1){ //Cannot migrate all partitions out?
                             Pair<String, Double> t = partitions.poll();
-                            srcArrivalRate -= t.getValue();
-                            tgtArrivalRate += t.getValue();
+                            double arrival = examiner.model.partitionArrivalRate.get(t.getKey());
+                            srcArrivalRate -= arrival;
+                            tgtArrivalRate += arrival;
                             migrating.add(t.getKey());
                             if(srcArrivalRate < srcServiceRate && tgtArrivalRate < tgtServiceRate){
                                 double srcDelay = estimateLongtermDelay(srcArrivalRate, srcServiceRate), tgtDelay = estimateLongtermDelay(tgtArrivalRate, tgtServiceRate);
