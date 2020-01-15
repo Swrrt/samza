@@ -106,6 +106,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         migratingPartitions.add(t.getKey());
                     }else break;
                 }
+                if(arrivalrate1 > serviceRate)break;
             }
 
             long newExecutorId = getNextExecutorID();
@@ -248,9 +249,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     double tgtArrivalRate = examiner.model.executorArrivalRate.get(tgtExecutor);
                     double tgtServiceRate = examiner.model.serviceRate.get(tgtExecutor);
                     if (tgtArrivalRate < tgtServiceRate - 1e-9) {
-                        PriorityQueue<Pair<String, Double>> partitions = new PriorityQueue<>((x,y)-> {
-                            if(x.getValue() - 1e-9 > y.getValue())return 1;
-                            if(y.getValue() - 1e-9 > x.getValue())return -1;
+                        PriorityQueue<Pair<String, Double>> partitions = new PriorityQueue<>((x,y)-> {//TODO: change here from arrival rate to delay
+                            if(x.getValue() - 1e-9 > y.getValue())return -1;
+                            if(y.getValue() - 1e-9 > x.getValue())return 1;
                             return x.getKey().compareTo(y.getKey());
                         });
                         for(String partition: partitionAssignment.get(srcExecutor)){
