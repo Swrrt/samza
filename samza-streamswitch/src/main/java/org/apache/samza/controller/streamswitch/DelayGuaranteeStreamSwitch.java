@@ -20,8 +20,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         super(config);
         migrationWarmupTime = config.getLong("streamswitch.migration.warmup.time", 1000000000l);
         migrationInterval = config.getLong("streamswitch.migration.interval.time", 1000l);
-        instantaneousThreshold = config.getDouble("streamswitch.delay.instant.threshold", 100.0);
-        longTermThreshold = config.getDouble("streamswtich.delay.longterm.threshold", 100.0);
+        instantaneousThreshold = config.getDouble("streamswitch.delay.instant.threshold", 400.0);
+        longTermThreshold = config.getDouble("streamswtich.delay.longterm.threshold", 400.0);
         lastTime = -1000000000l;
         algorithms = new Algorithms();
         updateLock = new ReentrantLock();
@@ -458,6 +458,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 //m(c(n-1)+ 1), m(c(n))
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
                 long l = 0;
+                LOG.info("Debugging, partition " + partition + " n=" + n + " cn=" + cn + " cn_1=" + cn_1 + " m0=" + m0 + " m1=" + m1);
                 if(m0 != m1) {
                     long a0 = state.getPartitionArrived(partition, m0 - 1), a1 = state.getPartitionArrived(partition, m0),
                             a2 = state.getPartitionArrived(partition, m1 - 1), a3 = state.getPartitionArrived(partition, m1);
@@ -468,7 +469,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         M += (am - am_1) * m;
                     }
                     l = (n + 1 - M / (cn - cn_1));
-                    LOG.info("Debugging, partition " + partition + " n=" + n + " cn=" + cn + " cn_1=" + cn_1 + " m0=" + m0 + " m1=" + m1 + " a1=" + a1 + " a3=" + a3 + " aa0=" + aa0 + " M=" + M );
+                    LOG.info("a1=" + a1 + " a3=" + a3 + " aa0=" + aa0 + " M=" + M );
                 }else l = n - m1 + 1;
                 long T = examiner.timeSlotSize;
                 long delay =  l * T;
