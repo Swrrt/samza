@@ -256,10 +256,10 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         for(String partition: partitionAssignment.get(srcExecutor)){
                             partitions.add(new Pair(partition, examiner.model.partitionArrivalRate.get(partition)));
                         }
-
                         double srcArrivalRate = examiner.model.executorArrivalRate.get(srcExecutor);
                         double srcServiceRate = examiner.model.serviceRate.get(srcExecutor);
                         List<String> migrating = new ArrayList<>();
+                        LOG.info("Debugging, try to migrate to " + tgtExecutor + "src mu=" + srcServiceRate + "tgt mu=" + tgtServiceRate);
                         while(partitions.size() > 0){
                             Pair<String, Double> t = partitions.poll();
                             srcArrivalRate -= t.getValue();
@@ -267,6 +267,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                             migrating.add(t.getKey());
                             if(srcArrivalRate < srcServiceRate && tgtArrivalRate < tgtServiceRate){
                                 double srcDelay = estimateLongtermDelay(srcArrivalRate, srcServiceRate), tgtDelay = estimateLongtermDelay(tgtArrivalRate, tgtServiceRate);
+                                LOG.info("Debugging, current src la=" + srcArrivalRate + " tgt la=" + tgtArrivalRate + " partitions=" + migrating);
                                 PriorityQueue<Pair<String, Double>> current = new PriorityQueue<>((x,y)-> {
                                     if(x.getValue() - 1e-9 > y.getValue())return -1;
                                     if(y.getValue() - 1e-9 > x.getValue())return 1;
@@ -281,6 +282,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                                         current.add(new Pair(executor, examiner.model.getLongTermDelay(executor)));
                                     }
                                 }
+                                LOG.info("Debugging, vectors=" + current);
                                 if(best == null || vectorGreaterThan(best, current)){
                                     best = current;
                                     bestTgtExecutor = tgtExecutor;
