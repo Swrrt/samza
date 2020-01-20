@@ -443,7 +443,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         partitionProcessed.put(partitionId, val);
                         partitionValid.put(partitionId, true);
                     } else {
-                        if (val > partitionProcessed.get(partitionId)) {
+                        if (val >= partitionProcessed.get(partitionId)) {
                             partitionProcessed.put(partitionId, val);
                             partitionValid.put(partitionId, true);
                         }else partitionValid.put(partitionId, false);
@@ -476,6 +476,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         LOG.info("Debugging, checkpoint: " + checkpointOffset);
         LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Debugging, begin: " + partitionBeginOffset);
+        LOG.info("Debugging, valid: " + partitionValid);
         LOG.info("Retrieved Metrics: " + metrics);
         return metrics;
     }
