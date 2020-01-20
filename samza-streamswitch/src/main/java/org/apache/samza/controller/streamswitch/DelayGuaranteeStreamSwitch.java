@@ -636,9 +636,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     updateWindowExecutorInstantaneousDelay(executor, n, partitionAssignment);
                     executorInstantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor));
                 }
-                /*LOG.info("Debugging, executorUtilizationWindow: " + utilizationWindow);
+                LOG.info("Debugging, executorUtilizationWindow: " + utilizationWindow);
                 LOG.info("Debugging, executorDelayWindow: " + delayWindow);
-                LOG.info("Debugging, executorServiceWindow: " + serviceWindow);*/
+                LOG.info("Debugging, executorServiceWindow: " + serviceWindow);
             }
             public void showData(){
                 LOG.info("Show delay estimation data...");
@@ -665,6 +665,16 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         public void setTimeSlotSize(long size){
             timeSlotSize = size;
         }
+        private boolean checkMetricsValid(Map<String, Object> metrics){
+            if(!metrics.containsKey("PartitionValid"))return false;
+            Map<String, Boolean> partitionValid = (HashMap<String,Boolean>)metrics.get("PartitionValid");
+            for(String partition: partitionAssignment.keySet()){
+                if(!partitionValid.containsKey(partition))return false;
+                if(!partitionValid.get(partition))return false;
+            }
+            return true;
+        }
+
         private void examine(long time){
             Map<String, Object> metrics = metricsRetriever.retrieveMetrics();
             Map<String, Long> partitionArrived =
@@ -673,10 +683,11 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
             Map<String, Double> executorUtilization =
                     (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
-            //TODO: check valid or not here
+            isValid = true;
             updateState(time, partitionArrived, partitionProcessed, executorUtilization);
             updateModel();
-            isValid = true;
+            //TODO: check valid or not here
+            if(!checkMetricsValid(metrics))isValid = false;
             for(String executor: partitionAssignment.keySet()){
                 if(!model.executorArrivalRate.containsKey(executor)){
                     LOG.info("Current model is not valid, because " + executor + " is not ready.");
@@ -912,7 +923,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 }
             }else{
                 if(!examiner.isValid)LOG.info("Current examine data is not valid, need to wait until valid");
-                else LOG.info("One migration is in process");
+                else if(examiner.isMigrating)LOG.info("One migration is in process");
+                else LOG.info("Too close to last migration");
             }
             long deltaT = System.currentTimeMillis() - time;
             if(deltaT > metricsRetreiveInterval){

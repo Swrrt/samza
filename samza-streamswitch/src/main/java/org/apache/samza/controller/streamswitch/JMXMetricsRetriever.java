@@ -351,6 +351,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
 
     HashMap<String, Long> partitionProcessed;
     HashMap<String, HashMap<String, Long>> partitionWatermark, partitionBeginOffset;
+
+    //Return a bad flag.
     @Override
     public Map<String, Object> retrieveMetrics(){
         YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
@@ -377,9 +379,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         LOG.info("Retrieving metrics...... ");
         HashMap<String, Long> partitionArrived = new HashMap<>();
         HashMap<String, Double> executorUtilization = new HashMap<>();
+        HashMap<String, Boolean> partitionValid = new HashMap<>();
         metrics.put("PartitionArrived", partitionArrived);
         metrics.put("PartitionProcessed", partitionProcessed);
         metrics.put("ExecutorUtilization", executorUtilization);
+        metrics.put("PartitionValid", partitionValid); //For validation check
         HashMap<String, String> debugProcessed = new HashMap<>();
         HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
@@ -432,16 +436,17 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         if(checkpointOffset.containsKey(topic) && partitionBeginOffset.containsKey(topic) && checkpointOffset.get(topic).containsKey(ent.getKey())){
                             long t = checkpointOffset.get(topic).get(ent.getKey()) - partitionBeginOffset.get(topic).get(ent.getKey());
                             if(t > 0) val += t;
-
                         }
                     }
                     debugProcessed.put(containerId + partitionId, String.valueOf(val));
                     if (!partitionProcessed.containsKey(partitionId)) {
                         partitionProcessed.put(partitionId, val);
+                        partitionValid.put(partitionId, true);
                     } else {
                         if (val > partitionProcessed.get(partitionId)) {
                             partitionProcessed.put(partitionId, val);
-                        }
+                            partitionValid.put(partitionId, true);
+                        }else partitionValid.put(partitionId, false);
                     }
                 }
             }
@@ -462,11 +467,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 if (arrived < processed) {
                     LOG.info("Attention, partition " + partitionId + "'s arrival is smaller than processed, arrival: " + arrived + " processed: " + processed);
                     arrived = processed;
+                    partitionValid.put("Partition " + partitionId, false);
                 }
                 partitionArrived.put("Partition " + partitionId, arrived);
             }
         }
-
         LOG.info("Debugging, watermark: " + debugWatermark);
         LOG.info("Debugging, checkpoint: " + checkpointOffset);
         LOG.info("Debugging, processed: " + debugProcessed);
