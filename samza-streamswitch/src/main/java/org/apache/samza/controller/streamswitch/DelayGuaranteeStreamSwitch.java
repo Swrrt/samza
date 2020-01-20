@@ -673,13 +673,14 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         private boolean checkMetricsValid(Map<String, Object> metrics){
             if(!metrics.containsKey("PartitionValid"))return false;
             Map<String, Boolean> partitionValid = (HashMap<String,Boolean>)metrics.get("PartitionValid");
-            for(String partition: partitionAssignment.keySet()){
-                String id = "Partition " + partition;
-                if(!partitionValid.containsKey(id) || !partitionValid.get(id)){
-                    LOG.info(id + "'s metrics is not valid");
-                    return false;
+            for(String executor: partitionAssignment.keySet())
+                for(String partition: partitionAssignment.get(executor)) {
+                    String id = "Partition " + partition;
+                    if (!partitionValid.containsKey(id) || !partitionValid.get(id)) {
+                        LOG.info(id + "'s metrics is not valid");
+                        return false;
+                    }
                 }
-            }
             return true;
         }
 
