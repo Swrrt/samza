@@ -567,8 +567,10 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 for(long i = n0; i <= n; i++){
                     long time = state.getTimepoint(i) - state.getTimepoint(i-1);
                     totalTime += time;
-                    for(String partition: windowedMappings.get(i).get(executorId)) {
-                        totalServiced += state.getPartitionCompleted(partition, i) - state.getPartitionCompleted(partition, i-1);
+                    if(windowedMappings.get(i).containsKey(executorId)){ //Could be scaled out or scaled in
+                        for(String partition: windowedMappings.get(i).get(executorId)) {
+                            totalServiced += state.getPartitionCompleted(partition, i) - state.getPartitionCompleted(partition, i-1);
+                        }
                     }
                 }
                 if(totalTime > 0) return totalServiced/((double)totalTime);
@@ -606,8 +608,10 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 if(n0<1)n0 = 1;
                 for(long i = n0; i <= n; i++){
                     long processed = 0;
-                    for(String partition: windowedMappings.get(i).get(executorId)){
-                        processed += state.getPartitionCompleted(partition, i) - state.getPartitionCompleted(partition, i - 1);
+                    if(windowedMappings.get(i).containsKey(executorId)){
+                        for(String partition: windowedMappings.get(i).get(executorId)){
+                            processed += state.getPartitionCompleted(partition, i) - state.getPartitionCompleted(partition, i - 1);
+                        }
                     }
                     totalProcessed += processed;
                     totalDelay += calculateExecutorInstantDelay(executorId, i) * processed;
