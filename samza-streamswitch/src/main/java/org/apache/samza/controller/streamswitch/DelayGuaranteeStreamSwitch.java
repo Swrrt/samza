@@ -384,6 +384,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         long processed = partitionCompleted.get(partition).get(currentTimeIndex - 2);
                         if(!(arrived + 1 < processed - 1))return ; //If beginIndex is useful, stop pop
                     }
+
+                    LOG.info("Dropping old state at time " + beginTimeIndex);
                     for(String partition: partitionArrived.keySet()){
                         partitionArrived.get(partition).remove(beginTimeIndex);
                         partitionCompleted.get(partition).remove(beginTimeIndex);
@@ -445,21 +447,20 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 System.out.println("DelayEstimator: " + string);
             }
         }
+        //Cannot use actually use window to store information, because we need to calibrate state.
         class Model {
             private State state;
             Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, executorInstantaneousDelay;
-            private Map<String, Deque<Pair<Long, Double>>> delayWindow; //Delay window stores <processed, delay> pair
-            private Map<String, Deque<Pair<Long, Double>>> utilizationWindow; //Utilization stores <time, utilization> pair
-            private Map<String, Deque<Pair<Long, Long>>> serviceWindow; //Utilization stores <time, processed> pair
+            private Map<Long, Map<String, List<String>>> windowedMappings;
+            private Map<String, Deque<Pair<Long, Double>>> utilizationWindow;
             private int alpha = 1, beta = 2;
             public Model(){
-                delayWindow = new HashMap<>();
-                utilizationWindow = new HashMap<>();
-                serviceWindow = new HashMap<>();
                 partitionArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
                 serviceRate = new HashMap<>();
                 executorInstantaneousDelay = new HashMap<>();
+                windowedMappings = new HashMap<>();
+                utilizationWindow = new HashMap<>();
             }
             public void setTimes(long interval, int a, int b){
                 alpha = a;
@@ -544,29 +545,16 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 return arrivalRate;
             }
 
-            private void updateWindowExecutorServiced(String executor, long n, Map<String, List<String>> partitionAssignment){
-                long processed = 0;
-                for(String partition: partitionAssignment.get(executor)){
-                    processed += state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
-                }
-
-                if(!serviceWindow.containsKey(executor)){
-                    serviceWindow.put(executor, new LinkedList<>());
-                }
-                serviceWindow.get(executor).addLast(new Pair(n, processed));
-                if(serviceWindow.get(executor).size() > beta){
-                    serviceWindow.get(executor).pollFirst();
-                }
-            }
-
-            // Calculate window service rate of tn0 ~ tn1 (exclude tn0)
-            private double getExecutorServiceRate(String executorId){
+            // Calculate window service rate of n - beta ~ n (exclude n - beta)
+            private double getExecutorServiceRate(String executorId, long n){
                 long totalServiced = 0;
                 long totalTime = 0;
-                for(Pair<Long, Long> entry: serviceWindow.get(executorId)){
-                    long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
+                for(long i = n - beta + 1; i <= n; i++){
+                    long time = state.getTimepoint(i) - state.getTimepoint(i-1);
                     totalTime += time;
-                    totalServiced += entry.getValue();
+                    for(String partition: windowedMappings.get(i).get(executorId)) {
+                        totalServiced += state.getPartitionCompleted(partition, i) - state.getPartitionCompleted(partition, i-1);
+                    }
                 }
                 if(totalTime > 0) return totalServiced/((double)totalTime);
                 return 0;
@@ -595,28 +583,17 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 if(totalTime > 0) totalUtilization/= totalTime;
                 return totalUtilization;
             }
-            private void updateWindowExecutorInstantaneousDelay(String executor, long n, Map<String, List<String>> partitionAssignment){
-                double instantDelay = calculateExecutorInstantDelay(executor, n);
-                if(!delayWindow.containsKey(executor)){
-                    delayWindow.put(executor, new LinkedList<>());
-                }
-                long processed = 0;
-                for(String partition: partitionAssignment.get(executor)){
-                    processed += state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
-                }
-                delayWindow.get(executor).addLast(new Pair(processed, instantDelay));
-                if(delayWindow.get(executor).size() > beta){
-                    delayWindow.get(executor).pollFirst();
-                }
-            }
             //Window average delay
-            public double getWindowExecutorInstantaneousDelay(String executorId){
+            public double getWindowExecutorInstantaneousDelay(String executorId, long n){
                 double totalDelay = 0;
                 long totalProcessed = 0;
-                for(Pair<Long, Double> entry: delayWindow.get(executorId)){
-                    long processed = entry.getKey();
+                for(long i = n - beta + 1; i <= n; i++){
+                    long processed = 0;
+                    for(String partition: windowedMappings.get(i).get(executorId)){
+                        processed += state.getPartitionCompleted(partition, i) - state.getPartitionCompleted(partition, i - 1);
+                    }
                     totalProcessed += processed;
-                    totalDelay += entry.getValue() * processed;
+                    totalDelay += calculateExecutorInstantDelay(executorId, i) * processed;
                 }
                 if(totalProcessed > 0) totalDelay/=totalProcessed;
                 return totalDelay;
@@ -629,7 +606,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 executorArrivalRate.clear();
                 serviceRate.clear();
                 executorInstantaneousDelay.clear();
-
+                windowedMappings.put(n, partitionAssignment);
+                if(windowedMappings.containsKey(n - beta - 2))windowedMappings.remove(n - beta - 2);
                 for(String executor: partitionAssignment.keySet()){
                     double arrivalRate = 0;
                     for(String partition: partitionAssignment.get(executor)){
@@ -640,18 +618,17 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     executorArrivalRate.put(executor, arrivalRate);
                     updateWindowExecutorUtilization(executor, n);
                     double util = getWindowExecutorUtilization(executor);
-                    updateWindowExecutorServiced(executor, n, partitionAssignment);
-                    double mu = getExecutorServiceRate(executor);
+                    double mu = getExecutorServiceRate(executor, n);
                     if(util > 1e-9 && util <= 1){
                         mu /= util;
                     }
                     serviceRate.put(executor, mu);
-                    updateWindowExecutorInstantaneousDelay(executor, n, partitionAssignment);
-                    executorInstantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor));
+                    executorInstantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor, n));
                 }
-                LOG.info("Debugging, executorUtilizationWindow: " + utilizationWindow);
-                LOG.info("Debugging, executorDelayWindow: " + delayWindow);
-                LOG.info("Debugging, executorServiceWindow: " + serviceWindow);
+
+                LOG.info("Debugging, executor utilization window: " + utilizationWindow);
+                LOG.info("Debugging, executor windowed delay: " + executorInstantaneousDelay);
+                LOG.info("Debugging, executor windowed service: " + serviceRate);
             }
             public void dropOldData(long time){
 
@@ -706,7 +683,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             isValid = true;
             updateState(time, partitionArrived, partitionProcessed, executorUtilization);
             updateModel();
-            //TODO: add remove old state
             //TODO: calibrate
             if(!checkMetricsValid(metrics))isValid = false;
             for(String executor: partitionAssignment.keySet()){
@@ -982,8 +958,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
                 //Scale in, remove useless information
                 if(pres.migratingPartitions.size() == partitionAssignment.get(pres.source).size()){
-                    examiner.model.serviceWindow.remove(pres.source);
-                    examiner.model.delayWindow.remove(pres.source);
                     examiner.model.utilizationWindow.remove(pres.source);
                 }
 
