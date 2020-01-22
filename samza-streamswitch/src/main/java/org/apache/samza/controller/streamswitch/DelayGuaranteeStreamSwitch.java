@@ -406,7 +406,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
             public long calculateArrivalTime(String partition, long r){
                 for(Map.Entry<Long, Long> entry: partitionArrived.get(partition).entrySet()){
-                    if(entry.getKey() > 0 && r <= entry.getValue() && r > partitionArrived.get(partition).get(entry.getKey() - 1))return entry.getKey();
+                    if(entry.getKey() > state.beginTimeIndex && r <= entry.getValue() && r > partitionArrived.get(partition).get(entry.getKey() - 1))return entry.getKey();
                 }
                 return 0;
             }
@@ -444,7 +444,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     currentTimeIndex++;
                 }
                 timePoints.put(currentTimeIndex, time);
-                LOG.info("Current time ");
+                LOG.info("Current time " + time);
                 for(String partition: taskArrived.keySet()){
                     updatePartitionArrived(partition, currentTimeIndex, taskArrived.get(partition));
                 }
