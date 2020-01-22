@@ -472,11 +472,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 partitionArrived.put("Partition " + partitionId, arrived);
             }
         }
-        LOG.info("Debugging, watermark: " + debugWatermark);
+        /*LOG.info("Debugging, watermark: " + debugWatermark);
         LOG.info("Debugging, checkpoint: " + checkpointOffset);
         LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Debugging, begin: " + partitionBeginOffset);
-        LOG.info("Debugging, valid: " + partitionValid);
+        LOG.info("Debugging, valid: " + partitionValid);*/
         LOG.info("Retrieved Metrics: " + metrics);
         return metrics;
     }

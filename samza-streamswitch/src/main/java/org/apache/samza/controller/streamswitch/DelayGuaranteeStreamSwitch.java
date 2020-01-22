@@ -253,7 +253,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     double tgtArrivalRate = examiner.model.executorArrivalRate.get(tgtExecutor);
                     double tgtServiceRate = examiner.model.serviceRate.get(tgtExecutor);
                     if (tgtArrivalRate < tgtServiceRate - 1e-9) {
-                        PriorityQueue<Pair<String, Double>> partitions = new PriorityQueue<>((x,y)-> {//TODO: change here from arrival rate to delay
+                        PriorityQueue<Pair<String, Double>> partitions = new PriorityQueue<>((x,y)-> {
                             if(x.getValue() - 1e-9 > y.getValue())return -1;
                             if(y.getValue() - 1e-9 > x.getValue())return 1;
                             return x.getKey().compareTo(y.getKey());
@@ -322,20 +322,19 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             Map<String, Map<Long, Long>> partitionArrived, partitionCompleted; //Instead of actual time, use the n-th time point as key
             Map<String, Double> executorUtilization;
             Map<Long, Long> timePoints; //Actual time of n-th time point.
-            long windowSize;
+            long beginTimeIndex;
             long currentTimeIndex;
+            long storedTimeWindowSize;
             public State() {
                 timePoints = new HashMap<>();
-                windowSize = 100000;
                 currentTimeIndex = -1;
+                beginTimeIndex = 0;
+                storedTimeWindowSize = 100;
                 partitionArrived = new HashMap<>();
                 partitionCompleted = new HashMap<>();
                 executorUtilization = new HashMap<>();
             }
 
-            public void setWindowSize(long size){
-                windowSize = size;
-            }
             protected long getTimepoint(long n){
                 //Debugging
                 if(!timePoints.containsKey(n)){
@@ -373,11 +372,24 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             public double getUtilization(String executorId){
                 return executorUtilization.getOrDefault(executorId, -1.0);
             }
-            //Remove data older than current index - window size
+            /*
+            Remove old data that is useless:
+                  For all partition, Arrived(i) < Processed(n-1)-1?
+                  and i < n - windowSize
+            */
             private void popOldState(){
-                for(String partition: partitionArrived.keySet()){
-                    partitionArrived.get(partition).remove(currentTimeIndex - windowSize);
-                    partitionCompleted.get(partition).remove(currentTimeIndex - windowSize);
+                while(beginTimeIndex < currentTimeIndex - storedTimeWindowSize){
+                    for(String partition: partitionArrived.keySet()){
+                        long arrived = partitionArrived.get(partition).get(beginTimeIndex + 2);
+                        long processed = partitionCompleted.get(partition).get(currentTimeIndex - 2);
+                        if(!(arrived + 1 < processed - 1))return ; //If beginIndex is useful, stop pop
+                    }
+                    for(String partition: partitionArrived.keySet()){
+                        partitionArrived.get(partition).remove(beginTimeIndex);
+                        partitionCompleted.get(partition).remove(beginTimeIndex);
+                    }
+                    timePoints.remove(beginTimeIndex);
+                    beginTimeIndex++;
                 }
             }
             public long calculateArrivalTime(String partition, long r){
@@ -694,7 +706,8 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             isValid = true;
             updateState(time, partitionArrived, partitionProcessed, executorUtilization);
             updateModel();
-            //TODO: check valid or not here
+            //TODO: add remove old state
+            //TODO: calibrate
             if(!checkMetricsValid(metrics))isValid = false;
             for(String executor: partitionAssignment.keySet()){
                 if(!model.executorArrivalRate.containsKey(executor)){
@@ -725,7 +738,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization){
             LOG.info("Updating network calculus model...");
             state.updateAtTime(time, partitionArrived, partitionProcessed, executorUtilization, partitionAssignment);
-
+            state.popOldState();
             //Debug & Statistics
             HashMap<String, Long> arrived = new HashMap<>(), completed = new HashMap<>();
             for(String partition: state.partitionArrived.keySet()) {
