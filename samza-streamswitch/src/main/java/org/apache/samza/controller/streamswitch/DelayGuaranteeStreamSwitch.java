@@ -437,6 +437,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                         for(String partition: partitionAssignment.get(executor)){
                             updatePartitionCompleted(partition, 0, 0);
                             updatePartitionArrived(partition, 0, 0);
+                            partitionLastValid.put(partition, 0l);
                         }
                     }
                     timePoints.put(0l, 0l);
