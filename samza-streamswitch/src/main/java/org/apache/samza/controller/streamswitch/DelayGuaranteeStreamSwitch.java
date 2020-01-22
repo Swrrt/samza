@@ -562,7 +562,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 long totalServiced = 0;
                 long totalTime = 0;
                 long n0 = n - beta + 1;
-                if(n0<0)n0 = 0;
+                if(n0<1)n0 = 1;
                 for(long i = n0; i <= n; i++){
                     long time = state.getTimepoint(i) - state.getTimepoint(i-1);
                     totalTime += time;
@@ -602,7 +602,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 double totalDelay = 0;
                 long totalProcessed = 0;
                 long n0 = n - beta + 1;
-                if(n0<0)n0 = 0;
+                if(n0<1)n0 = 1;
                 for(long i = n0; i <= n; i++){
                     long processed = 0;
                     for(String partition: windowedMappings.get(i).get(executorId)){
