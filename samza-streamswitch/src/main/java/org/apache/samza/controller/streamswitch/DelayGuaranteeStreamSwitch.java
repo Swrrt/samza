@@ -379,7 +379,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                   For all partition, Arrived(i) < Processed(n-1)-1?
                   and i < n - windowSize
             */
-            private void popOldState(){
+            private void dropOldState(){
                 LOG.info("Try to drop old states");
                 while(beginTimeIndex < currentTimeIndex - storedTimeWindowSize){
                     for(String partition: partitionArrived.keySet()){
@@ -561,7 +561,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             private double getExecutorServiceRate(String executorId, long n){
                 long totalServiced = 0;
                 long totalTime = 0;
-                for(long i = n - beta + 1; i <= n; i++){
+                long n0 = n - beta + 1;
+                if(n0<0)n0 = 0;
+                for(long i = n0; i <= n; i++){
                     long time = state.getTimepoint(i) - state.getTimepoint(i-1);
                     totalTime += time;
                     for(String partition: windowedMappings.get(i).get(executorId)) {
@@ -599,7 +601,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             public double getWindowExecutorInstantaneousDelay(String executorId, long n){
                 double totalDelay = 0;
                 long totalProcessed = 0;
-                for(long i = n - beta + 1; i <= n; i++){
+                long n0 = n - beta + 1;
+                if(n0<0)n0 = 0;
+                for(long i = n0; i <= n; i++){
                     long processed = 0;
                     for(String partition: windowedMappings.get(i).get(executorId)){
                         processed += state.getPartitionCompleted(partition, i) - state.getPartitionCompleted(partition, i - 1);
@@ -727,7 +731,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
         private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization){
             LOG.info("Updating network calculus model...");
             state.updateAtTime(time, partitionArrived, partitionProcessed, executorUtilization, partitionAssignment);
-            state.popOldState();
+            state.dropOldState();
             //Debug & Statistics
             HashMap<String, Long> arrived = new HashMap<>(), completed = new HashMap<>();
             for(String partition: state.partitionArrived.keySet()) {
