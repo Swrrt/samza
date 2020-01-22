@@ -322,6 +322,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             Map<String, Map<Long, Long>> partitionArrived, partitionCompleted; //Instead of actual time, use the n-th time point as key
             Map<String, Double> executorUtilization;
             Map<Long, Long> timePoints; //Actual time of n-th time point.
+            Map<String, Long> partitionLastValid; //Last valid state time point
             long beginTimeIndex;
             long currentTimeIndex;
             long storedTimeWindowSize;
@@ -333,6 +334,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 partitionArrived = new HashMap<>();
                 partitionCompleted = new HashMap<>();
                 executorUtilization = new HashMap<>();
+                partitionLastValid = new HashMap<>();
             }
 
             protected long getTimepoint(long n){
@@ -378,11 +380,19 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                   and i < n - windowSize
             */
             private void popOldState(){
+                LOG.info("Try to drop old states");
                 while(beginTimeIndex < currentTimeIndex - storedTimeWindowSize){
                     for(String partition: partitionArrived.keySet()){
                         long arrived = partitionArrived.get(partition).get(beginTimeIndex + 2);
                         long processed = partitionCompleted.get(partition).get(currentTimeIndex - 2);
-                        if(!(arrived + 1 < processed - 1))return ; //If beginIndex is useful, stop pop
+                        if(!(arrived + 1 < processed - 1)){
+                            LOG.info("Time " +beginTimeIndex+ " is still useful for " + partition + ", cannot drop");
+                            return ; //If beginIndex is useful, stop pop
+                        }
+                        if(partitionLastValid.get(partition) <= beginTimeIndex){
+                            LOG.info("Time " +beginTimeIndex+ " is the last valid state for " + partition + ", cannot drop");
+                            return ;
+                        }
                     }
 
                     LOG.info("Dropping old state at time " + beginTimeIndex);
@@ -400,20 +410,22 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 }
                 return 0;
             }
-            /*
-                Replace invalid data in state with valid estimation
-                when current snapshot is all valid
-                
 
-             */
-            public void calibrate(long time){
-                //Calibrate partition state
-                for(String executor: partitionAssignment.keySet()){
-                    for(String partitionId: partitionAssignment.get(executor)) {
-
-                    }
+            //Only called when time n is valid, also update partitionLastValid
+            public void calibratePartitionState(String partition, long n){
+                long a1 = state.getPartitionArrived(partition, n);
+                long c1 = state.getPartitionCompleted(partition, n);
+                long n0 = partitionLastValid.get(partition);
+                LOG.info("Calibrate state for " + partition + " from time=" + n0);
+                long a0 = state.getPartitionArrived(partition, n0);
+                long c0 = state.getPartitionCompleted(partition, n0);
+                for(long i = n0 + 1; i < n; i++){
+                    long ai = (a1 - a0) * i / (n - n0);
+                    long ci = (c1 - c0) * i / (n - n0);
+                    state.partitionArrived.get(partition).put(i, ai);
+                    state.partitionCompleted.get(partition).put(i, ci);
                 }
-                //Calibrate executorId
+                partitionLastValid.put(partition, n);
             }
 
             public void updateAtTime(long time, Map<String, Long> taskArrived, Map<String, Long> taskProcessed, Map<String, Double> utilization, Map<String, List<String>> partitionAssignment) { //Normal update
@@ -660,18 +672,20 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             timeSlotSize = size;
         }
         private boolean checkMetricsValid(Map<String, Object> metrics){
-            if(!metrics.containsKey("PartitionValid"))return false;
+            boolean isValid = true;
+            if(!metrics.containsKey("PartitionValid"))isValid = false;
             Map<String, Boolean> partitionValid = (HashMap<String,Boolean>)metrics.get("PartitionValid");
             for(String executor: partitionAssignment.keySet())
                 for(String partition: partitionAssignment.get(executor)) {
                     if (!partitionValid.containsKey(partition) || !partitionValid.get(partition)) {
                         LOG.info(partition + "'s metrics is not valid");
-                        return false;
+                        isValid = false;
+                    }else{
+                        state.calibratePartitionState(partition, state.currentTimeIndex);
                     }
                 }
-            return true;
+            return isValid;
         }
-
         private void examine(long time){
             Map<String, Object> metrics = metricsRetriever.retrieveMetrics();
             Map<String, Long> partitionArrived =
@@ -683,7 +697,6 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             isValid = true;
             updateState(time, partitionArrived, partitionProcessed, executorUtilization);
             updateModel();
-            //TODO: calibrate
             if(!checkMetricsValid(metrics))isValid = false;
             for(String executor: partitionAssignment.keySet()){
                 if(!model.executorArrivalRate.containsKey(executor)){
