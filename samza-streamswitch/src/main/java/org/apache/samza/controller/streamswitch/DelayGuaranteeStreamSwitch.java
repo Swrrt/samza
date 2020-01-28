@@ -406,7 +406,10 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
             public long calculateArrivalTime(String partition, long r){
                 for(Map.Entry<Long, Long> entry: partitionArrived.get(partition).entrySet()){
-                    if(entry.getKey() > state.beginTimeIndex && r <= entry.getValue() && r > partitionArrived.get(partition).get(entry.getKey() - 1))return entry.getKey();
+                    if(entry.getKey() > state.beginTimeIndex && r <= entry.getValue() && r > partitionArrived.get(partition).get(entry.getKey() - 1)) {
+                        LOG.info("Calculate arrival time, r=" + r + " t=" + entry.getKey() + " a0=" + partitionArrived.get(partition).get(entry.getKey() - 1) + " a1=" + entry.getValue());
+                        return entry.getKey();
+                    }
                 }
                 return 0;
             }
@@ -485,6 +488,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
 
 
             //Calculate instant delay for tuples (c(n-1), c(n)]
+            //Possible BUG reason: time a0 = 0 c0 = 0 is removed when dropping old state!
             private double calculatePartitionInstantDelay(String partition, long n){
                 if(n <= 0)return 0;
                 //No completed in n-1 ~ n
