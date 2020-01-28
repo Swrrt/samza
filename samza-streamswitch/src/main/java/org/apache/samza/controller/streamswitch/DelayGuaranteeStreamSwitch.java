@@ -536,7 +536,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                     long completed = state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
                     double delay = calculatePartitionInstantDelay(partition, n);
                     totalDelay += delay * completed;
-                    LOG.info("Debugging, partition " + partition + " delay: " + delay + " processed: " + completed);
+                    //if(completed > 0)LOG.info("Debugging, partition " + partition + " delay: " + delay + " processed: " + completed);
                     totalCompleted += completed;
                 }
                 double delay = 0;
