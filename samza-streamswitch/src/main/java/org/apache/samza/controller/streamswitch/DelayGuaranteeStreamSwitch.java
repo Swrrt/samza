@@ -91,7 +91,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
             }
             //Debugging
             for(Pair<String, Double> x: priorityQueue){
-                LOG.info("Partition " + x.getKey() + " delay=" + x.getValue());
+                if(x.getValue() > 151.0) LOG.info("Partition " + x.getKey() + " delay=" + x.getValue());
             }
 
             double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor), arrivalrate1 = 0;
@@ -419,14 +419,16 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 long a1 = state.getPartitionArrived(partition, n);
                 long c1 = state.getPartitionCompleted(partition, n);
                 long n0 = partitionLastValid.get(partition);
-                LOG.info("Calibrate state for " + partition + " from time=" + n0);
-                long a0 = state.getPartitionArrived(partition, n0);
-                long c0 = state.getPartitionCompleted(partition, n0);
-                for(long i = n0 + 1; i < n; i++){
-                    long ai = (a1 - a0) * i / (n - n0);
-                    long ci = (c1 - c0) * i / (n - n0);
-                    state.partitionArrived.get(partition).put(i, ai);
-                    state.partitionCompleted.get(partition).put(i, ci);
+                if(n0 < n - 1) {
+                    LOG.info("Calibrate state for " + partition + " from time=" + n0);
+                    long a0 = state.getPartitionArrived(partition, n0);
+                    long c0 = state.getPartitionCompleted(partition, n0);
+                    for (long i = n0 + 1; i < n; i++) {
+                        long ai = (a1 - a0) * (i - n0) / (n - n0) + a0;
+                        long ci = (c1 - c0) * (i - n0) / (n - n0) + c0;
+                        state.partitionArrived.get(partition).put(i, ai);
+                        state.partitionCompleted.get(partition).put(i, ci);
+                    }
                 }
                 partitionLastValid.put(partition, n);
             }
@@ -507,7 +509,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 //m(c(n-1)+ 1), m(c(n))
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
                 long l = 0;
-                LOG.info("Debugging, partition " + partition + " n=" + n + " cn=" + cn + " cn_1=" + cn_1 + " m0=" + m0 + " m1=" + m1);
+                LOG.info("partition " + partition + " n=" + n + " cn=" + cn + " cn_1=" + cn_1 + " m0=" + m0 + " m1=" + m1);
                 if(m0 != m1) {
                     long a0 = state.getPartitionArrived(partition, m0 - 1), a1 = state.getPartitionArrived(partition, m0),
                             a2 = state.getPartitionArrived(partition, m1 - 1), a3 = state.getPartitionArrived(partition, m1);
@@ -523,7 +525,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 }else l = n - m1 + 1;
                 long T = examiner.timeSlotSize;
                 long delay =  l * T;
-                LOG.info("Debugging, l="+ l + " delay=" + delay);
+                LOG.info("l="+ l + " delay=" + delay);
                 return delay;
             }
 
