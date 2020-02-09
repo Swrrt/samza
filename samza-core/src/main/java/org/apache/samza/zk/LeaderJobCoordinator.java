@@ -525,13 +525,9 @@ public class LeaderJobCoordinator implements JobCoordinator{
 
         LOG.info("Try to deploy new JobModel...");
         List<String> currentProcessorIds = zkUtils.getSortedActiveProcessorsIDs();
-        if(jobModel.getContainers().size() != currentProcessorIds.size()){
-            LOG.info("The number of online containers is different from JobModel");
-            return false;
-        }
-        for(String containerId: currentProcessorIds){
-            if(!jobModel.getContainers().containsKey(containerId)){
-                LOG.info("Container " + containerId + " is not in JobModel");
+        for(String containerId: jobModel.getContainers().keySet()){
+            if(!currentProcessorIds.contains(containerId)){
+                LOG.info("Container " + containerId + " is not online");
                 return false;
             }
         }

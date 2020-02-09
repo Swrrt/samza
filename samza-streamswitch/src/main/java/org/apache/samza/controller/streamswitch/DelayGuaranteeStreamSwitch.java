@@ -433,7 +433,9 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                 partitionLastValid.put(partition, n);
             }
 
-            public void updateAtTime(long time, Map<String, Long> taskArrived, Map<String, Long> taskProcessed, Map<String, Double> utilization, Map<String, List<String>> partitionAssignment) { //Normal update
+            public void updateAtTime(long time, Map<String, Long> taskArrived,
+                                     Map<String, Long> taskProcessed, Map<String, Double> utilization,
+                                     Map<String, List<String>> partitionAssignment) { //Normal update
                 LOG.info("Debugging, metrics retrieved data, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
                 currentTimeIndex++;
                 if(currentTimeIndex == 0){ //Initialize
@@ -445,7 +447,7 @@ public class DelayGuaranteeStreamSwitch extends StreamSwitch {
                             partitionLastValid.put(partition, 0l);
                         }
                     }
-                    timePoints.put(0l, 0l);
+                    timePoints.put(0l, time - migrationInterval);
                     currentTimeIndex++;
                 }
                 timePoints.put(currentTimeIndex, time);
