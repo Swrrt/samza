@@ -360,6 +360,25 @@ public class StreamSwitch implements OperatorController {
             Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(srcExecutor, bestTgtExecutor, bestMigratingPartitions), new ArrayList<>(best));
             return result;
         }
+
+        //Check healthisness of input delay vectors: 0 for Good, 1 for Moderate, 2 for Severe
+        private int checkHealthiness(Map<String, Double> instantDelay, List<Pair<String, Double>> longtermDelay){
+            int instantExceeded = 0;
+            int longtermExceeded = 0;
+            int both = 0;
+            for(Map.Entry<String, Double> entry: instantDelay.entrySet()){
+                if(entry.getValue() > instantaneousThreshold)instantExceeded = 1;
+            }
+            for(Pair<String, Double> entry: longtermDelay){
+                if(entry.getValue() > longTermThreshold){
+                    longtermExceeded = 1;
+                    if(instantDelay.get(entry.getKey()) > instantaneousThreshold)both = 1;
+                }
+            }
+            if(both == 1)return 2;
+            if(instantExceeded > 0 || longtermExceeded > 0)return 1;
+            return 0;
+        }
     }
 
     class Examiner{
@@ -828,40 +847,12 @@ public class StreamSwitch implements OperatorController {
             }
             return delay;
         }
-
-        private Pair<Prescription, List<Pair<String, Double>>> loadBalance(){
-            return algorithms.tryToMigrate();
-        }
-        private Pair<Prescription, List<Pair<String, Double>>> scaleIn(){
-            return algorithms.tryToScaleIn();
-        }
-        private Pair<Prescription, List<Pair<String, Double>>> scaleOut(){
-            return algorithms.tryToScaleOut();
-        }
     }
 
     Algorithms algorithms;
 
-    //Check healthisness of input delay vectors: 0 for Good, 1 for Moderate, 2 for Severe
-    private int checkHealthiness(Map<String, Double> instantDelay, List<Pair<String, Double>> longtermDelay){
-        int instantExceeded = 0;
-        int longtermExceeded = 0;
-        int both = 0;
-        for(Map.Entry<String, Double> entry: instantDelay.entrySet()){
-            if(entry.getValue() > instantaneousThreshold)instantExceeded = 1;
-        }
-        for(Pair<String, Double> entry: longtermDelay){
-            if(entry.getValue() > longTermThreshold){
-                longtermExceeded = 1;
-                if(instantDelay.get(entry.getKey()) > instantaneousThreshold)both = 1;
-            }
-        }
-        if(both == 1)return 2;
-        if(instantExceeded > 0 || longtermExceeded > 0)return 1;
-        return 0;
-    }
     private Prescription diagnose(Examiner examiner){
-        int healthiness = checkHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay());
+        int healthiness = algorithms.checkHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay());
         Prescription pres = new Prescription(null, null, null);
         LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
         if(isMigrating){
@@ -879,7 +870,7 @@ public class StreamSwitch implements OperatorController {
         if(healthiness == 0){
             LOG.info("Current healthiness is Good");
             //Try scale in
-            /*Pair<Prescription, List<Pair<String, Double>>> result = examiner.scaleIn();
+            /*Pair<Prescription, List<Pair<String, Double>>> result = algorithms.tryToScaleIn();
             if(result.getValue() != null) {
                 int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getValue());
                 if (thealthiness == 0) {  //Scale in OK
@@ -892,10 +883,10 @@ public class StreamSwitch implements OperatorController {
         //Severe
         else{
             LOG.info("Current healthiness is Servere");
-            Pair<Prescription, List<Pair<String, Double>>> result = examiner.loadBalance();
+            Pair<Prescription, List<Pair<String, Double>>> result = algorithms.tryToMigrate();
             //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
-                int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getValue());
+                int thealthiness = algorithms.checkHealthiness(examiner.getInstantDelay(), result.getValue());
                 //LOG.info("If we migrating, healthiness is " + thealthiness);
                 if (thealthiness == 1) {  //Load balance OK
                     LOG.info("Load-balance is OK");
@@ -904,7 +895,7 @@ public class StreamSwitch implements OperatorController {
             }
             //Scale out
             LOG.info("Cannot load-balance, need to scale out");
-            result = examiner.scaleOut();
+            result = algorithms.tryToScaleOut();
             return result.getKey();
         }
     }
