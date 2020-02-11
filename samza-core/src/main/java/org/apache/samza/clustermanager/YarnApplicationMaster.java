@@ -36,9 +36,9 @@ import org.apache.samza.metrics.JmxServer;
 import org.apache.samza.metrics.MetricsRegistryMap;
 import org.apache.samza.serializers.model.SamzaObjectMapper;
 import org.apache.samza.storage.ChangelogStreamManager;
-import org.apache.samza.controller.JobController;
-import org.apache.samza.controller.JobControllerFactory;
-import org.apache.samza.controller.JobControllerListener;
+import org.apache.samza.controller.OperatorController;
+import org.apache.samza.controller.OperatorControllerFactory;
+import org.apache.samza.controller.OperatorControllerListener;
 import org.apache.samza.system.StreamMetadataCache;
 import org.apache.samza.system.SystemAdmins;
 import org.apache.samza.system.SystemStream;
@@ -53,7 +53,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class YarnApplicationMaster implements JobControllerListener {
+public class YarnApplicationMaster implements OperatorControllerListener {
     private static final Logger log = LoggerFactory.getLogger(YarnApplicationMaster.class);
 
     private final Config config;
@@ -131,7 +131,7 @@ public class YarnApplicationMaster implements JobControllerListener {
 
     private LeaderJobCoordinator leaderJobCoordinator = null;
 
-    private JobController controller = null;
+    private OperatorController controller = null;
 
     private int numOfContainers = 0;
 
@@ -179,9 +179,9 @@ public class YarnApplicationMaster implements JobControllerListener {
 
     }
 
-    private JobController createController(){
+    private OperatorController createController(){
         String controllerFactoryClassName = config.getOrDefault("job.controller.factory", "org.apache.samza.controller.DefaultJobControllerFactory");
-        return Util.getObj(controllerFactoryClassName, JobControllerFactory.class).getController(config);
+        return Util.getObj(controllerFactoryClassName, OperatorControllerFactory.class).getController(config);
     }
 
     /**

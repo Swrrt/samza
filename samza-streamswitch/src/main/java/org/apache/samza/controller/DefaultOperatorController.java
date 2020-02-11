@@ -6,15 +6,15 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
-public class DefaultJobController implements JobController {
-    private static final Logger LOG = LoggerFactory.getLogger(DefaultJobController.class);
-    JobControllerListener listener;
+public class DefaultOperatorController implements OperatorController {
+    private static final Logger LOG = LoggerFactory.getLogger(DefaultOperatorController.class);
+    OperatorControllerListener listener;
     Config config;
-    public DefaultJobController(Config config){
+    public DefaultOperatorController(Config config){
         this.config = config;
     }
     @Override
-    public void init(JobControllerListener listener, List<String> executors, List<String> partitions){
+    public void init(OperatorControllerListener listener, List<String> executors, List<String> partitions){
         this.listener = listener;
     }
     @Override

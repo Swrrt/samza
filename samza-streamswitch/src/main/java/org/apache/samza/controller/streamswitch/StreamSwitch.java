@@ -3,8 +3,8 @@ package org.apache.samza.controller.streamswitch;
 import javafx.util.Pair;
 import org.apache.commons.collections.map.HashedMap;
 import org.apache.samza.config.Config;
-import org.apache.samza.controller.JobController;
-import org.apache.samza.controller.JobControllerListener;
+import org.apache.samza.controller.OperatorController;
+import org.apache.samza.controller.OperatorControllerListener;
 import org.apache.samza.util.Util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,10 +15,10 @@ import java.util.concurrent.locks.ReentrantLock;
 
 //Under development
 
-public class StreamSwitch implements JobController {
+public class StreamSwitch implements OperatorController {
     private static final Logger LOG = LoggerFactory.getLogger(StreamSwitch.class);
     Config config;
-    JobControllerListener listener;
+    OperatorControllerListener listener;
     StreamSwitchMetricsRetriever retriever;
     Map<String, List<String>> partitionAssignment;
     ReentrantLock updateLock; //Lock is used to avoid concurrent modify between updateModel() and changeImplemented()
@@ -26,6 +26,7 @@ public class StreamSwitch implements JobController {
     long startTime = 0;
     long migrationWarmupTime, migrationInterval;
     double instantaneousThreshold, longTermThreshold;
+    boolean isValid, isMigrating;
     Examiner examiner;
     public StreamSwitch(Config config){
         migrationWarmupTime = config.getLong("streamswitch.migration.warmup.time", 1000000000l);
@@ -37,9 +38,11 @@ public class StreamSwitch implements JobController {
         examiner = new Examiner();
         examiner.model.setState(examiner.state);
         examiner.model.setTimes(config.getLong("streamswitch.delay.interval", 500l), config.getInt("streamswitch.delay.alpha", 20), config.getInt("streamswitch.delay.beta", 10));
+        isValid = false;
+        isMigrating = false;
     }
     @Override
-    public void init(JobControllerListener listener, List<String> executors, List<String> partitions){
+    public void init(OperatorControllerListener listener, List<String> executors, List<String> partitions){
         this.listener = listener;
         this.retriever = createMetricsRetriever();
         this.retriever.init();
@@ -713,14 +716,12 @@ public class StreamSwitch implements JobController {
         private Model model;
         private State state;
         private StreamSwitchMetricsRetriever metricsRetriever;
-        private boolean isValid, isMigrating;
         private Prescription pendingPres;
         private long timeSlotSize;
         private long lastDeployed;
         Examiner(){
             this.state = new State();
             this.model = new Model();
-            isValid = false;//No data, should be false
             timeSlotSize = 200l; //Default
             lastDeployed = 0l;
         }
@@ -863,7 +864,7 @@ public class StreamSwitch implements JobController {
         int healthiness = checkHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay());
         Prescription pres = new Prescription(null, null, null);
         LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
-        if(examiner.isMigrating){
+        if(isMigrating){
             LOG.info("Migration does not complete, cannot diagnose");
             return pres;
         }
@@ -915,7 +916,7 @@ public class StreamSwitch implements JobController {
         }
 
         examiner.pendingPres = pres;
-        examiner.isMigrating = true;
+        isMigrating = true;
 
         LOG.info("Old mapping: " + partitionAssignment);
         Map<String, List<String>> newAssignment = pres.generateNewPartitionAssignment(partitionAssignment);
@@ -977,7 +978,7 @@ public class StreamSwitch implements JobController {
             long time = System.currentTimeMillis();
             examiner.examine(time);
             LOG.info("Diagnose...");
-            if(examiner.isValid && !examiner.isMigrating && time - examiner.lastDeployed > migrationInterval) {
+            if(isValid && !isMigrating && time - examiner.lastDeployed > migrationInterval) {
                 Prescription pres = diagnose(examiner);
                 if (pres.migratingPartitions != null) { //Not do nothing
                     treat(pres);
@@ -985,8 +986,8 @@ public class StreamSwitch implements JobController {
                     LOG.info("Nothing to do this time.");
                 }
             }else{
-                if(!examiner.isValid)LOG.info("Current examine data is not valid, need to wait until valid");
-                else if(examiner.isMigrating)LOG.info("One migration is in process");
+                if(!isValid)LOG.info("Current examine data is not valid, need to wait until valid");
+                else if(isMigrating)LOG.info("One migration is in process");
                 else LOG.info("Too close to last migration");
             }
             long deltaT = System.currentTimeMillis() - time;
@@ -1012,10 +1013,10 @@ public class StreamSwitch implements JobController {
             LOG.info("Lock acquired, set migrating flag to false");
             if (examiner == null) {
                 LOG.warn("Examiner haven't been initialized");
-            } else if (!examiner.isMigrating) {
+            } else if (!isMigrating) {
                 LOG.warn("There is no pending migration, please checkout");
             } else {
-                examiner.isMigrating = false;
+                isMigrating = false;
                 examiner.lastDeployed = System.currentTimeMillis();
                 Prescription pres = examiner.pendingPres;
                 LOG.info("Migrating " + pres.migratingPartitions + " from " + pres.source + " to " + pres.target);

@@ -1,26 +1,25 @@
 package org.apache.samza.controller;
 
-import org.apache.commons.collections.map.HashedMap;
 import org.apache.samza.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
-public class DumbScaleOutJobController implements JobController {
-    private static final Logger LOG = LoggerFactory.getLogger(DumbScaleOutJobController.class);
+public class DumbScaleOutOperatorController implements OperatorController {
+    private static final Logger LOG = LoggerFactory.getLogger(DumbScaleOutOperatorController.class);
 
-    JobControllerListener listener;
+    OperatorControllerListener listener;
     Config config;
     int startNumber = 1;
     List<String> executors, partitions;
-    public DumbScaleOutJobController(Config config){
+    public DumbScaleOutOperatorController(Config config){
         this.config = config;
         executors = null;
         partitions = null;
     }
     @Override
-    public void init(JobControllerListener listener, List<String> executors, List<String> partitions){
+    public void init(OperatorControllerListener listener, List<String> executors, List<String> partitions){
         this.listener = listener;
         this.partitions = new ArrayList(partitions);
         this.executors = new ArrayList<>(executors);
