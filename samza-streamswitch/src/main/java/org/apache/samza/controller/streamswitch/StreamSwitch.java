@@ -496,6 +496,15 @@ public class StreamSwitch implements OperatorController {
                 }
                 partitionLastValid.put(partition, n);
             }
+            public void calibrateState(long n, Map<String, Boolean> partitionValid){
+                if(partitionValid == null)return ;
+                for(String partition: partitionValid.keySet()){
+                    if (partitionValid.get(partition)){
+                        calibratePartitionState(partition, n);
+                    }
+                }
+            }
+
             private void updateExecutorUtilizations(String executor, long n, double util){
                 if(!executorUtilizations.containsKey(executor)){
                     executorUtilizations.put(executor, new LinkedList<>());
@@ -542,6 +551,7 @@ public class StreamSwitch implements OperatorController {
                 timePoints.put(currentTimeIndex, time);
                 updateMappings(currentTimeIndex, partitionAssignment);
                 LOG.info("Current time " + time);
+
                 for(String partition: taskArrived.keySet()){
                     updatePartitionArrived(partition, currentTimeIndex, taskArrived.get(partition));
                 }
@@ -733,25 +743,25 @@ public class StreamSwitch implements OperatorController {
         public void setTimeSlotSize(long size){
             timeSlotSize = size;
         }
-        private boolean checkMetricsValid(Map<String, Object> metrics){
+        private boolean checkMetricsValid(Map<String, Boolean> partitionValid){
             boolean isValid = true;
-            if(!metrics.containsKey("PartitionValid"))isValid = false;
-            Map<String, Boolean> partitionValid = (HashMap<String,Boolean>)metrics.get("PartitionValid");
+            if(partitionValid == null)isValid = false;
             for(String executor: partitionAssignment.keySet())
                 for(String partition: partitionAssignment.get(executor)) {
                     if (!partitionValid.containsKey(partition) || !partitionValid.get(partition)) {
                         LOG.info(partition + "'s metrics is not valid");
-                        isValid = false;
-                    }else{
+                        return false;
+                    }/*else{
                         state.calibratePartitionState(partition, state.currentTimeIndex);
-                    }
+                    }*/
                 }
             return isValid;
         }
 
-        private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization){
+        private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization, Map<String, Boolean> partitionValid){
             LOG.info("Updating network calculus model...");
             state.updateAtTime(time, partitionArrived, partitionProcessed, executorUtilization, partitionAssignment);
+            state.calibrateState(state.currentTimeIndex, partitionValid);
             state.dropOldState();
             //Debug & Statistics
             HashMap<String, Long> arrived = new HashMap<>(), completed = new HashMap<>();
@@ -854,10 +864,12 @@ public class StreamSwitch implements OperatorController {
                 (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
         Map<String, Double> executorUtilization =
                 (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
+        Map<String, Boolean> partitionValid =
+                (HashMap<String,Boolean>)metrics.getOrDefault("PartitionValid", null);
         isValid = true;
-        examiner.updateState(time, partitionArrived, partitionProcessed, executorUtilization);
+        examiner.updateState(time, partitionArrived, partitionProcessed, executorUtilization, partitionValid);
+        if(!examiner.checkMetricsValid(partitionValid))isValid = false;
         examiner.updateModel();
-        if(!examiner.checkMetricsValid(metrics))isValid = false;
         for(String executor: partitionAssignment.keySet()){
             if(!examiner.model.executorArrivalRate.containsKey(executor)){
                 LOG.info("Current model is not valid, because " + executor + " is not ready.");
