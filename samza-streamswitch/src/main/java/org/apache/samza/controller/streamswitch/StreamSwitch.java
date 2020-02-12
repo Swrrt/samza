@@ -36,8 +36,8 @@ public class StreamSwitch implements OperatorController {
         algorithms = new Algorithms();
         updateLock = new ReentrantLock();
         examiner = new Examiner();
+        examiner.beta = config.getInt("streamswitch.delay.beta", 10);
         examiner.model.setState(examiner.state);
-        examiner.model.setTimes(config.getLong("streamswitch.delay.interval", 500l), config.getInt("streamswitch.delay.alpha", 20), config.getInt("streamswitch.delay.beta", 10));
         isValid = false;
         isMigrating = false;
     }
@@ -384,9 +384,10 @@ public class StreamSwitch implements OperatorController {
     class Examiner{
         class State {
             Map<String, Map<Long, Long>> partitionArrived, partitionCompleted; //Instead of actual time, use the n-th time point as key
-            Map<String, Double> executorUtilization;
             Map<Long, Long> timePoints; //Actual time of n-th time point.
             Map<String, Long> partitionLastValid; //Last valid state time point
+            private Map<Long, Map<String, List<String>>> mappings;
+            private Map<String, Deque<Pair<Long, Double>>> executorUtilizations;
             long beginTimeIndex;
             long currentTimeIndex;
             long storedTimeWindowSize;
@@ -397,8 +398,9 @@ public class StreamSwitch implements OperatorController {
                 storedTimeWindowSize = 100;
                 partitionArrived = new HashMap<>();
                 partitionCompleted = new HashMap<>();
-                executorUtilization = new HashMap<>();
+                executorUtilizations = new HashMap<>();
                 partitionLastValid = new HashMap<>();
+                mappings = new HashMap<>();
             }
 
             protected long getTimepoint(long n){
@@ -409,6 +411,12 @@ public class StreamSwitch implements OperatorController {
 
                 return timePoints.get(n);
             }
+
+            protected Map<String, List<String>> getMapping(long n){
+                if(mappings.containsKey(n))return mappings.get(n);
+                else return null;
+            }
+
             public void updatePartitionArrived(String partitionId, long n, long arrived){
                 partitionArrived.putIfAbsent(partitionId, new TreeMap<>());
                 partitionArrived.get(partitionId).put(n, arrived);
@@ -416,9 +424,6 @@ public class StreamSwitch implements OperatorController {
             public void updatePartitionCompleted(String partitionId, long n, long completed){
                 partitionCompleted.putIfAbsent(partitionId, new TreeMap<>());
                 partitionCompleted.get(partitionId).put(n, completed);
-            }
-            public void updateUtilization(String executorId, double utilization){
-                executorUtilization.put(executorId, utilization);
             }
             public long getPartitionArrived(String partitionId, long n){
                 long arrived = 0;
@@ -433,10 +438,6 @@ public class StreamSwitch implements OperatorController {
                     completed = partitionCompleted.get(partitionId).getOrDefault(n, 0l);
                 }
                 return completed;
-            }
-            //Return -1 for no utilization
-            public double getUtilization(String executorId){
-                return executorUtilization.getOrDefault(executorId, -1.0);
             }
             /*
             Remove old data that is useless:
@@ -496,6 +497,31 @@ public class StreamSwitch implements OperatorController {
                 }
                 partitionLastValid.put(partition, n);
             }
+            private void updateExecutorUtilizations(String executor, long n, double util){
+                if(!executorUtilizations.containsKey(executor)){
+                    executorUtilizations.put(executor, new LinkedList<>());
+                }
+                executorUtilizations.get(executor).addLast(new Pair(n, util));
+                if(executorUtilizations.get(executor).size() > beta){
+                    executorUtilizations.get(executor).pollFirst();
+                }
+            }
+            private void updateMappings(long n, Map<String, List<String>> mapping){
+                mappings.put(n, partitionAssignment);
+                if(mappings.containsKey(n - beta - 2)) mappings.remove(n - beta - 2);
+            }
+
+            private double getAverageExecutorUtilization(String executorId){
+                double totalUtilization = 0;
+                long totalTime = 0;
+                for(Pair<Long, Double> entry: executorUtilizations.get(executorId)){
+                    long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
+                    totalTime += time;
+                    totalUtilization += entry.getValue() * time;
+                }
+                if(totalTime > 0) totalUtilization/= totalTime;
+                return totalUtilization;
+            }
 
             public void updateAtTime(long time, Map<String, Long> taskArrived,
                                      Map<String, Long> taskProcessed, Map<String, Double> utilization,
@@ -515,6 +541,7 @@ public class StreamSwitch implements OperatorController {
                     currentTimeIndex++;
                 }
                 timePoints.put(currentTimeIndex, time);
+                updateMappings(currentTimeIndex, partitionAssignment);
                 LOG.info("Current time " + time);
                 for(String partition: taskArrived.keySet()){
                     updatePartitionArrived(partition, currentTimeIndex, taskArrived.get(partition));
@@ -523,38 +550,25 @@ public class StreamSwitch implements OperatorController {
                     updatePartitionCompleted(partition, currentTimeIndex, taskProcessed.get(partition));
                 }
                 for(String executor: utilization.keySet()){
-                    updateUtilization(executor, utilization.get(executor));
+                   double util = utilization.get(executor);
+                   updateExecutorUtilizations(executor, currentTimeIndex, util);
                 }
-
-            }
-            private void writeLog(String string){
-                System.out.println("DelayEstimator: " + string);
             }
         }
         //Cannot use actually use window to store information, because we need to calibrate state.
         class Model {
             private State state;
             Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, executorInstantaneousDelay;
-            private Map<Long, Map<String, List<String>>> windowedMappings;
-            private Map<String, Deque<Pair<Long, Double>>> utilizationWindow;
-            private int alpha = 1, beta = 2;
+            int beta;
             public Model(){
                 partitionArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
                 serviceRate = new HashMap<>();
                 executorInstantaneousDelay = new HashMap<>();
-                windowedMappings = new HashMap<>();
-                utilizationWindow = new HashMap<>();
-            }
-            public void setTimes(long interval, int a, int b){
-                alpha = a;
-                beta = b;
             }
             public void setState(State state){
                 this.state = state;
             }
-
-
             //Calculate instant delay for tuples (c(n-1), c(n)]
             //Possible BUG reason: time a0 = 0 c0 = 0 is removed when dropping old state!
             private double calculatePartitionInstantDelay(String partition, long n){
@@ -639,8 +653,8 @@ public class StreamSwitch implements OperatorController {
                 for(long i = n0; i <= n; i++){
                     long time = state.getTimepoint(i) - state.getTimepoint(i-1);
                     totalTime += time;
-                    if(windowedMappings.get(i).containsKey(executorId)){ //Could be scaled out or scaled in
-                        for(String partition: windowedMappings.get(i).get(executorId)) {
+                    if(state.getMapping(i).containsKey(executorId)){ //Could be scaled out or scaled in
+                        for(String partition: state.getMapping(i).get(executorId)) {
                             totalServiced += state.getPartitionCompleted(partition, i) - state.getPartitionCompleted(partition, i-1);
                         }
                     }
@@ -649,29 +663,10 @@ public class StreamSwitch implements OperatorController {
                 return 0;
             }
 
-            private void updateWindowExecutorUtilization(String executor, long n){
-                double util = state.getUtilization(executor);
-                if(!utilizationWindow.containsKey(executor)){
-                    utilizationWindow.put(executor, new LinkedList<>());
-                }
-                utilizationWindow.get(executor).addLast(new Pair(n, util));
-                if(utilizationWindow.get(executor).size() > beta){
-                    utilizationWindow.get(executor).pollFirst();
-                }
-            }
+
 
             // Window average utilization
-            private double getWindowExecutorUtilization(String executorId){
-                double totalUtilization = 0;
-                long totalTime = 0;
-                for(Pair<Long, Double> entry: utilizationWindow.get(executorId)){
-                    long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
-                    totalTime += time;
-                    totalUtilization += entry.getValue() * time;
-                }
-                if(totalTime > 0) totalUtilization/= totalTime;
-                return totalUtilization;
-            }
+
             //Window average delay
             public double getWindowExecutorInstantaneousDelay(String executorId, long n){
                 double totalDelay = 0;
@@ -680,8 +675,8 @@ public class StreamSwitch implements OperatorController {
                 if(n0<1)n0 = 1;
                 for(long i = n0; i <= n; i++){
                     long processed = 0;
-                    if(windowedMappings.get(i).containsKey(executorId)){
-                        for(String partition: windowedMappings.get(i).get(executorId)){
+                    if(state.getMapping(i).containsKey(executorId)){
+                        for(String partition: state.getMapping(i).get(executorId)){
                             processed += state.getPartitionCompleted(partition, i) - state.getPartitionCompleted(partition, i - 1);
                         }
                     }
@@ -699,8 +694,6 @@ public class StreamSwitch implements OperatorController {
                 executorArrivalRate.clear();
                 serviceRate.clear();
                 executorInstantaneousDelay.clear();
-                windowedMappings.put(n, partitionAssignment);
-                if(windowedMappings.containsKey(n - beta - 2))windowedMappings.remove(n - beta - 2);
                 for(String executor: partitionAssignment.keySet()){
                     double arrivalRate = 0;
                     for(String partition: partitionAssignment.get(executor)){
@@ -709,8 +702,7 @@ public class StreamSwitch implements OperatorController {
                         arrivalRate += t;
                     }
                     executorArrivalRate.put(executor, arrivalRate);
-                    updateWindowExecutorUtilization(executor, n);
-                    double util = getWindowExecutorUtilization(executor);
+                    double util = state.getAverageExecutorUtilization(executor);
                     double mu = getExecutorServiceRate(executor, n);
                     if(util > 1e-9 && util <= 1){
                         mu /= util;
@@ -719,17 +711,8 @@ public class StreamSwitch implements OperatorController {
                     executorInstantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor, n));
                 }
 
-                LOG.info("Debugging, executor utilization window: " + utilizationWindow);
                 LOG.info("Debugging, executor windowed delay: " + executorInstantaneousDelay);
                 LOG.info("Debugging, executor windowed service: " + serviceRate);
-            }
-            public void dropOldData(long time){
-
-            }
-
-            public void showData(){
-                LOG.info("Show delay estimation data...");
-                LOG.info("Partition arrival rate:");
             }
         }
         private Model model;
@@ -738,6 +721,7 @@ public class StreamSwitch implements OperatorController {
         private Prescription pendingPres;
         private long timeSlotSize;
         private long lastDeployed;
+        private int beta = 2;
         Examiner(){
             this.state = new State();
             this.model = new Model();
@@ -1016,7 +1000,7 @@ public class StreamSwitch implements OperatorController {
 
                 //Scale in, remove useless information
                 if(pres.migratingPartitions.size() == partitionAssignment.get(pres.source).size()){
-                    examiner.model.utilizationWindow.remove(pres.source);
+                    examiner.state.executorUtilizations.remove(pres.source);
                 }
 
                 partitionAssignment = pres.generateNewPartitionAssignment(partitionAssignment);
