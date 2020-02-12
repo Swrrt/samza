@@ -142,7 +142,7 @@ Writing the configuration to a durable stream opens the door for Samza to do a c
 1. Removes the size-bound on the Job configuration
 2. Exposes job-related configuration and metadata to the containers using a standard data model and communication interface (See [Job Coordinator](#JobCoordinator) for details)
 3. Certain configurations should only be set one time. Changing them in future deployment amounts to resetting the entire state of the job because it may re-shuffle input partitions to the containers. For example, changing [SystemStreamPartitionGrouper](../api/javadocs/org/apache/samza/container/grouper/stream/SystemStreamPartitionGrouper.java) on a stateful Samza job would inter-mingle state from different StreamTasks in a single changelog partition. Without persistent configuration, there is no easy way to check whether a job's current configuration is valid or not.
-4. Job configuration can be dynamically changed by writing to the Coorinator Stream. This can enable features that require the job to be reactive to configuration change (eg. host-affinity, auto-scaling, dynamic reconfiguration etc).
+4. Job configuration can be dynamically changed by writing to the Coorinator Stream. This can enable features that require the job to be reactive to configuration change (eg. host-affinity, auto-scale, dynamic reconfiguration etc).
 5. Provides a unified view of the job state, enabling Samza with more powerful ways of controlling container controls (See [Job Coordinator](#JobCoordinator) for details)
 6. Enables future design of Job Coordinator fail-over since it serves as a single source of truth of the current job state
 

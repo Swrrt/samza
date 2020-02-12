@@ -4,6 +4,6 @@ import java.util.List;
 import java.util.Map;
 
 public interface OperatorControllerListener {
-    void changePartitionAssignment(Map<String, List<String>> partitionAssignment);
-    void scaling(int parallelism, Map<String, List<String>> partitionAssignment);
+    void remapping(Map<String, List<String>> partitionAssignment);
+    void scale(int parallelism, Map<String, List<String>> partitionAssignment);
 }

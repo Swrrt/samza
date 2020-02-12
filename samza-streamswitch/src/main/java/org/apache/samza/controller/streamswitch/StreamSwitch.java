@@ -67,7 +67,7 @@ public class StreamSwitch implements OperatorController {
             partitionAssignment.get(executor).add(iterator.next());
         }
         LOG.info("Initial partitionAssignment: " + partitionAssignment);
-        listener.changePartitionAssignment(partitionAssignment);
+        listener.remapping(partitionAssignment);
     }
 
     private StreamSwitchMetricsRetriever createMetricsRetriever(){
@@ -162,7 +162,7 @@ public class StreamSwitch implements OperatorController {
             long newExecutorId = getNextExecutorID();
             String tgtExecutor = String.format("%06d", newExecutorId);
             setNextExecutorId(newExecutorId + 1);
-            LOG.info("Debugging, scaling out migrating partitions: " + migratingPartitions);
+            LOG.info("Debugging, scale out migrating partitions: " + migratingPartitions);
             return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(srcExecutor, tgtExecutor, migratingPartitions), null);
         }
 
@@ -277,7 +277,6 @@ public class StreamSwitch implements OperatorController {
             //Find container with maximum delay
             Pair<String, Double> a = findMaxLongtermDelayExecutor(partitionAssignment);
             String srcExecutor = a.getKey();
-            double initialDelay = a.getValue();
             if (srcExecutor.equals("")) { //No correct container
                 LOG.info("Cannot find the container that exceeds threshold");
                 Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
@@ -749,44 +748,7 @@ public class StreamSwitch implements OperatorController {
                 }
             return isValid;
         }
-        private void examine(long time){
-            Map<String, Object> metrics = metricsRetriever.retrieveMetrics();
-            Map<String, Long> partitionArrived =
-                    (HashMap<String, Long>) (metrics.get("PartitionArrived"));
-            Map<String, Long> partitionProcessed =
-                    (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
-            Map<String, Double> executorUtilization =
-                    (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
-            isValid = true;
-            updateState(time, partitionArrived, partitionProcessed, executorUtilization);
-            updateModel();
-            if(!checkMetricsValid(metrics))isValid = false;
-            for(String executor: partitionAssignment.keySet()){
-                if(!model.executorArrivalRate.containsKey(executor)){
-                    LOG.info("Current model is not valid, because " + executor + " is not ready.");
-                    isValid = false;
-                    break;
-                }
-                if(!executorUtilization.containsKey(executor)){
-                    LOG.info("Current state is not valid, because " + executor + " utilization is missing");
-                    isValid = false;
-                    break;
-                }
-                for(String partition: partitionAssignment.get(executor)){
-                    if(!partitionArrived.containsKey(partition)){
-                        LOG.info("Current state is not valid, because " + partition + " arrived is missing");
-                        isValid = false;
-                        break;
-                    }
-                    if(!partitionProcessed.containsKey(partition)){
-                        LOG.info("Current state is not valid, because " + executor + " processed is missing");
-                        isValid = false;
-                        break;
-                    }
-                }
-                if(!isValid)break;
-            }
-        }
+
         private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization){
             LOG.info("Updating network calculus model...");
             state.updateAtTime(time, partitionArrived, partitionProcessed, executorUtilization, partitionAssignment);
@@ -883,6 +845,46 @@ public class StreamSwitch implements OperatorController {
             return result.getKey();
         }
     }
+
+    private void examine(long time){
+        Map<String, Object> metrics = examiner.metricsRetriever.retrieveMetrics();
+        Map<String, Long> partitionArrived =
+                (HashMap<String, Long>) (metrics.get("PartitionArrived"));
+        Map<String, Long> partitionProcessed =
+                (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
+        Map<String, Double> executorUtilization =
+                (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
+        isValid = true;
+        examiner.updateState(time, partitionArrived, partitionProcessed, executorUtilization);
+        examiner.updateModel();
+        if(!examiner.checkMetricsValid(metrics))isValid = false;
+        for(String executor: partitionAssignment.keySet()){
+            if(!examiner.model.executorArrivalRate.containsKey(executor)){
+                LOG.info("Current model is not valid, because " + executor + " is not ready.");
+                isValid = false;
+                break;
+            }
+            if(!executorUtilization.containsKey(executor)){
+                LOG.info("Current state is not valid, because " + executor + " utilization is missing");
+                isValid = false;
+                break;
+            }
+            for(String partition: partitionAssignment.get(executor)){
+                if(!partitionArrived.containsKey(partition)){
+                    LOG.info("Current state is not valid, because " + partition + " arrived is missing");
+                    isValid = false;
+                    break;
+                }
+                if(!partitionProcessed.containsKey(partition)){
+                    LOG.info("Current state is not valid, because " + executor + " processed is missing");
+                    isValid = false;
+                    break;
+                }
+            }
+            if(!isValid)break;
+        }
+    }
+
     //Treatment for Samza
     private void treat(Prescription pres){
         if(pres.migratingPartitions == null){
@@ -904,7 +906,7 @@ public class StreamSwitch implements OperatorController {
             //For drawing figure
             System.out.println("Migration! Scale out prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.target);
 
-            listener.scaling(newAssignment.size(), newAssignment);
+            listener.scale(newAssignment.size(), newAssignment);
         }
         //Scale in
         else if(partitionAssignment.get(pres.source).size() == pres.migratingPartitions.size()) {
@@ -912,7 +914,7 @@ public class StreamSwitch implements OperatorController {
             //For drawing figure
             System.out.println("Migration! Scale in prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.target);
 
-            listener.scaling(newAssignment.size(), newAssignment);
+            listener.scale(newAssignment.size(), newAssignment);
         }
         //Load balance
         else {
@@ -920,7 +922,7 @@ public class StreamSwitch implements OperatorController {
             //For drawing figure
             System.out.println("Migration! Load balance prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.target);
 
-            listener.changePartitionAssignment(newAssignment);
+            listener.remapping(newAssignment);
         }
     }
     //Main logic:  examine->diagnose->treatment->sleep
@@ -951,7 +953,7 @@ public class StreamSwitch implements OperatorController {
             //Examine
             LOG.info("Examine...");
             long time = System.currentTimeMillis();
-            examiner.examine(time);
+            examine(time);
             LOG.info("Diagnose...");
             if(isValid && !isMigrating && time - examiner.lastDeployed > migrationInterval) {
                 Prescription pres = diagnose(examiner);

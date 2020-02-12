@@ -53,7 +53,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class YarnApplicationMaster implements OperatorControllerListener {
+public class YarnApplicationMaster {
     private static final Logger log = LoggerFactory.getLogger(YarnApplicationMaster.class);
 
     private final Config config;
@@ -367,42 +367,43 @@ public class YarnApplicationMaster implements OperatorControllerListener {
             }
         }
         //log.info("Current jobModel is : " + jobModelManager.jobModel());
-        controller.init(this, container, tasks);
+        controller.init(new OperatorControllerListener() {
+            @Override
+            public void remapping(Map<String, List<String>> partitionAssignment) {
+                log.info("Receive request to change partitionAssignment");
+                JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionAssignment);
+                log.info("New JobModel = " + newJobModel);
+                if(newJobModel == null){
+                    log.info("No partition-executor mapping is given, use auto-generated JobModel instead");
+                }else leaderJobCoordinator.setNewJobModel(newJobModel);
+            }
+
+            @Override
+            public void scale(int parallelism, Map<String, List<String>> partitionAssignment) {
+                log.info("Try to change number of executors to: " + parallelism + " from " + numOfContainers);
+                if(partitionAssignment == null){
+                    log.info("No partition-executor mapping is given, break out");
+                    return ;
+                }
+                JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionAssignment);
+                log.info("parallelism: " + parallelism + " old: " + numOfContainers);
+                log.info("New JobModel = " + newJobModel);
+                if(numOfContainers < parallelism){   //Scale out
+                    log.info("Scale out!");
+                    int numToScaleOut = parallelism - numOfContainers;
+                    if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
+                    for(int i=0;i<numToScaleOut;i++)containerProcessManager.scaleOut();
+                    numOfContainers = parallelism;
+                }else if(numOfContainers > parallelism){  //Scale in
+                    log.info("Scale in!");
+                    if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
+                    numOfContainers = parallelism;
+                }
+            }
+        }, container, tasks);
         controller.start();
         //container.clear();
         //tasks.clear();
-    }
-
-    @Override
-    public void scaling(int n, Map<String, List<String>> partitionAssignment){ //Method used by decision listener
-        log.info("Try to change number of executors to: " + n + " from " + numOfContainers);
-        if(partitionAssignment == null){
-            log.info("No partition-executor mapping is given, break out");
-            return ;
-        }
-        JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionAssignment);
-        log.info("n: " + n + " old: " + numOfContainers);
-        log.info("New JobModel = " + newJobModel);
-        if(numOfContainers < n){   //Scale out
-            log.info("Scale out!");
-            int numToScaleOut = n - numOfContainers;
-            if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
-            for(int i=0;i<numToScaleOut;i++)containerProcessManager.scaleOut();
-            numOfContainers = n;
-        }else if(numOfContainers > n){  //Scale in
-            log.info("Scale in!");
-            if(newJobModel != null)leaderJobCoordinator.setNewJobModel(newJobModel);
-            numOfContainers = n;
-        }
-    }
-    @Override
-    public void changePartitionAssignment(Map<String, List<String>> partitionAssignment){
-        log.info("Receive request to change partitionAssignment");
-        JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionAssignment);
-        log.info("New JobModel = " + newJobModel);
-        if(newJobModel == null){
-            log.info("No partition-executor mapping is given, use auto-generated JobModel instead");
-        }else leaderJobCoordinator.setNewJobModel(newJobModel);
     }
 
     private JobModel generateJobModelFromPartitionAssignment(Map<String, List<String>> partitionAssignment){

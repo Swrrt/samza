@@ -41,7 +41,7 @@ public class DumbScaleOutOperatorController implements OperatorController {
             partitionAssignment.get(executor).add(iterator.next());
         }
         LOG.info("Initial partitionAssignment: " + partitionAssignment);
-        listener.changePartitionAssignment(partitionAssignment);
+        listener.remapping(partitionAssignment);
     }
     @Override
     public void start(){
@@ -68,7 +68,7 @@ public class DumbScaleOutOperatorController implements OperatorController {
                     j++;
                     if(j>=executors.size())j=0;
                 }
-                listener.scaling(i, partitionAssignment);
+                listener.scale(i, partitionAssignment);
             }catch(Exception e){
             }
         }

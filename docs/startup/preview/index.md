@@ -109,7 +109,7 @@ In cluster based execution, Samza will run and manage your application on a mult
 
 In the embedded execution model, you can use Samza as a lightweight library within your application. You can spin up multiple instances of your application which will distribute and coordinate processing among themselves. This mode provides flexibility for running your applications in arbitrary hosting environments:It also supports pluggable coordination logic with out-of-the-box support for two types of coordination:
 
-* **ZooKeeper based coordination** - Samza can be configured to use ZooKeeper to manage group membership and partition assignment among instances of your application. This allows the you to dynamically scale your application by spinning up more instances or scaling down by shutting some down.
+* **ZooKeeper based coordination** - Samza can be configured to use ZooKeeper to manage group membership and partition assignment among instances of your application. This allows the you to dynamically scale your application by spinning up more instances or scale down by shutting some down.
 * **External coordination** - Samza can run your application in a single JVM locally without coordination, or multiple JVMs with a static partition assignment. This is helpful when running in containerized environments like Kubernetes or Amazon ECS.
 
 For more details on running Samza in embedded mode, take a look at the [flexible deployment model](#flexible-deployment-model) section below.

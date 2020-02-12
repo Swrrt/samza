@@ -53,7 +53,7 @@ Samza processes your data in the form of streams. A _stream_ is a collection of 
 <br/>
 A stream can have multiple producers that write data to it and multiple consumers that read data from it. Data in a stream can be unbounded (eg: a Kafka topic) or bounded (eg: a set of files on HDFS). 
 
-A stream is sharded into multiple partitions for scaling how its data is processed. Each _partition_ is an ordered, replayable sequence of records. When a message is written to a stream, it ends up in one its partitions. Each message in a partition is uniquely identified by an _offset_. 
+A stream is sharded into multiple partitions for scale how its data is processed. Each _partition_ is an ordered, replayable sequence of records. When a message is written to a stream, it ends up in one its partitions. Each message in a partition is uniquely identified by an _offset_.
 
 Samza supports pluggable systems that can implement the stream abstraction. As an example, Kafka implements a stream as a topic while a database might implement a stream as a sequence of updates to its tables.
 

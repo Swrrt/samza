@@ -485,7 +485,7 @@ public class ContainerProcessManager implements ClusterResourceManager.Callback 
   }
 
   /*
-    For scaling out
+    For scale out
     Request one extra container from YARN
    */
   public void scaleOut(){

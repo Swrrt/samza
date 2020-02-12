@@ -56,7 +56,7 @@ which addressed challanges at scale
 ### [Concourse - Near real time notifications platform at Linkedin](https://youtu.be/Fszo6jThq0I)
 
 
-[Concourse](https://bit.ly/2zXNwUJ) is LinkedIn’s first near-real-time targeting and scoring platform for notifications. In this talk LinkedIn's Ajith Muralidharan & Vivek Nelamangala provided an in-depth overview of the design and various scaling optimizations. 
+[Concourse](https://bit.ly/2zXNwUJ) is LinkedIn’s first near-real-time targeting and scoring platform for notifications. In this talk LinkedIn's Ajith Muralidharan & Vivek Nelamangala provided an in-depth overview of the design and various scale optimizations.
 Concourse has an ability to score millions of notifications per second, while supporting the use of feature-rich machine learning 
 models based on terabytes of feature data.
 
