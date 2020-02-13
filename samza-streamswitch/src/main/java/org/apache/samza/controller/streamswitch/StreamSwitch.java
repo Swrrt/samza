@@ -21,7 +21,7 @@ public class StreamSwitch implements OperatorController {
     OperatorControllerListener listener;
     StreamSwitchMetricsRetriever retriever;
     Map<String, List<String>> partitionAssignment;
-    ReentrantLock updateLock; //Lock is used to avoid concurrent modify between updateModel() and changeImplemented()
+    ReentrantLock updateLock; //Lock is used to avoid concurrent modify between calculateModel() and changeImplemented()
     AtomicLong nextExecutorID;
     long startTime = 0;
     long migrationWarmupTime, migrationInterval;
@@ -696,8 +696,8 @@ public class StreamSwitch implements OperatorController {
                 return totalDelay;
             }
 
-            //Update snapshots from state
-            public void updateModelSnapshot(long n, Map<String, List<String>> partitionAssignment){
+            //Calculate model snapshot from state
+            public void calculateModel(long n, Map<String, List<String>> partitionAssignment){
                 LOG.info("Updating model snapshot, clear old data...");
                 partitionArrivalRate.clear();
                 executorArrivalRate.clear();
@@ -743,19 +743,42 @@ public class StreamSwitch implements OperatorController {
         public void setTimeSlotSize(long size){
             timeSlotSize = size;
         }
-        private boolean checkMetricsValid(Map<String, Boolean> partitionValid){
-            boolean isValid = true;
-            if(partitionValid == null)isValid = false;
-            for(String executor: partitionAssignment.keySet())
-                for(String partition: partitionAssignment.get(executor)) {
+        private boolean checkStateValid(Map<String, Boolean> partitionValid){
+            if(partitionValid == null)return false;
+
+            //Current we don't haven enough time slot to calculate model
+            if(state.currentTimeIndex < beta){
+                LOG.info("Current time slots number is smaller than beta, not valid");
+                return false;
+            }
+            //Partition Metrics Valid
+            for(String executor: partitionAssignment.keySet()) {
+                for (String partition : partitionAssignment.get(executor)) {
                     if (!partitionValid.containsKey(partition) || !partitionValid.get(partition)) {
                         LOG.info(partition + "'s metrics is not valid");
                         return false;
-                    }/*else{
-                        state.calibratePartitionState(partition, state.currentTimeIndex);
-                    }*/
+                    }
                 }
-            return isValid;
+            }
+
+            //State Valid
+            for(String executor: partitionAssignment.keySet()){
+                if(!state.executorUtilizations.containsKey(executor)){
+                    LOG.info("Current state is not valid, because " + executor + " utilization is missing");
+                    return false;
+                }
+                for(String partition: partitionAssignment.get(executor)){
+                    if(!state.partitionArrived.containsKey(partition)){
+                        LOG.info("Current state is not valid, because " + partition + " arrived is missing");
+                        return false;
+                    }
+                    if(!state.partitionCompleted.containsKey(partition)){
+                        LOG.info("Current state is not valid, because " + executor + " processed is missing");
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
 
         private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization, Map<String, Boolean> partitionValid){
@@ -773,9 +796,9 @@ public class StreamSwitch implements OperatorController {
             System.out.println("State, time " + time  + " , Partition Completed: " + completed);
         }
 
-        private void updateModel(){
+        private void calculateModel(){
             LOG.info("Updating Delay Estimating model");
-            model.updateModelSnapshot(state.currentTimeIndex, partitionAssignment);
+            model.calculateModel(state.currentTimeIndex, partitionAssignment);
 
             //Debug & Statistics
             if(true){
@@ -866,35 +889,9 @@ public class StreamSwitch implements OperatorController {
                 (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
         Map<String, Boolean> partitionValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("PartitionValid", null);
-        isValid = true;
         examiner.updateState(time, partitionArrived, partitionProcessed, executorUtilization, partitionValid);
-        if(!examiner.checkMetricsValid(partitionValid))isValid = false;
-        examiner.updateModel();
-        for(String executor: partitionAssignment.keySet()){
-            if(!examiner.model.executorArrivalRate.containsKey(executor)){
-                LOG.info("Current model is not valid, because " + executor + " is not ready.");
-                isValid = false;
-                break;
-            }
-            if(!executorUtilization.containsKey(executor)){
-                LOG.info("Current state is not valid, because " + executor + " utilization is missing");
-                isValid = false;
-                break;
-            }
-            for(String partition: partitionAssignment.get(executor)){
-                if(!partitionArrived.containsKey(partition)){
-                    LOG.info("Current state is not valid, because " + partition + " arrived is missing");
-                    isValid = false;
-                    break;
-                }
-                if(!partitionProcessed.containsKey(partition)){
-                    LOG.info("Current state is not valid, because " + executor + " processed is missing");
-                    isValid = false;
-                    break;
-                }
-            }
-            if(!isValid)break;
-        }
+        isValid = examiner.checkStateValid(partitionValid);
+        examiner.calculateModel();
     }
 
     //Treatment for Samza
