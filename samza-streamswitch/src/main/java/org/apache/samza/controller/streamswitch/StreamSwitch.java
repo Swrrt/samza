@@ -531,11 +531,10 @@ public class StreamSwitch implements OperatorController {
                 return totalUtilization;
             }
 
-            public void updateAtTime(long time, Map<String, Long> taskArrived,
+            public void updateAtTime(long time, long timeIndex, Map<String, Long> taskArrived,
                                      Map<String, Long> taskProcessed, Map<String, Double> utilization,
                                      Map<String, List<String>> partitionAssignment) { //Normal update
                 LOG.info("Debugging, metrics retrieved data, time: " + time + " taskArrived: "+ taskArrived + " taskProcessed: "+ taskProcessed + " assignment: " + partitionAssignment);
-                currentTimeIndex++;
                 if(currentTimeIndex == 0){ //Initialize
                     LOG.info("Initialize time point 0...");
                     for(String executor: partitionAssignment.keySet()){
@@ -546,8 +545,8 @@ public class StreamSwitch implements OperatorController {
                         }
                     }
                     timePoints.put(0l, time - migrationInterval);
-                    currentTimeIndex++;
                 }
+                currentTimeIndex = timeIndex;
                 timePoints.put(currentTimeIndex, time);
                 updateMappings(currentTimeIndex, partitionAssignment);
                 LOG.info("Current time " + time);
@@ -564,7 +563,7 @@ public class StreamSwitch implements OperatorController {
                 }
             }
         }
-        //Cannot use actually use window to store information, because we need to calibrate state.
+        //Model here is only a snapshot
         class Model {
             private State state;
             Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, executorInstantaneousDelay;
@@ -781,9 +780,9 @@ public class StreamSwitch implements OperatorController {
             return true;
         }
 
-        private void updateState(long time, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization, Map<String, Boolean> partitionValid){
+        private void updateState(long time, long timeIndex, Map<String, Long> partitionArrived, Map<String, Long> partitionProcessed, Map<String, Double> executorUtilization, Map<String, Boolean> partitionValid){
             LOG.info("Updating network calculus model...");
-            state.updateAtTime(time, partitionArrived, partitionProcessed, executorUtilization, partitionAssignment);
+            state.updateAtTime(time, timeIndex, partitionArrived, partitionProcessed, executorUtilization, partitionAssignment);
             state.calibrateState(state.currentTimeIndex, partitionValid);
             state.dropOldState();
             //Debug & Statistics
@@ -797,7 +796,7 @@ public class StreamSwitch implements OperatorController {
         }
 
         private void calculateModel(){
-            LOG.info("Updating Delay Estimating model");
+            LOG.info("Calculating Delay Estimating model");
             model.calculateModel(state.currentTimeIndex, partitionAssignment);
 
             //Debug & Statistics
@@ -879,7 +878,7 @@ public class StreamSwitch implements OperatorController {
         }
     }
 
-    private void examine(long time){
+    private void examine(long time, long timeIndex){
         Map<String, Object> metrics = examiner.metricsRetriever.retrieveMetrics();
         Map<String, Long> partitionArrived =
                 (HashMap<String, Long>) (metrics.get("PartitionArrived"));
@@ -889,9 +888,9 @@ public class StreamSwitch implements OperatorController {
                 (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
         Map<String, Boolean> partitionValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("PartitionValid", null);
-        examiner.updateState(time, partitionArrived, partitionProcessed, executorUtilization, partitionValid);
+        examiner.updateState(time, timeIndex, partitionArrived, partitionProcessed, executorUtilization, partitionValid);
         isValid = examiner.checkStateValid(partitionValid);
-        examiner.calculateModel();
+        if(isValid)examiner.calculateModel();
     }
 
     //Treatment for Samza
@@ -958,11 +957,12 @@ public class StreamSwitch implements OperatorController {
             }
         }while(true);
         LOG.info("Warm up completed.");
+        long timeIndex = 1; //the first time retrieve metrics is 1
         while(true) {
             //Examine
             LOG.info("Examine...");
             long time = System.currentTimeMillis();
-            examine(time);
+            examine(time, timeIndex);
             LOG.info("Diagnose...");
             if(isValid && !isMigrating && time - examiner.lastDeployed > migrationInterval) {
                 Prescription pres = diagnose(examiner);
@@ -976,21 +976,22 @@ public class StreamSwitch implements OperatorController {
                 else if(isMigrating)LOG.info("One migration is in process");
                 else LOG.info("Too close to last migration");
             }
+            //Calculate # of time slots we have to skip due to longer calculation
             long deltaT = System.currentTimeMillis() - time;
-            if(deltaT > metricsRetreiveInterval){
+            long skippedSlots = (deltaT - 1)/ metricsRetreiveInterval;
+            timeIndex += skippedSlots + 1;
+            if(skippedSlots > 0){
                 LOG.warn("Run loop time (" + deltaT + ") is longer than interval(" + metricsRetreiveInterval + "), please consider to set larger interval");
-                LOG.info("No sleeping this time ");
-            }else {
-                LOG.info("Sleep for " + (metricsRetreiveInterval - deltaT) + "milliseconds");
-                try {
-                    Thread.sleep(metricsRetreiveInterval - deltaT);
-                } catch (Exception e) {
-                    LOG.warn("Exception happens between run loop interval, ", e);
-                }
+            }
+            LOG.info("Sleep for " + ((skippedSlots + 1) * metricsRetreiveInterval - deltaT) + "milliseconds");
+            try{
+                Thread.sleep((skippedSlots + 1) * metricsRetreiveInterval - deltaT);
+            }catch (Exception e) {
+                LOG.warn("Exception happens between run loop interval, ", e);
             }
         }
     }
-    //TODO
+
     @Override
     public synchronized void onChangeImplemented(){
         LOG.info("Migration actually deployed, try to acquire lock...");
