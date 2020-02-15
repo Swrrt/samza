@@ -56,13 +56,13 @@ public abstract class StreamSwitch implements OperatorController{
         migrationWarmupTime = config.getLong("streamswitch.migration.warmup.time", 1000000000l);
         migrationInterval = config.getLong("streamswitch.migration.interval.time", 5000l);
         metricsRetreiveInterval = config.getInt("streamswitch.metrics.interval", 200);
+        metricsRetriever = createMetricsRetriever();
         isMigrating = false;
         updateLock = new ReentrantLock();
     }
     @Override
     public void init(OperatorControllerListener listener, List<String> executors, List<String> partitions){
         this.listener = listener;
-        this.metricsRetriever = createMetricsRetriever();
         //Default partitionAssignment
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
         partitionAssignment = new HashedMap();
