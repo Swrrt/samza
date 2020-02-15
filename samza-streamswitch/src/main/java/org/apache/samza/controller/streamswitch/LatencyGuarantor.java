@@ -313,7 +313,6 @@ public class LatencyGuarantor extends StreamSwitch {
     class Examiner{
         class State {
             Map<String, Map<Long, Long>> partitionArrived, partitionCompleted; //Instead of actual time, use the n-th time point as key
-            Map<Long, Long> timePoints; //Actual time of n-th time point.
             Map<String, Long> partitionLastValid; //Last valid state time point
             private Map<Long, Map<String, List<String>>> mappings;
             private Map<String, Deque<Pair<Long, Double>>> executorUtilizations;
@@ -321,8 +320,7 @@ public class LatencyGuarantor extends StreamSwitch {
             long currentTimeIndex;
             long storedTimeWindowSize;
             public State() {
-                timePoints = new HashMap<>();
-                currentTimeIndex = -1;
+                currentTimeIndex = 0;
                 beginTimeIndex = 0;
                 storedTimeWindowSize = 100;
                 partitionArrived = new HashMap<>();
@@ -333,12 +331,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             protected long getTimepoint(long n){
-                //Debugging
-                if(!timePoints.containsKey(n)){
-                    LOG.error("Time not contains index " + n);
-                }
-
-                return timePoints.get(n);
+                return n * metricsRetreiveInterval;
             }
 
             protected Map<String, List<String>> getMapping(long n){
@@ -394,7 +387,6 @@ public class LatencyGuarantor extends StreamSwitch {
                         partitionArrived.get(partition).remove(beginTimeIndex);
                         partitionCompleted.get(partition).remove(beginTimeIndex);
                     }
-                    timePoints.remove(beginTimeIndex);
                     beginTimeIndex++;
                 }
             }
@@ -412,7 +404,7 @@ public class LatencyGuarantor extends StreamSwitch {
             public void calibratePartitionState(String partition, long n){
                 long a1 = state.getPartitionArrived(partition, n);
                 long c1 = state.getPartitionCompleted(partition, n);
-                long n0 = partitionLastValid.get(partition);
+                long n0 = partitionLastValid.getOrDefault(partition, 0l);
                 if(n0 < n - 1) {
                     LOG.info("Calibrate state for " + partition + " from time=" + n0);
                     long a0 = state.getPartitionArrived(partition, n0);
@@ -474,10 +466,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             partitionLastValid.put(partition, 0l);
                         }
                     }
-                    timePoints.put(0l, time - migrationInterval);
                 }
                 currentTimeIndex = timeIndex;
-                timePoints.put(currentTimeIndex, time);
                 updateMappings(currentTimeIndex, partitionAssignment);
                 LOG.info("Current time " + time);
 
