@@ -63,6 +63,7 @@ public abstract class StreamSwitch implements OperatorController{
     @Override
     public void init(OperatorControllerListener listener, List<String> executors, List<String> partitions){
         this.listener = listener;
+        metricsRetriever.init();
         //Default partitionAssignment
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
         partitionAssignment = new HashedMap();
