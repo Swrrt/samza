@@ -487,7 +487,6 @@ public class LatencyGuarantor extends StreamSwitch {
         class Model {
             private State state;
             Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, executorInstantaneousDelay;
-            int beta;
             public Model(){
                 partitionArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
