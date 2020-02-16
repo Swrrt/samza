@@ -357,11 +357,18 @@ public class LatencyGuarantor extends StreamSwitch {
             }
             /*
             Remove old data that is useless:
-                  For all partition, Arrived(i) < Processed(n-1)-1?
+                  For all partition,
+                  Arrived(i) < Processed(n-1)-1?
                   and i < n - windowSize
+            Only used when all partition are ready.
             */
             private void dropOldState(){
                 LOG.info("Try to drop old states");
+                
+                //Check whether all partitions are ready
+                for(String partition: partitionArrived.keySet())
+                    if(!partitionLastValid.containsKey(partition) || partitionLastValid.get(partition) != currentTimeIndex)return;
+
                 //Drop partition arrived and completed data
                 while(beginTimeIndex < currentTimeIndex - storedTimeWindowSize){
                     for(String partition: partitionArrived.keySet()){
@@ -369,11 +376,11 @@ public class LatencyGuarantor extends StreamSwitch {
                         long processed = partitionCompleted.get(partition).get(currentTimeIndex - 2);
                         if(!(arrived + 1 < processed - 1)){
                             LOG.info("Time " +beginTimeIndex+ " is still useful for " + partition + ", cannot drop");
-                            return ; //If beginIndex is useful, stop pop
+                            break; //If beginIndex is useful, stop pop
                         }
                         if(partitionLastValid.get(partition) <= beginTimeIndex){
                             LOG.info("Time " +beginTimeIndex+ " is the last valid state for " + partition + ", cannot drop");
-                            return ;
+                            break;
                         }
                     }
                     LOG.info("Dropping old state at time " + beginTimeIndex);
@@ -388,13 +395,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 List<Long> removeIndex = new LinkedList<>();
                 for(Long t: mappings.keySet())
                     if(t < currentTimeIndex - beta - 1)removeIndex.add(t);
-                for(Long t: removeIndex)
+                LOG.info("Drop old mappings: " + removeIndex);
+                for(Long t: removeIndex) {
                     mappings.remove(t);
+                }
                 for(String executor: partitionAssignment.keySet()){
                     if(executorUtilizations.containsKey(executor)){
                         removeIndex.clear();
                         for(long t: executorUtilizations.get(executor).keySet())
                             if(t < currentTimeIndex - beta - 1)removeIndex.add(t);
+                        LOG.info("Drop " + executor + " utilizations: " + removeIndex);
                         for(long t: removeIndex)
                             executorUtilizations.get(executor).remove(t);
                     }
