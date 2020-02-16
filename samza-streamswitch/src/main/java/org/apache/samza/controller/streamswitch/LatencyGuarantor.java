@@ -1,17 +1,11 @@
 package org.apache.samza.controller.streamswitch;
 
 import javafx.util.Pair;
-import org.apache.commons.collections.map.HashedMap;
 import org.apache.samza.config.Config;
-import org.apache.samza.controller.OperatorController;
-import org.apache.samza.controller.OperatorControllerListener;
-import org.apache.samza.util.Util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantLock;
 
 //Under development
 
@@ -604,19 +598,18 @@ public class LatencyGuarantor extends StreamSwitch {
                 return 1.0/(service - arrival);
             }
 
-            private double getPartitionArrivalRate(String partition, long n0, long n1){
-                long totalArrived = 0;
+            private double calculatePartitionArrivalRate(String partition, long n0, long n1){
                 if(n0 < 0)n0 = 0;
                 long time = state.getTimepoint(n1) - state.getTimepoint(n0);
-                totalArrived = state.getPartitionArrived(partition, n1) - state.getPartitionArrived(partition, n0);
+                long totalArrived = state.getPartitionArrived(partition, n1) - state.getPartitionArrived(partition, n0);
                 LOG.info("Debugging, " + partition + " from points " + n0 + ", " + n1 + " delta t=" + time + ", darrived=" + totalArrived);
                 double arrivalRate = 0;
-                if(time > 1e-9)arrivalRate = totalArrived / time;
+                if(time > 1e-9)arrivalRate = totalArrived / ((double)time);
                 return arrivalRate;
             }
 
             // Calculate window service rate of n - beta ~ n (exclude n - beta)
-            private double getExecutorServiceRate(String executorId, long n){
+            private double calculateExecutorServiceRate(String executorId, long n){
                 long totalServiced = 0;
                 long totalTime = 0;
                 long n0 = n - beta + 1;
@@ -668,13 +661,13 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(String executor: partitionAssignment.keySet()){
                     double arrivalRate = 0;
                     for(String partition: partitionAssignment.get(executor)){
-                        double t = getPartitionArrivalRate(partition, n - beta, n);
+                        double t = calculatePartitionArrivalRate(partition, n - beta, n);
                         partitionArrivalRate.put(partition, t);
                         arrivalRate += t;
                     }
                     executorArrivalRate.put(executor, arrivalRate);
                     double util = state.getAverageExecutorUtilization(executor);
-                    double mu = getExecutorServiceRate(executor, n);
+                    double mu = calculateExecutorServiceRate(executor, n);
                     if(util > 1e-9 && util <= 1){
                         mu /= util;
                     }
