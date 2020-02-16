@@ -331,7 +331,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             protected long getTimepoint(long n){
-                return n * metricsRetreiveInterval;
+                return n * timeSlotSize;
             }
 
             protected Map<String, List<String>> getMapping(long n){
@@ -565,8 +565,9 @@ public class LatencyGuarantor extends StreamSwitch {
             private double getPartitionArrivalRate(String partition, long n0, long n1){
                 long totalArrived = 0;
                 if(n0 < 0)n0 = 0;
-                double time = state.getTimepoint(n1) - state.getTimepoint(n0);
+                long time = state.getTimepoint(n1) - state.getTimepoint(n0);
                 totalArrived = state.getPartitionArrived(partition, n1) - state.getPartitionArrived(partition, n0);
+                LOG.info("Debugging, " + partition + " from points " + n0 + ", " + n1 + " delta t=" + time + ", darrived=" + totalArrived);
                 double arrivalRate = 0;
                 if(time > 1e-9)arrivalRate = totalArrived / time;
                 return arrivalRate;
@@ -638,9 +639,9 @@ public class LatencyGuarantor extends StreamSwitch {
                     serviceRate.put(executor, mu);
                     executorInstantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor, n));
                 }
-
-                LOG.info("Debugging, executor windowed delay: " + executorInstantaneousDelay);
+                LOG.info("Debugging, partition arrival rate: " + partitionArrivalRate);
                 LOG.info("Debugging, executor windowed service: " + serviceRate);
+                LOG.info("Debugging, executor windowed delay: " + executorInstantaneousDelay);
             }
         }
         private Model model;
