@@ -602,7 +602,6 @@ public class LatencyGuarantor extends StreamSwitch {
                 if(n0 < 0)n0 = 0;
                 long time = state.getTimepoint(n1) - state.getTimepoint(n0);
                 long totalArrived = state.getPartitionArrived(partition, n1) - state.getPartitionArrived(partition, n0);
-                LOG.info("Debugging, " + partition + " from points " + n0 + ", " + n1 + " delta t=" + time + ", darrived=" + totalArrived);
                 double arrivalRate = 0;
                 if(time > 1e-9)arrivalRate = totalArrived / ((double)time);
                 return arrivalRate;
