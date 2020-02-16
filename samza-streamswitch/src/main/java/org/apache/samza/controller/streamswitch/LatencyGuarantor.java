@@ -315,7 +315,7 @@ public class LatencyGuarantor extends StreamSwitch {
             Map<String, Map<Long, Long>> partitionArrived, partitionCompleted; //Instead of actual time, use the n-th time point as key
             Map<String, Long> partitionLastValid; //Last valid state time point
             private Map<Long, Map<String, List<String>>> mappings;
-            private Map<String, Deque<Pair<Long, Double>>> executorUtilizations;
+            private Map<String, Map<Long, Double>> executorUtilizations;
             long beginTimeIndex;
             long currentTimeIndex;
             long storedTimeWindowSize;
@@ -368,6 +368,7 @@ public class LatencyGuarantor extends StreamSwitch {
             */
             private void dropOldState(){
                 LOG.info("Try to drop old states");
+                //Drop partition arrived and completed data
                 while(beginTimeIndex < currentTimeIndex - storedTimeWindowSize){
                     for(String partition: partitionArrived.keySet()){
                         long arrived = partitionArrived.get(partition).get(beginTimeIndex + 2);
@@ -381,13 +382,28 @@ public class LatencyGuarantor extends StreamSwitch {
                             return ;
                         }
                     }
-
                     LOG.info("Dropping old state at time " + beginTimeIndex);
                     for(String partition: partitionArrived.keySet()){
                         partitionArrived.get(partition).remove(beginTimeIndex);
                         partitionCompleted.get(partition).remove(beginTimeIndex);
                     }
                     beginTimeIndex++;
+                }
+
+                //Drop old mappings and executor utilizations
+                List<Long> removeIndex = new LinkedList<>();
+                for(Long t: mappings.keySet())
+                    if(t < currentTimeIndex - beta - 1)removeIndex.add(t);
+                for(Long t: removeIndex)
+                    mappings.remove(t);
+                for(String executor: partitionAssignment.keySet()){
+                    if(executorUtilizations.containsKey(executor)){
+                        removeIndex.clear();
+                        for(long t: executorUtilizations.get(executor).keySet())
+                            if(t < currentTimeIndex - beta - 1)removeIndex.add(t);
+                        for(long t: removeIndex)
+                            executorUtilizations.get(executor).remove(t);
+                    }
                 }
             }
             public long calculateArrivalTime(String partition, long r){
@@ -419,6 +435,41 @@ public class LatencyGuarantor extends StreamSwitch {
                 partitionLastValid.put(partition, n);
             }
             public void calibrateState(long n, Map<String, Boolean> partitionValid){
+                //Calibrate mappings
+                if(mappings.containsKey(n)){
+                    for(long t = n - 1; t >= 0 && t >= n - beta - 1; t--){
+                        if(!mappings.containsKey(t)){
+                            mappings.put(t, mappings.get(n));
+                        }else{
+                            break;
+                        }
+                    }
+                }
+
+                //Calibrate executor utilizations
+                for(String executor: partitionAssignment.keySet()) {
+                    if (executorUtilizations.containsKey(executor) && executorUtilizations.get(executor).containsKey(n)) {
+                        Map<Long, Double> utilization = executorUtilizations.get(executor);
+                        long lastValid = -1;
+                        for(long t: utilization.keySet())
+                            if(t < n && t > lastValid) lastValid = t;
+                        if(lastValid != -1) {
+                            double ul = utilization.get(lastValid), ur = utilization.get(n);
+                            //Esitmate utilization
+                            for (long t = lastValid + 1; t < n; t++) {
+                                double util = ul + (t - lastValid) * (ur - ul) / (n - lastValid);
+                                utilization.put(t, util);
+                            }
+                        }else{
+                            //We only have time n's utilization
+                            for(long t = n - 1; t >= 0 && t >= n - beta - 1; t--){
+                                utilization.put(t, utilization.get(n));
+                            }
+                        }
+                    }
+                }
+
+                //Calibrate partitions' state
                 if(partitionValid == null)return ;
                 for(String partition: partitionValid.keySet()){
                     if (partitionValid.get(partition)){
@@ -429,22 +480,14 @@ public class LatencyGuarantor extends StreamSwitch {
 
             private void updateExecutorUtilizations(String executor, long n, double util){
                 if(!executorUtilizations.containsKey(executor)){
-                    executorUtilizations.put(executor, new LinkedList<>());
+                    executorUtilizations.put(executor, new HashMap<>());
                 }
-                executorUtilizations.get(executor).addLast(new Pair(n, util));
-                if(executorUtilizations.get(executor).size() > beta){
-                    executorUtilizations.get(executor).pollFirst();
-                }
+                executorUtilizations.get(executor).put(n, util);
             }
-            private void updateMappings(long n, Map<String, List<String>> mapping){
-                mappings.put(n, partitionAssignment);
-                if(mappings.containsKey(n - beta - 2)) mappings.remove(n - beta - 2);
-            }
-
             private double getAverageExecutorUtilization(String executorId){
                 double totalUtilization = 0;
                 long totalTime = 0;
-                for(Pair<Long, Double> entry: executorUtilizations.get(executorId)){
+                for(Map.Entry<Long, Double> entry: executorUtilizations.get(executorId).entrySet()){
                     long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
                     totalTime += time;
                     totalUtilization += entry.getValue() * time;
@@ -468,7 +511,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                 }
                 currentTimeIndex = timeIndex;
-                updateMappings(currentTimeIndex, partitionAssignment);
+                mappings.put(currentTimeIndex, partitionAssignment);
                 LOG.info("Current time " + time);
 
                 for(String partition: taskArrived.keySet()){
