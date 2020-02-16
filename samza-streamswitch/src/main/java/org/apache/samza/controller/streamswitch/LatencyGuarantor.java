@@ -901,39 +901,24 @@ public class LatencyGuarantor extends StreamSwitch {
     }
     //Main logic:  examine->diagnose->treatment->sleep
 
-    void work(){
-        long timeIndex = 1; //the first time retrieve metrics is 1
-        while(true) {
-            //Examine
-            LOG.info("Examine...");
-            long time = System.currentTimeMillis();
-            examine(time, timeIndex);
-            LOG.info("Diagnose...");
-            if(isValid && !isMigrating && time - examiner.lastDeployed > migrationInterval) {
-                Prescription pres = diagnose(examiner);
-                if (pres.migratingPartitions != null) { //Not do nothing
-                    treat(pres);
-                } else {
-                    LOG.info("Nothing to do this time.");
-                }
-            }else{
-                if(!isValid)LOG.info("Current examine data is not valid, need to wait until valid");
-                else if(isMigrating)LOG.info("One migration is in process");
-                else LOG.info("Too close to last migration");
+    void work(long time, long timeIndex) {
+        LOG.info("Examine...");
+        //Examine
+        examine(time, timeIndex);
+        LOG.info("Diagnose...");
+        if (isValid && !isMigrating && time - examiner.lastDeployed > migrationInterval) {
+            //Diagnose
+            Prescription pres = diagnose(examiner);
+            if (pres.migratingPartitions != null) {
+                //Treatment
+                treat(pres);
+            } else {
+                LOG.info("Nothing to do this time.");
             }
-            //Calculate # of time slots we have to skip due to longer calculation
-            long deltaT = System.currentTimeMillis() - time;
-            long skippedSlots = (deltaT - 1)/ metricsRetreiveInterval;
-            timeIndex += skippedSlots + 1;
-            if(skippedSlots > 0){
-                LOG.warn("Run loop time (" + deltaT + ") is longer than interval(" + metricsRetreiveInterval + "), please consider to set larger interval");
-            }
-            LOG.info("Sleep for " + ((skippedSlots + 1) * metricsRetreiveInterval - deltaT) + "milliseconds");
-            try{
-                Thread.sleep((skippedSlots + 1) * metricsRetreiveInterval - deltaT);
-            }catch (Exception e) {
-                LOG.warn("Exception happens between run loop interval, ", e);
-            }
+        } else {
+            if (!isValid) LOG.info("Current examine data is not valid, need to wait until valid");
+            else if (isMigrating) LOG.info("One migration is in process");
+            else LOG.info("Too close to last migration");
         }
     }
 

@@ -107,10 +107,31 @@ public abstract class StreamSwitch implements OperatorController{
             }
         }while(true);
         LOG.info("Warm up completed.");
-        work();
+        long timeIndex = 1;
+        boolean stopped = false;
+        while(!stopped) {
+            long time = System.currentTimeMillis();
+            //Actual calculation, decision here
+            work(time, timeIndex);
+
+            //Calculate # of time slots we have to skip due to longer calculation
+            long deltaT = System.currentTimeMillis() - time;
+            long skippedSlots = (deltaT - 1)/ metricsRetreiveInterval;
+            timeIndex += skippedSlots + 1;
+            if(skippedSlots > 0){
+                LOG.warn("Run loop time (" + deltaT + ") is longer than interval(" + metricsRetreiveInterval + "), please consider to set larger interval");
+            }
+            LOG.info("Sleep for " + ((skippedSlots + 1) * metricsRetreiveInterval - deltaT) + "milliseconds");
+            try{
+                Thread.sleep((skippedSlots + 1) * metricsRetreiveInterval - deltaT);
+            }catch (Exception e) {
+                LOG.warn("Exception happens between run loop interval, ", e);
+                stopped = true;
+            }
+        }
         LOG.info("Stream switch stopped");
     }
-    abstract void work();
+    abstract void work(long time, long timeIndex);
     protected StreamSwitchMetricsRetriever createMetricsRetriever(){
         String retrieverFactoryClassName = config.getOrDefault("streamswitch.metrics.factory", "org.apache.samza.controller.streamswitch.JMXMetricsRetrieverFactory");
         return Util.getObj(retrieverFactoryClassName, StreamSwitchMetricsRetrieverFactory.class).getRetriever(config);
