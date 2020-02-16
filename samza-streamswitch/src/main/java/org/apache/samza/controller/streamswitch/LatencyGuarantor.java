@@ -72,7 +72,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 double arrival = examiner.model.partitionArrivalRate.get(t.getKey());
                 arrivalrate0 -= arrival;
                 arrivalrate1 += arrival;
-                LOG.info("Debugging: current partition " + t.getKey() + " arrival rate=" + t.getValue() + ", src=" + arrivalrate0 + ", tgt=" + arrivalrate1);
+                //LOG.info("Debugging: current partition " + t.getKey() + " arrival rate=" + t.getValue() + ", src=" + arrivalrate0 + ", tgt=" + arrivalrate1);
                 if(arrivalrate0 < serviceRate && arrivalrate1 < serviceRate) {
                     double delay0 = estimateLongtermDelay(arrivalrate0, serviceRate), delay1 = estimateLongtermDelay(arrivalrate1, serviceRate);
                     if (delay0 < best && delay1 < best) {
@@ -86,7 +86,7 @@ public class LatencyGuarantor extends StreamSwitch {
             long newExecutorId = getNextExecutorID();
             String tgtExecutor = String.format("%06d", newExecutorId);
             setNextExecutorId(newExecutorId + 1);
-            LOG.info("Debugging, scale out migrating partitions: " + migratingPartitions);
+            //LOG.info("Debugging, scale out migrating partitions: " + migratingPartitions);
             return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(srcExecutor, tgtExecutor, migratingPartitions), null);
         }
 
@@ -238,7 +238,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         double srcArrivalRate = examiner.model.executorArrivalRate.get(srcExecutor);
                         double srcServiceRate = examiner.model.serviceRate.get(srcExecutor);
                         List<String> migrating = new ArrayList<>();
-                        LOG.info("Debugging, try to migrate to " + tgtExecutor + "tgt la=" + tgtArrivalRate + "tgt mu=" + tgtServiceRate);
+                        //LOG.info("Debugging, try to migrate to " + tgtExecutor + "tgt la=" + tgtArrivalRate + "tgt mu=" + tgtServiceRate);
                         while(partitions.size() > 1){ //Cannot migrate all partitions out?
                             Pair<String, Double> t = partitions.poll();
                             double arrival = examiner.model.partitionArrivalRate.get(t.getKey());
@@ -247,7 +247,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             migrating.add(t.getKey());
                             if(srcArrivalRate < srcServiceRate && tgtArrivalRate < tgtServiceRate){
                                 double srcDelay = estimateLongtermDelay(srcArrivalRate, srcServiceRate), tgtDelay = estimateLongtermDelay(tgtArrivalRate, tgtServiceRate);
-                                LOG.info("Debugging, current src la=" + srcArrivalRate + " tgt la=" + tgtArrivalRate + " partitions=" + migrating);
+                                //LOG.info("Debugging, current src la=" + srcArrivalRate + " tgt la=" + tgtArrivalRate + " partitions=" + migrating);
                                 PriorityQueue<Pair<String, Double>> current = new PriorityQueue<>((x,y)-> {
                                     if(x.getValue() - 1e-9 > y.getValue())return -1;
                                     if(y.getValue() - 1e-9 > x.getValue())return 1;
@@ -262,7 +262,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                         current.add(new Pair(executor, examiner.model.getLongTermDelay(executor)));
                                     }
                                 }
-                                LOG.info("Debugging, vectors=" + current);
+                                //LOG.info("Debugging, vectors=" + current);
                                 if(best == null || vectorGreaterThan(best, current)){
                                     best = current;
                                     bestTgtExecutor = tgtExecutor;
@@ -364,7 +364,7 @@ public class LatencyGuarantor extends StreamSwitch {
             */
             private void dropOldState(){
                 LOG.info("Try to drop old states");
-                
+
                 //Check whether all partitions are ready
                 for(String partition: partitionArrived.keySet())
                     if(!partitionLastValid.containsKey(partition) || partitionLastValid.get(partition) != currentTimeIndex)return;
@@ -813,13 +813,14 @@ public class LatencyGuarantor extends StreamSwitch {
         if(healthiness == 0){
             LOG.info("Current healthiness is Good");
             //Try scale in
-            /*Pair<Prescription, List<Pair<String, Double>>> result = algorithms.tryToScaleIn();
+            Pair<Prescription, List<Pair<String, Double>>> result = algorithms.tryToScaleIn();
             if(result.getValue() != null) {
-                int thealthiness = checkHealthiness(examiner.getInstantDelay(), result.getValue());
+                int thealthiness = algorithms.checkHealthiness(examiner.getInstantDelay(), result.getValue());
                 if (thealthiness == 0) {  //Scale in OK
+                    LOG.info("Scale-in is OK");
                     return result.getKey();
                 }
-            }*/
+            }
             //Do nothing
             return pres;
         }
