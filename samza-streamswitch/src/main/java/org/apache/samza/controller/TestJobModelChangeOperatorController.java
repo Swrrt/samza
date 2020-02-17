@@ -36,7 +36,7 @@ public class TestJobModelChangeOperatorController implements OperatorController 
             partitionAssignment.get(executor).add(iterator.next());
         }
         LOG.info("Initial partitionAssignment: " + partitionAssignment);
-        listener.remapping(partitionAssignment);
+        listener.remap(partitionAssignment);
     }
 
     @Override
@@ -80,7 +80,7 @@ public class TestJobModelChangeOperatorController implements OperatorController 
                     partitionAssignment.get(tgtContainer).add(partitionAssignment.get(srcContainer).get(0));
                     partitionAssignment.get(srcContainer).remove(0);
                 }
-                listener.remapping(partitionAssignment);
+                listener.remap(partitionAssignment);
             }catch (Exception e){
                 LOG.info(e.getMessage());
             }

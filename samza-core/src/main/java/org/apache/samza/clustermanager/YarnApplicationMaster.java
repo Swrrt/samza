@@ -369,7 +369,7 @@ public class YarnApplicationMaster {
         //log.info("Current jobModel is : " + jobModelManager.jobModel());
         controller.init(new OperatorControllerListener() {
             @Override
-            public void remapping(Map<String, List<String>> partitionAssignment) {
+            public void remap(Map<String, List<String>> partitionAssignment) {
                 log.info("Receive request to change partitionAssignment");
                 JobModel newJobModel = generateJobModelFromPartitionAssignment(partitionAssignment);
                 log.info("New JobModel = " + newJobModel);

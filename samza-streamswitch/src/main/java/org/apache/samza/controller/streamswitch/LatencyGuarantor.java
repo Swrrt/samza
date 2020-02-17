@@ -896,7 +896,7 @@ public class LatencyGuarantor extends StreamSwitch {
             //For drawing figure
             System.out.println("Migration! Load balance prescription at time: " + examiner.state.getTimepoint(examiner.state.currentTimeIndex) + " from executor " + pres.source + " to executor " + pres.target);
 
-            listener.remapping(newAssignment);
+            listener.remap(newAssignment);
         }
     }
     //Main logic:  examine->diagnose->treatment->sleep
