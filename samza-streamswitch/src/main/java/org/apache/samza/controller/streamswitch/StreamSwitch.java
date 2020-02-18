@@ -17,7 +17,7 @@ public abstract class StreamSwitch implements OperatorController{
     protected OperatorControllerListener listener;
     protected StreamSwitchMetricsRetriever metricsRetriever;
     protected Map<String, List<String>> partitionAssignment;
-    protected long migrationWarmupTime, migrationInterval, metricsRetreiveInterval;
+    protected long migrationInterval, metricsRetreiveInterval;
     protected boolean isMigrating;
     ReentrantLock updateLock; //Lock is used to avoid concurrent modify between calculateModel() and changeImplemented()
     AtomicLong nextExecutorID;
@@ -53,9 +53,8 @@ public abstract class StreamSwitch implements OperatorController{
 
     public StreamSwitch(Config config){
         this.config = config;
-        migrationWarmupTime = config.getLong("streamswitch.migration.warmup.time", 1000000000l);
         migrationInterval = config.getLong("streamswitch.migration.interval.time", 5000l);
-        metricsRetreiveInterval = config.getInt("streamswitch.metrics.interval", 200);
+        metricsRetreiveInterval = config.getInt("streamswitch.metrics.interval", 100);
         metricsRetriever = createMetricsRetriever();
         isMigrating = false;
         updateLock = new ReentrantLock();

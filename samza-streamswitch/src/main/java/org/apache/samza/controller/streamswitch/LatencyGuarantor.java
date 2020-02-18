@@ -11,23 +11,22 @@ import java.util.*;
 
 public class LatencyGuarantor extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(LatencyGuarantor.class);
-    long userLatencyUpperbound, userWindow;
-    double instantLatencyCoefficient, longtermLatencyCoefficient; // Check with userLatencyUpperbound * coefficient
+    long latencyReq, windowReq;
+    double instantLatencyCoefficient, longtermLatencyCoefficient; // Check with latencyReq * coefficient
     boolean isValid;
 
     Examiner examiner;
     public LatencyGuarantor(Config config){
         super(config);
-        userLatencyUpperbound = config.getLong("streamswitch.delay.threshold", 400); //Unit: millisecond
-        userWindow = config.getLong("streamswitch.delay.window", 10000); //Unit: millisecond
-        instantLatencyCoefficient = config.getDouble("streamswitch.delay.instant.coefficient", 0.8);
-        longtermLatencyCoefficient = config.getDouble("streamswitch.delay.longterm.coefficient", 0.8);
+        latencyReq = config.getLong("streamswitch.latency.requirement", 400); //Unit: millisecond
+        windowReq = config.getLong("streamswitch.latency.window", 10000); //Unit: millisecond
+        instantLatencyCoefficient = config.getDouble("streamswitch.latency.instant.coefficient", 0.8);
+        longtermLatencyCoefficient = config.getDouble("streamswitch.latency.longterm.coefficient", 0.8);
         algorithms = new Algorithms();
         examiner = new Examiner();
         examiner.setMetricsRetriever(metricsRetriever);
         examiner.setTimeSlotSize(metricsRetreiveInterval);
         examiner.model.setState(examiner.state);
-        examiner.beta = (int)(userWindow / metricsRetreiveInterval); //The # of slots a user window
         isValid = false;
     }
 
@@ -293,12 +292,12 @@ public class LatencyGuarantor extends StreamSwitch {
             int longtermExceeded = 0;
             int both = 0;
             for(Map.Entry<String, Double> entry: instantDelay.entrySet()){
-                if(entry.getValue() > userLatencyUpperbound * instantLatencyCoefficient)instantExceeded = 1;
+                if(entry.getValue() > latencyReq * instantLatencyCoefficient)instantExceeded = 1;
             }
             for(Pair<String, Double> entry: longtermDelay){
-                if(entry.getValue() > userLatencyUpperbound * longtermLatencyCoefficient){
+                if(entry.getValue() > latencyReq * longtermLatencyCoefficient){
                     longtermExceeded = 1;
-                    if(instantDelay.get(entry.getKey()) > userLatencyUpperbound * instantLatencyCoefficient)both = 1;
+                    if(instantDelay.get(entry.getKey()) > latencyReq * instantLatencyCoefficient)both = 1;
                 }
             }
             if(both == 1)return 2;
@@ -397,7 +396,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 //Drop old mappings and executor utilizations
                 List<Long> removeIndex = new LinkedList<>();
                 for(Long t: mappings.keySet())
-                    if(t < currentTimeIndex - beta - 1)removeIndex.add(t);
+                    if(t < currentTimeIndex - (int)(windowReq / metricsRetreiveInterval) - 1)removeIndex.add(t);
                 LOG.info("Drop old mappings: " + removeIndex);
                 for(Long t: removeIndex) {
                     mappings.remove(t);
@@ -406,7 +405,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     if(executorUtilizations.containsKey(executor)){
                         removeIndex.clear();
                         for(long t: executorUtilizations.get(executor).keySet())
-                            if(t < currentTimeIndex - beta - 1)removeIndex.add(t);
+                            if(t < currentTimeIndex - (int)(windowReq / metricsRetreiveInterval) - 1)removeIndex.add(t);
                         LOG.info("Drop " + executor + " utilizations: " + removeIndex);
                         for(long t: removeIndex)
                             executorUtilizations.get(executor).remove(t);
@@ -444,7 +443,7 @@ public class LatencyGuarantor extends StreamSwitch {
             public void calibrateState(long n, Map<String, Boolean> partitionValid){
                 //Calibrate mappings
                 if(mappings.containsKey(n)){
-                    for(long t = n - 1; t >= 0 && t >= n - beta - 1; t--){
+                    for(long t = n - 1; t >= 0 && t >= n - (int)(windowReq / metricsRetreiveInterval) - 1; t--){
                         if(!mappings.containsKey(t)){
                             mappings.put(t, mappings.get(n));
                         }else{
@@ -469,7 +468,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             }
                         }else{
                             //We only have time n's utilization
-                            for(long t = n - 1; t >= 0 && t >= n - beta - 1; t--){
+                            for(long t = n - 1; t >= 0 && t >= n - (int)(windowReq / metricsRetreiveInterval) - 1; t--){
                                 utilization.put(t, utilization.get(n));
                             }
                         }
@@ -624,7 +623,7 @@ public class LatencyGuarantor extends StreamSwitch {
             private double calculateExecutorServiceRate(String executorId, long n){
                 long totalServiced = 0;
                 long totalTime = 0;
-                long n0 = n - beta + 1;
+                long n0 = n - (int)(windowReq / metricsRetreiveInterval) + 1;
                 if(n0<1)n0 = 1;
                 for(long i = n0; i <= n; i++){
                     long time = state.getTimepoint(i) - state.getTimepoint(i-1);
@@ -647,7 +646,7 @@ public class LatencyGuarantor extends StreamSwitch {
             public double getWindowExecutorInstantaneousDelay(String executorId, long n){
                 double totalDelay = 0;
                 long totalProcessed = 0;
-                long n0 = n - beta + 1;
+                long n0 = n - (int)(windowReq / metricsRetreiveInterval) + 1;
                 if(n0<1)n0 = 1;
                 for(long i = n0; i <= n; i++){
                     long processed = 0;
@@ -673,7 +672,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(String executor: partitionAssignment.keySet()){
                     double arrivalRate = 0;
                     for(String partition: partitionAssignment.get(executor)){
-                        double t = calculatePartitionArrivalRate(partition, n - beta, n);
+                        double t = calculatePartitionArrivalRate(partition, n - (int)(windowReq / metricsRetreiveInterval), n);
                         partitionArrivalRate.put(partition, t);
                         arrivalRate += t;
                     }
@@ -697,11 +696,10 @@ public class LatencyGuarantor extends StreamSwitch {
         private Prescription pendingPres;
         private long timeSlotSize;
         private long lastDeployed;
-        private int beta;
         Examiner(){
             this.state = new State();
             this.model = new Model();
-            timeSlotSize = 200l; //Default
+            timeSlotSize = 100l; //Default
             lastDeployed = 0l;
         }
         public void setMetricsRetriever(StreamSwitchMetricsRetriever metricsRetriever){
@@ -714,7 +712,7 @@ public class LatencyGuarantor extends StreamSwitch {
             if(partitionValid == null)return false;
 
             //Current we don't haven enough time slot to calculate model
-            if(state.currentTimeIndex < beta){
+            if(state.currentTimeIndex < (int)(windowReq / metricsRetreiveInterval)){
                 LOG.info("Current time slots number is smaller than beta, not valid");
                 return false;
             }
