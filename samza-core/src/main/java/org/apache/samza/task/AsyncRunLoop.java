@@ -144,6 +144,12 @@ public class AsyncRunLoop implements Runnable, Throttleable {
 
       long prevNs = clock.nanoTime();
 
+      long start = clock.nanoTime();
+      long processTime = 0;
+      long timeInterval = 0;
+      int tuples = 0;
+      long latency = 0;
+
       while (!shutdownNow) {
         if (throwable != null) {
           log.error("Caught throwable and stopping run loop", throwable);
@@ -169,9 +175,39 @@ public class AsyncRunLoop implements Runnable, Throttleable {
         long totalNs = currentNs - prevNs;
         prevNs = currentNs;
 
+        if (envelope != null) {
+          tuples++;
+          // ground truth computation
+          latency += System.currentTimeMillis() - envelope.getTimestamp();
+        }
+
         if (totalNs != 0) {
           // totalNs is not 0 if timer metrics are enabled
           containerMetrics.utilization().set(((double) activeNs) / totalNs);
+        }
+
+        /*****code for instrumentation*******/
+        processTime += activeNs;
+        timeInterval += totalNs;
+
+        if (currentNs - start >= 2000000000) {
+
+          // totalNs is not 0 if timer metrics are enabled
+          double utilization = ((double) processTime) / timeInterval;
+          double serviceRate = (double) tuples/(utilization*2);
+          float avgLatency = tuples==0 ? 0 : latency / (float)tuples;
+//          log.debug("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
+          System.out.println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
+
+          containerMetrics.avgUtilization().set(utilization);
+          containerMetrics.serviceRate().set(serviceRate);
+          containerMetrics.latency().set(avgLatency);
+
+          start = currentNs;
+          processTime = 0;
+          timeInterval = 0;
+          tuples = 0;
+          latency = 0;
         }
       }
     } finally {

@@ -47,6 +47,10 @@ class SamzaContainerMetrics(
   val executorWorkFactor = newGauge("executor-work-factor", 1.0)
   val physicalMemoryMb = newGauge[Double]("physical-memory-mb", 0.0F)
 
+  val avgUtilization = newGauge("average-utilization", 0.0F)
+  val serviceRate = newGauge("service-rate", 0.0F)
+  val latency = newGauge("average-latency", 0.0F)
+
   val taskStoreRestorationMetrics: util.Map[TaskName, Gauge[Long]] = new util.HashMap[TaskName, Gauge[Long]]()
 
   val exceptions = newListGauge[DiagnosticsExceptionEvent]("exceptions")
