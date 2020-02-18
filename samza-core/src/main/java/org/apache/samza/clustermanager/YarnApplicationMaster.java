@@ -129,13 +129,6 @@ public class YarnApplicationMaster {
 
     private SystemAdmins systemAdmins = null;
 
-    private LeaderJobCoordinator leaderJobCoordinator = null;
-
-    private OperatorController controller = null;
-
-    private int numOfContainers = 0;
-
-    private JobModel oldJobModel;
     /**
      * Creates a new ClusterBasedJobCoordinator instance from a config. Invoke run() to actually
      * run the jobcoordinator.
@@ -233,7 +226,6 @@ public class YarnApplicationMaster {
             partitionMonitor.start();
 
             //Start leader
-            leaderJobCoordinator = createLeaderJobCoordinator(config);
             startLeader();
 
             //Start JobController
@@ -324,11 +316,58 @@ public class YarnApplicationMaster {
         return partitionMonitor;
     }
 
+    public static void main(String[] args) {
+        Config coordinatorSystemConfig = null;
+        final String coordinatorSystemEnv = System.getenv(ShellCommandConfig.ENV_COORDINATOR_SYSTEM_CONFIG());
+        try {
+            //Read and parse the coordinator system config.
+            log.info("Parsing coordinator system config {}", coordinatorSystemEnv);
+            coordinatorSystemConfig = new MapConfig(SamzaObjectMapper.getObjectMapper().readValue(coordinatorSystemEnv, Config.class));
+        } catch (IOException e) {
+            log.error("Exception while reading coordinator stream config {}", e);
+            throw new SamzaException(e);
+        }
+        YarnApplicationMaster am = new YarnApplicationMaster(coordinatorSystemConfig);
+        am.run();
+    }
+
+
+    //
+    // Methods and variables we add
+    private LeaderJobCoordinator leaderJobCoordinator = null;
+
+    private OperatorController controller = null;
+
+    private int numOfContainers;
+
+    private JobModel oldJobModel;
+
+    private JobModel generateJobModelFromPartitionAssignment(Map<String, List<String>> partitionAssignment){
+        //Ignore locality manager?
+        Map<String, TaskModel> taskModels = new HashMap<>();
+        for(ContainerModel containerModel: oldJobModel.getContainers().values()){
+            for(Map.Entry<TaskName, TaskModel> entry: containerModel.getTasks().entrySet()){
+                taskModels.put(entry.getKey().getTaskName(), entry.getValue());
+            }
+        }
+        Map<String, ContainerModel> containers = new HashMap<>();
+        for(String containerId: partitionAssignment.keySet()){
+            Map<TaskName, TaskModel> tasks = new HashMap<>();
+            for(String taskId: partitionAssignment.get(containerId)){
+                tasks.put(new TaskName(taskId), taskModels.get(taskId));
+            }
+            containers.put(containerId, new ContainerModel(containerId, tasks));
+        }
+
+        return new JobModel(config, containers);
+    }
+
     private LeaderJobCoordinator createLeaderJobCoordinator(Config config) {
         String jobCoordinatorFactoryClassName = LeaderJobCoordinatorFactory.class.getName();
         return (LeaderJobCoordinator)Util.getObj(jobCoordinatorFactoryClassName, LeaderJobCoordinatorFactory.class).getJobCoordinator(config);
     }
     private void startLeader(){
+        leaderJobCoordinator = createLeaderJobCoordinator(config);
         leaderJobCoordinator.start();
         leaderJobCoordinator.setListener(new JobCoordinatorListener() {
             @Override
@@ -402,47 +441,5 @@ public class YarnApplicationMaster {
             }
         }, container, tasks);
         controller.start();
-        //container.clear();
-        //tasks.clear();
-    }
-
-    private JobModel generateJobModelFromPartitionAssignment(Map<String, List<String>> partitionAssignment){
-        //Ignore locality manager?
-        Map<String, TaskModel> taskModels = new HashMap<>();
-        for(ContainerModel containerModel: oldJobModel.getContainers().values()){
-            for(Map.Entry<TaskName, TaskModel> entry: containerModel.getTasks().entrySet()){
-                taskModels.put(entry.getKey().getTaskName(), entry.getValue());
-            }
-        }
-        Map<String, ContainerModel> containers = new HashMap<>();
-        for(String containerId: partitionAssignment.keySet()){
-            Map<TaskName, TaskModel> tasks = new HashMap<>();
-            for(String taskId: partitionAssignment.get(containerId)){
-                tasks.put(new TaskName(taskId), taskModels.get(taskId));
-            }
-            containers.put(containerId, new ContainerModel(containerId, tasks));
-        }
-
-        return new JobModel(config, containers);
-    }
-
-    @VisibleForTesting
-    private void showJobModel(JobModel jobModel){
-
-    }
-
-    public static void main(String[] args) {
-        Config coordinatorSystemConfig = null;
-        final String coordinatorSystemEnv = System.getenv(ShellCommandConfig.ENV_COORDINATOR_SYSTEM_CONFIG());
-        try {
-            //Read and parse the coordinator system config.
-            log.info("Parsing coordinator system config {}", coordinatorSystemEnv);
-            coordinatorSystemConfig = new MapConfig(SamzaObjectMapper.getObjectMapper().readValue(coordinatorSystemEnv, Config.class));
-        } catch (IOException e) {
-            log.error("Exception while reading coordinator stream config {}", e);
-            throw new SamzaException(e);
-        }
-        YarnApplicationMaster am = new YarnApplicationMaster(coordinatorSystemConfig);
-        am.run();
     }
 }

@@ -11,20 +11,23 @@ import java.util.*;
 
 public class LatencyGuarantor extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(LatencyGuarantor.class);
-    double instantaneousThreshold, longTermThreshold;
+    long userLatencyUpperbound, userWindow;
+    double instantLatencyCoefficient, longtermLatencyCoefficient; // Check with userLatencyUpperbound * coefficient
     boolean isValid;
 
     Examiner examiner;
     public LatencyGuarantor(Config config){
         super(config);
-        instantaneousThreshold = config.getDouble("streamswitch.delay.instant.threshold", 400.0);
-        longTermThreshold = config.getDouble("streamswtich.delay.longterm.threshold", 400.0);
+        userLatencyUpperbound = config.getLong("streamswitch.delay.threshold", 400); //Unit: millisecond
+        userWindow = config.getLong("streamswitch.delay.window", 10000); //Unit: millisecond
+        instantLatencyCoefficient = config.getDouble("streamswitch.delay.instant.coefficient", 0.8);
+        longtermLatencyCoefficient = config.getDouble("streamswitch.delay.longterm.coefficient", 0.8);
         algorithms = new Algorithms();
         examiner = new Examiner();
         examiner.setMetricsRetriever(metricsRetriever);
         examiner.setTimeSlotSize(metricsRetreiveInterval);
-        examiner.beta = config.getInt("streamswitch.delay.beta", 10);
         examiner.model.setState(examiner.state);
+        examiner.beta = (int)(userWindow / metricsRetreiveInterval); //The # of slots a user window
         isValid = false;
     }
 
@@ -290,12 +293,12 @@ public class LatencyGuarantor extends StreamSwitch {
             int longtermExceeded = 0;
             int both = 0;
             for(Map.Entry<String, Double> entry: instantDelay.entrySet()){
-                if(entry.getValue() > instantaneousThreshold)instantExceeded = 1;
+                if(entry.getValue() > userLatencyUpperbound * instantLatencyCoefficient)instantExceeded = 1;
             }
             for(Pair<String, Double> entry: longtermDelay){
-                if(entry.getValue() > longTermThreshold){
+                if(entry.getValue() > userLatencyUpperbound * longtermLatencyCoefficient){
                     longtermExceeded = 1;
-                    if(instantDelay.get(entry.getKey()) > instantaneousThreshold)both = 1;
+                    if(instantDelay.get(entry.getKey()) > userLatencyUpperbound * instantLatencyCoefficient)both = 1;
                 }
             }
             if(both == 1)return 2;
@@ -694,7 +697,7 @@ public class LatencyGuarantor extends StreamSwitch {
         private Prescription pendingPres;
         private long timeSlotSize;
         private long lastDeployed;
-        private int beta = 2;
+        private int beta;
         Examiner(){
             this.state = new State();
             this.model = new Model();
