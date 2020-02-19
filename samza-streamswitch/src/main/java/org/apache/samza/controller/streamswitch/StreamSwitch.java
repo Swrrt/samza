@@ -16,85 +16,59 @@ public abstract class StreamSwitch implements OperatorController{
     private static final Logger LOG = LoggerFactory.getLogger(StreamSwitch.class);
     protected OperatorControllerListener listener;
     protected StreamSwitchMetricsRetriever metricsRetriever;
-    protected Map<String, List<String>> partitionAssignment;
+    protected Map<String, List<String>> executorMapping;
     protected long migrationInterval, metricsRetreiveInterval;
     protected boolean isMigrating;
+    protected long lastMigratedTime;
+    protected long startTime;
     ReentrantLock updateLock; //Lock is used to avoid concurrent modify between calculateModel() and changeImplemented()
     AtomicLong nextExecutorID;
     Config config;
 
-    class Prescription {
-        String source, target;
-        List<String> migratingPartitions;
-        Prescription(){
-            migratingPartitions = null;
-        }
-        Prescription(String source, String target, List<String> migratingPartitions){
-            this.source = source;
-            this.target = target;
-            this.migratingPartitions = migratingPartitions;
-        }
-        Map<String, List<String>> generateNewPartitionAssignment(Map<String, List<String>> oldAssignment){
-            Map<String, List<String>> newAssignment = new HashMap<>();
-            for(String executor: oldAssignment.keySet()){
-                List<String> partitions = new ArrayList<>(oldAssignment.get(executor));
-                newAssignment.put(executor, partitions);
-            }
-            if (!newAssignment.containsKey(target)) newAssignment.put(target, new LinkedList<>());
-            for (String partition : migratingPartitions) {
-                newAssignment.get(source).remove(partition);
-                newAssignment.get(target).add(partition);
-            }
-            //For scale in
-            if (newAssignment.get(source).size() == 0) newAssignment.remove(source);
-            return newAssignment;
-        }
-    }
-
     public StreamSwitch(Config config){
         this.config = config;
-        migrationInterval = config.getLong("streamswitch.migration.interval.time", 5000l);
-        metricsRetreiveInterval = config.getInt("streamswitch.metrics.interval", 100);
+        migrationInterval = config.getLong("streamswitch.system.migration_interval", 1000l);
+        metricsRetreiveInterval = config.getInt("streamswitch.system.metrics_interval", 100);
         metricsRetriever = createMetricsRetriever();
         isMigrating = false;
+        lastMigratedTime = 0;
         updateLock = new ReentrantLock();
     }
     @Override
     public void init(OperatorControllerListener listener, List<String> executors, List<String> partitions){
         this.listener = listener;
         metricsRetriever.init();
-        //Default partitionAssignment
+        //Default executorMapping
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
-        partitionAssignment = new HashedMap();
+        executorMapping = new HashedMap();
         nextExecutorID = new AtomicLong();
         Iterator<String> iterator = partitions.iterator();
-        int times = partitions.size() / executors.size();
         for(String executor: executors){
-            partitionAssignment.put(executor, new LinkedList<>());
-            for(int i=0;i<times;i++){
+            executorMapping.put(executor, new LinkedList<>());
+            for(int i = 0; i < partitions.size() / executors.size(); i++){
                 if(iterator.hasNext()){
-                    partitionAssignment.get(executor).add(iterator.next());
+                    executorMapping.get(executor).add(iterator.next());
                 }
             }
         }
-        nextExecutorID.set(executors.size() + 2);
+        nextExecutorID.set(executors.size() + 2); //Samza's container ID start from 000002
         String executor = executors.get(0);
         while(iterator.hasNext()){
-            partitionAssignment.get(executor).add(iterator.next());
+            executorMapping.get(executor).add(iterator.next());
         }
-        LOG.info("Initial partitionAssignment: " + partitionAssignment);
-        listener.remap(partitionAssignment);
+        LOG.info("Initial executorMapping: " + executorMapping);
+        listener.remap(executorMapping);
     }
 
     @Override
     public void start(){
-        int metricsWarmupTime = config.getInt("streamswitch.metrics.warmup.time", 60000);
-        long startTime = System.currentTimeMillis();
+        int metricsWarmupTime = config.getInt("streamswitch.system.warmup_time", 60000);
+        long warmUpStartTime = System.currentTimeMillis();
         //Warm up phase
         LOG.info("Warm up for " + metricsWarmupTime + " milliseconds...");
         do{
             long time = System.currentTimeMillis();
-            if(time - startTime > metricsWarmupTime){
+            if(time - warmUpStartTime > metricsWarmupTime){
                 break;
             }
             else {
@@ -106,23 +80,26 @@ public abstract class StreamSwitch implements OperatorController{
             }
         }while(true);
         LOG.info("Warm up completed.");
+
+        //Start running
+        startTime = System.currentTimeMillis() - metricsRetreiveInterval; //current time is time index 1, need minus a interval to index 0
         long timeIndex = 1;
         boolean stopped = false;
         while(!stopped) {
-            long time = System.currentTimeMillis();
             //Actual calculation, decision here
-            work(time, timeIndex);
+            work(timeIndex);
 
             //Calculate # of time slots we have to skip due to longer calculation
-            long deltaT = System.currentTimeMillis() - time;
-            long skippedSlots = (deltaT - 1)/ metricsRetreiveInterval;
-            timeIndex += skippedSlots + 1;
-            if(skippedSlots > 0){
-                LOG.warn("Run loop time (" + deltaT + ") is longer than interval(" + metricsRetreiveInterval + "), please consider to set larger interval");
+            long deltaT = System.currentTimeMillis() - startTime;
+            long nextIndex = deltaT / metricsRetreiveInterval + 1;
+            long sleepTime = nextIndex * metricsRetreiveInterval - deltaT;
+            if(nextIndex > timeIndex){
+                LOG.info("Skipped to index:" + nextIndex + " from index:" + timeIndex + " deltaT=" + deltaT);
             }
-            LOG.info("Sleep for " + ((skippedSlots + 1) * metricsRetreiveInterval - deltaT) + "milliseconds");
+            timeIndex = nextIndex;
+            LOG.info("Sleep for " + sleepTime + "milliseconds");
             try{
-                Thread.sleep((skippedSlots + 1) * metricsRetreiveInterval - deltaT);
+                Thread.sleep(sleepTime);
             }catch (Exception e) {
                 LOG.warn("Exception happens between run loop interval, ", e);
                 stopped = true;
@@ -130,9 +107,9 @@ public abstract class StreamSwitch implements OperatorController{
         }
         LOG.info("Stream switch stopped");
     }
-    abstract void work(long time, long timeIndex);
+    abstract void work(long timeIndex);
     protected StreamSwitchMetricsRetriever createMetricsRetriever(){
-        String retrieverFactoryClassName = config.getOrDefault("streamswitch.metrics.factory", "org.apache.samza.controller.streamswitch.JMXMetricsRetrieverFactory");
+        String retrieverFactoryClassName = config.getOrDefault("streamswitch.system.metrics_retriever.factory", "org.apache.samza.controller.streamswitch.JMXMetricsRetrieverFactory");
         return Util.getObj(retrieverFactoryClassName, StreamSwitchMetricsRetrieverFactory.class).getRetriever(config);
     }
 }

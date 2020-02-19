@@ -35,7 +35,7 @@ public class TestJobModelChangeOperatorController implements OperatorController 
         while(iterator.hasNext()){
             partitionAssignment.get(executor).add(iterator.next());
         }
-        LOG.info("Initial partitionAssignment: " + partitionAssignment);
+        LOG.info("Initial executorMapping: " + partitionAssignment);
         listener.remap(partitionAssignment);
     }
 
