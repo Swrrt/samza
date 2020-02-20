@@ -27,7 +27,7 @@ public abstract class StreamSwitch implements OperatorController{
 
     public StreamSwitch(Config config){
         this.config = config;
-        migrationInterval = config.getLong("streamswitch.system.migration_interval", 1000l);
+        migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l); //Scale-out takes some time
         metricsRetreiveInterval = config.getInt("streamswitch.system.metrics_interval", 100);
         metricsRetriever = createMetricsRetriever();
         isMigrating = false;
