@@ -320,7 +320,7 @@ public class LatencyGuarantor extends StreamSwitch {
             public State() {
                 currentTimeIndex = 0;
                 beginTimeIndex = 0;
-                storedTimeWindowSize = 100;
+                storedTimeWindowSize = Math.max(100, windowReq / metricsRetreiveInterval + 2);
                 partitionArrived = new HashMap<>();
                 partitionCompleted = new HashMap<>();
                 executorUtilizations = new HashMap<>();
@@ -377,7 +377,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 while(beginTimeIndex < currentTimeIndex - storedTimeWindowSize){
                     for(String partition: partitionArrived.keySet()){
                         long arrived = partitionArrived.get(partition).get(beginTimeIndex + 2);
-                        long processed = partitionCompleted.get(partition).get(currentTimeIndex - 2);
+                        long processed = partitionCompleted.get(partition).get(currentTimeIndex - (windowReq / metricsRetreiveInterval) - 2);
                         if(!(arrived + 1 < processed - 1)){
                             LOG.info("Time " +beginTimeIndex+ " is still useful for " + partition + ", cannot drop");
                             break; //If beginIndex is useful, stop pop
@@ -417,11 +417,15 @@ public class LatencyGuarantor extends StreamSwitch {
             public long calculateArrivalTime(String partition, long r){
                 for(Map.Entry<Long, Long> entry: partitionArrived.get(partition).entrySet()){
                     if(entry.getKey() > state.beginTimeIndex && r <= entry.getValue() && r > partitionArrived.get(partition).get(entry.getKey() - 1)) {
-                        LOG.info("Calculate arrival time, r=" + r + " t=" + entry.getKey() + " a0=" + partitionArrived.get(partition).get(entry.getKey() - 1) + " a1=" + entry.getValue());
+                        LOG.info("Arrival time for tuple " + r + ": t=" + entry.getKey() + " a0=" + partitionArrived.get(partition).get(entry.getKey() - 1) + " a1=" + entry.getValue());
                         return entry.getKey();
                     }
                 }
-                return 0;
+                //Debugging:
+                LOG.warn("Cannot find arrival time for " + partition + " r=" + r);
+                LOG.warn("partition arrived:" + partitionArrived.get(partition));
+
+                return state.beginTimeIndex;
             }
 
             //Only called when time n is valid, also update partitionLastValid
@@ -430,7 +434,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 long c1 = state.getPartitionCompleted(partition, n);
                 long n0 = partitionLastValid.getOrDefault(partition, 0l);
                 if(n0 < n - 1) {
-                    LOG.info("Calibrate state for " + partition + " from time=" + n0);
+                    //LOG.info("Calibrate state for " + partition + " from time=" + n0);
                     long a0 = state.getPartitionArrived(partition, n0);
                     long c0 = state.getPartitionCompleted(partition, n0);
                     for (long i = n0 + 1; i < n; i++) {
@@ -567,7 +571,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 //m(c(n-1)+ 1), m(c(n))
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
                 long l = 0;
-                LOG.info("partition " + partition + " n=" + n + " cn=" + cn + " cn_1=" + cn_1 + " m0=" + m0 + " m1=" + m1);
+                //LOG.info("partition " + partition + " n=" + n + " cn=" + cn + " cn_1=" + cn_1 + " m0=" + m0 + " m1=" + m1);
                 if(m0 != m1) {
                     long a0 = state.getPartitionArrived(partition, m0 - 1), a1 = state.getPartitionArrived(partition, m0),
                             a2 = state.getPartitionArrived(partition, m1 - 1), a3 = state.getPartitionArrived(partition, m1);
@@ -579,7 +583,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         M += (am - am_1) * m;
                     }
                     l = (n + 1 - M / (cn - cn_1));
-                    LOG.info("a1=" + a1 + " a3=" + a3 + " aa0=" + aa0 + " M=" + M );
+                //    LOG.info("a1=" + a1 + " a3=" + a3 + " aa0=" + aa0 + " M=" + M );
                 }else l = n - m1 + 1;
                 long T = metricsRetreiveInterval;
                 long delay =  l * T;
