@@ -21,7 +21,7 @@ public abstract class StreamSwitch implements OperatorController{
     protected boolean isMigrating;
     protected long lastMigratedTime;
     protected long startTime;
-    ReentrantLock updateLock; //Lock is used to avoid concurrent modify between calculateModel() and changeImplemented()
+    ReentrantLock updateLock; //Lock is used to avoid concurrent modify between update() and changeImplemented()
     AtomicLong nextExecutorID;
     Config config;
 
@@ -93,7 +93,7 @@ public abstract class StreamSwitch implements OperatorController{
             long deltaT = System.currentTimeMillis() - startTime;
             long nextIndex = deltaT / metricsRetreiveInterval + 1;
             long sleepTime = nextIndex * metricsRetreiveInterval - deltaT;
-            if(nextIndex > timeIndex){
+            if(nextIndex > timeIndex + 1){
                 LOG.info("Skipped to index:" + nextIndex + " from index:" + timeIndex + " deltaT=" + deltaT);
             }
             timeIndex = nextIndex;
