@@ -133,15 +133,15 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                 }
             }
-            public long calculateArrivalTime(String partition, long r){
+            public long calculateArrivalTime(String partition, long numCompleted){
                 for(Map.Entry<Long, Long> entry: partitionArrived.get(partition).entrySet()){
-                    if(entry.getKey() > state.beginTimeIndex && r <= entry.getValue() && r > partitionArrived.get(partition).get(entry.getKey() - 1)) {
-                        LOG.info("Arrival time for tuple " + r + ": t=" + entry.getKey() + " a0=" + partitionArrived.get(partition).get(entry.getKey() - 1) + " a1=" + entry.getValue());
+                    if(entry.getKey() > state.beginTimeIndex && numCompleted <= entry.getValue() && numCompleted > partitionArrived.get(partition).get(entry.getKey() - 1)) {
+                        LOG.info("Arrival time for tuple " + numCompleted + ": t=" + entry.getKey() + " a0=" + partitionArrived.get(partition).get(entry.getKey() - 1) + " a1=" + entry.getValue());
                         return entry.getKey();
                     }
                 }
                 //Debugging:
-                LOG.warn("Cannot find arrival time for " + partition + " r=" + r);
+                LOG.warn("Cannot find arrival time for " + partition + " r=" + numCompleted);
                 LOG.warn("partition arrived:" + partitionArrived.get(partition));
 
                 return state.beginTimeIndex;
@@ -260,11 +260,11 @@ public class LatencyGuarantor extends StreamSwitch {
         //Model here is only a snapshot
         class Model {
             private State state;
-            Map<String, Double> partitionArrivalRate, executorArrivalRate, serviceRate, executorInstantaneousDelay;
+            Map<String, Double> partitionArrivalRate, executorArrivalRate, executorServiceRate, executorInstantaneousDelay; //Longterm delay could be calculated from arrival rate and service rate
             public Model(){
                 partitionArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
-                serviceRate = new HashMap<>();
+                executorServiceRate = new HashMap<>();
                 executorInstantaneousDelay = new HashMap<>();
             }
             public void setState(State state){
@@ -273,18 +273,8 @@ public class LatencyGuarantor extends StreamSwitch {
             //Calculate instant delay for tuples (c(n-1), c(n)]
             //Possible BUG reason: time a0 = 0 c0 = 0 is removed when dropping old state!
             private double calculatePartitionInstantDelay(String partition, long n){
-                if(n <= 0)return 0;
                 //No completed in n-1 ~ n
-                if(state.getPartitionCompleted(partition, n - 1) == state.getPartitionCompleted(partition, n))return 0;
-                if(state.getPartitionCompleted(partition, n) == 0)return 0;
-                /*long ct_1 = state.getPartitionCompleted(partition, n - 1), ct = state.getPartitionCompleted(partition, n);
-                long xt_1 = state.calculateArrivalTime(partition, ct_1 + 1), xt = state.calculateArrivalTime(partition, ct);
-                long l = 0;
-                if(xt_1 != xt){
-
-                }else{
-                    l = n - xt + 1;
-                }*/
+                if(state.getPartitionCompleted(partition, n) == 0 || state.getPartitionCompleted(partition, n - 1) == state.getPartitionCompleted(partition, n))return 0;
                 long cn = state.getPartitionCompleted(partition, n), cn_1 = state.getPartitionCompleted(partition, n - 1);
                 //m(c(n-1)+ 1), m(c(n))
                 long m0 = state.calculateArrivalTime(partition, cn_1 + 1), m1 = state.calculateArrivalTime(partition, cn);
@@ -309,12 +299,12 @@ public class LatencyGuarantor extends StreamSwitch {
                 return delay;
             }
 
-            private double calculateExecutorInstantDelay(String executor, long n){
+            private double calculateExecutorInstantDelay(long timeIndex, String executor){
                 double totalDelay = 0;
                 long totalCompleted = 0;
                 for(String partition: executorMapping.get(executor)){
-                    long completed = state.getPartitionCompleted(partition, n) - state.getPartitionCompleted(partition, n - 1);
-                    double delay = calculatePartitionInstantDelay(partition, n);
+                    long completed = state.getPartitionCompleted(partition, timeIndex) - state.getPartitionCompleted(partition, timeIndex - 1);
+                    double delay = calculatePartitionInstantDelay(partition, timeIndex);
                     totalDelay += delay * completed;
                     //if(completed > 0)LOG.info("Debugging, partition " + partition + " delay: " + delay + " processed: " + completed);
                     totalCompleted += completed;
@@ -328,7 +318,7 @@ public class LatencyGuarantor extends StreamSwitch {
             // 1 / ( u - n ). Return  1e100 if u <= n
             private double getLongTermDelay(String executorId){
                 double arrival = executorArrivalRate.get(executorId);
-                double service = serviceRate.get(executorId);
+                double service = executorServiceRate.get(executorId);
                 if(arrival < 1e-15)return 0.0;
                 if(service < arrival + 1e-15)return 1e100;
                 return 1.0/(service - arrival);
@@ -362,17 +352,13 @@ public class LatencyGuarantor extends StreamSwitch {
                 return 0;
             }
 
-
-
-            // Window average utilization
-
             //Window average delay
-            public double getWindowExecutorInstantaneousDelay(String executorId, long n){
+            public double getWindowExecutorInstantaneousDelay(String executorId, long timeIndex){
                 double totalDelay = 0;
                 long totalProcessed = 0;
-                long n0 = n - (int)(windowReq / metricsRetreiveInterval) + 1;
+                long n0 = timeIndex - (int)(windowReq / metricsRetreiveInterval) + 1;
                 if(n0<1)n0 = 1;
-                for(long i = n0; i <= n; i++){
+                for(long i = n0; i <= timeIndex; i++){
                     long processed = 0;
                     if(state.getMapping(i).containsKey(executorId)){
                         for(String partition: state.getMapping(i).get(executorId)){
@@ -380,40 +366,41 @@ public class LatencyGuarantor extends StreamSwitch {
                         }
                     }
                     totalProcessed += processed;
-                    totalDelay += calculateExecutorInstantDelay(executorId, i) * processed;
+                    totalDelay += calculateExecutorInstantDelay(i, executorId) * processed;
                 }
                 if(totalProcessed > 0) totalDelay/=totalProcessed;
                 return totalDelay;
             }
 
             //Calculate model snapshot from state
-            public void update(long n, Map<String, List<String>> executorMapping){
+            public void update(long timeIndex, Map<String, List<String>> executorMapping){
                 LOG.info("Updating model snapshot, clear old data...");
                 partitionArrivalRate.clear();
                 executorArrivalRate.clear();
-                serviceRate.clear();
+                executorServiceRate.clear();
                 executorInstantaneousDelay.clear();
                 for(String executor: executorMapping.keySet()){
                     double arrivalRate = 0;
                     for(String partition: executorMapping.get(executor)){
-                        double t = calculatePartitionArrivalRate(partition, n - (int)(windowReq / metricsRetreiveInterval), n);
+                        double t = calculatePartitionArrivalRate(partition, timeIndex - (int)(windowReq / metricsRetreiveInterval), timeIndex);
                         partitionArrivalRate.put(partition, t);
                         arrivalRate += t;
                     }
                     executorArrivalRate.put(executor, arrivalRate);
                     double util = state.getAverageExecutorUtilization(executor);
-                    double mu = calculateExecutorServiceRate(executor, n);
+                    double mu = calculateExecutorServiceRate(executor, timeIndex);
                     if(util > 1e-9 && util <= 1){
                         mu /= util;
                     }
-                    serviceRate.put(executor, mu);
-                    executorInstantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor, n));
+                    executorServiceRate.put(executor, mu);
+                    executorInstantaneousDelay.put(executor, getWindowExecutorInstantaneousDelay(executor, timeIndex));
                 }
                 LOG.info("Debugging, partition arrival rate: " + partitionArrivalRate);
-                LOG.info("Debugging, executor windowed service: " + serviceRate);
+                LOG.info("Debugging, executor windowed service: " + executorServiceRate);
                 LOG.info("Debugging, executor windowed delay: " + executorInstantaneousDelay);
             }
         }
+
         private Model model;
         private State state;
         Examiner(){
@@ -490,20 +477,20 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
                 long time = timeIndex;
                 System.out.println("Model, time " + time  + " , Arrival Rate: " + model.executorArrivalRate);
-                System.out.println("Model, time " + time  + " , Service Rate: " + model.serviceRate);
+                System.out.println("Model, time " + time  + " , Service Rate: " + model.executorServiceRate);
                 System.out.println("Model, time " + time  + " , Instantaneous Delay: " + model.executorInstantaneousDelay);
                 System.out.println("Model, time " + time  + " , Longterm Delay: " + longtermDelay);
                 System.out.println("Model, time " + time  + " , Partition Arrival Rate: " + model.partitionArrivalRate);
             }
         }
         private Map<String, Double> getInstantDelay(){
-            return examiner.model.executorInstantaneousDelay;
+            return model.executorInstantaneousDelay;
         }
 
-        private List<Pair<String, Double>> getLongtermDelay(){
-            List<Pair<String, Double>> delay = new LinkedList<>();
+        private Map<String, Double> getLongtermDelay(){
+            HashMap<String, Double> delay = new HashMap<>();
             for(String executor: executorMapping.keySet()){
-                delay.add(new Pair(executor,model.getLongTermDelay(executor)));
+                delay.put(executor, model.getLongTermDelay(executor));
             }
             return delay;
         }
@@ -540,17 +527,17 @@ public class LatencyGuarantor extends StreamSwitch {
         class Diagnoser { //Algorithms and utility methods
             // Find the subset which minimizes delay by greedy:
             // Sort arrival rate from largest to smallest, cut them in somewhere
-            private Pair<Prescription, List<Pair<String, Double>>> tryToScaleOut(){
+            private Pair<Prescription, Map<String, Double>> tryToScaleOut(){
                 LOG.info("Scale out by one container");
                 if(executorMapping.size() <= 0){
                     LOG.info("No executor to move");
-                    return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
                 Pair<String, Double> a = findMaxLongtermDelayExecutor(executorMapping);
                 String srcExecutor = a.getKey();
                 if(srcExecutor == null || srcExecutor.equals("") || executorMapping.get(srcExecutor).size() <=1){
                     LOG.info("Cannot scale out: insufficient partition to migrate");
-                    return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
 
                 LOG.info("Migrating out from executor " + srcExecutor);
@@ -573,7 +560,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Sorted partitions: " + partitions);
 
                 double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor), arrivalrate1 = 0;
-                //double serviceRate = examiner.model.serviceRate.get(srcExecutor); //Assume new executor has same service rate
+                //double executorServiceRate = examiner.model.executorServiceRate.get(srcExecutor); //Assume new executor has same service rate
                 double best = 1e100;
                 List<String> migratingPartitions = new ArrayList<>();
                 for(String partition: partitions){
@@ -593,7 +580,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     nextExecutorID.set(newExecutorId + 1);
                 }
                 //LOG.info("Debugging, scale out migrating partitions: " + migratingPartitions);
-                return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(srcExecutor, tgtExecutor, migratingPartitions), null);
+                return new Pair<Prescription, Map<String, Double>>(new Prescription(srcExecutor, tgtExecutor, migratingPartitions), null);
             }
 
             //Compare two delay vector, assume they are sorted
@@ -614,11 +601,11 @@ public class LatencyGuarantor extends StreamSwitch {
                 return false;
             }
             //Iterate all pairs of source and targe OE, find the one minimize delay vector
-            private Pair<Prescription, List<Pair<String, Double>>> tryToScaleIn(){
+            private Pair<Prescription, Map<String, Double>> tryToScaleIn(){
                 LOG.info("Try to scale in");
                 if(executorMapping.size() <= 1){
                     LOG.info("Not enough executor to merge");
-                    return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
 
                 String minsrc = "", mintgt = "";
@@ -629,7 +616,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     for(String tgt: executorMapping.keySet())
                         if(!src.equals(tgt)){
                             double tgtArrival = examiner.model.executorArrivalRate.get(tgt);
-                            double tgtService = examiner.model.serviceRate.get(tgt);
+                            double tgtService = examiner.model.executorServiceRate.get(tgt);
                             if(srcArrival + tgtArrival < tgtService){
                                 double estimatedLongtermDelay = 1.0/(tgtService - (srcArrival + tgtArrival));
                                 PriorityQueue<Pair<String, Double>> current = new PriorityQueue<>((x,y)-> {
@@ -661,10 +648,14 @@ public class LatencyGuarantor extends StreamSwitch {
                     List<String> migratingPartitions = new ArrayList<>(executorMapping.get(minsrc));
                     LOG.info("Scale in! from " + minsrc + " to " + mintgt);
                     LOG.info("Migrating partitions: " + migratingPartitions);
-                    return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(minsrc, mintgt, migratingPartitions), new ArrayList(best));
+                    HashMap<String, Double> map = new HashMap<>();
+                    for(Pair<String, Double> pair: best){
+                        map.put(pair.getKey(), pair.getValue());
+                    }
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(minsrc, mintgt, migratingPartitions), map);
                 }
                 LOG.info("Cannot find any scale in");
-                return new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
+                return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
             }
 
             private Pair<String, Double> findMaxLongtermDelayExecutor(Map<String, List<String>> executorMapping){
@@ -680,12 +671,11 @@ public class LatencyGuarantor extends StreamSwitch {
                 return new Pair(maxExecutor, initialDelay);
             }
 
-            private Pair<Prescription, List<Pair<String, Double>>> tryToMigrate(){
+            private Pair<Prescription, Map<String, Double>> tryToMigrate(){
                 LOG.info("Try to migrate");
                 LOG.info("Migrating once based on assignment: " + executorMapping);
                 if (executorMapping.size() == 0) { //No executor to move
-                    Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
-                    return result;
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
 
                 //Find container with maximum delay
@@ -693,14 +683,12 @@ public class LatencyGuarantor extends StreamSwitch {
                 String srcExecutor = a.getKey();
                 if (srcExecutor.equals("")) { //No correct container
                     LOG.info("Cannot find the container that exceeds threshold");
-                    Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
-                    return result;
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
 
                 if (executorMapping.get(srcExecutor).size() <= 1) { //Container has only one partition
                     LOG.info("Largest delay container " + srcExecutor + " has only " + executorMapping.get(srcExecutor).size());
-                    Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
-                    return result;
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
                 LOG.info("Try to migrate from largest delay container " + srcExecutor);
                 String bestTgtExecutor = null;
@@ -709,7 +697,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 for (String tgtExecutor : executorMapping.keySet())
                     if (!srcExecutor.equals(tgtExecutor)) {
                         double tgtArrivalRate = examiner.model.executorArrivalRate.get(tgtExecutor);
-                        double tgtServiceRate = examiner.model.serviceRate.get(tgtExecutor);
+                        double tgtServiceRate = examiner.model.executorServiceRate.get(tgtExecutor);
                         if (tgtArrivalRate < tgtServiceRate - 1e-9) {
                             PriorityQueue<Pair<String, Double>> partitions = new PriorityQueue<>((x,y)-> {
                                 if(x.getValue() - 1e-9 > y.getValue())return -1;
@@ -726,7 +714,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             }
 
                             double srcArrivalRate = examiner.model.executorArrivalRate.get(srcExecutor);
-                            double srcServiceRate = examiner.model.serviceRate.get(srcExecutor);
+                            double srcServiceRate = examiner.model.executorServiceRate.get(srcExecutor);
                             List<String> migrating = new ArrayList<>();
                             //LOG.info("Debugging, try to migrate to " + tgtExecutor + "tgt la=" + tgtArrivalRate + "tgt mu=" + tgtServiceRate);
                             while(partitions.size() > 1){ //Cannot migrate all partitions out?
@@ -767,23 +755,26 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                 if(best == null){
                     LOG.info("Cannot find any migration");
-                    Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(), null);
-                    return result;
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
                 LOG.info("Find best migration with delay: " + best + ", from executor " + srcExecutor + " to executor " + bestTgtExecutor + " migrating Partitions: " + bestMigratingPartitions);
-                Pair<Prescription, List<Pair<String, Double>>> result = new Pair<Prescription, List<Pair<String, Double>>>(new Prescription(srcExecutor, bestTgtExecutor, bestMigratingPartitions), new ArrayList<>(best));
+                Map<String, Double> map = new HashMap<>();
+                for(Pair<String, Double> pair: best){
+                    map.put(pair.getKey(), pair.getValue());
+                }
+                Pair<Prescription, Map<String, Double>> result = new Pair<Prescription, Map<String, Double>>(new Prescription(srcExecutor, bestTgtExecutor, bestMigratingPartitions), map);
                 return result;
             }
 
             //Check healthisness of input delay vectors: 0 for Good, 1 for Moderate, 2 for Severe
-            private int checkHealthiness(Map<String, Double> instantDelay, List<Pair<String, Double>> longtermDelay){
+            private int checkHealthiness(Map<String, Double> instantDelay, Map<String, Double> longtermDelay){
                 int instantExceeded = 0;
                 int longtermExceeded = 0;
                 int both = 0;
                 for(Map.Entry<String, Double> entry: instantDelay.entrySet()){
                     if(entry.getValue() > alpha * latencyReq)instantExceeded = 1;
                 }
-                for(Pair<String, Double> entry: longtermDelay){
+                for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
                     if(entry.getValue() > beta * latencyReq){
                         longtermExceeded = 1;
                         if(instantDelay.get(entry.getKey()) > alpha * latencyReq)both = 1;
@@ -815,7 +806,7 @@ public class LatencyGuarantor extends StreamSwitch {
         if(healthiness == 0){
             LOG.info("Current healthiness is Good");
             //Try scale in
-            Pair<Prescription, List<Pair<String, Double>>> result = diagnoser.tryToScaleIn();
+            Pair<Prescription, Map<String, Double>> result = diagnoser.tryToScaleIn();
             if(result.getValue() != null) {
                 int thealthiness = diagnoser.checkHealthiness(examiner.getInstantDelay(), result.getValue());
                 if (thealthiness == 0) {  //Scale in OK
@@ -829,7 +820,7 @@ public class LatencyGuarantor extends StreamSwitch {
         //Severe
         else{
             LOG.info("Current healthiness is Servere");
-            Pair<Prescription, List<Pair<String, Double>>> result = diagnoser.tryToMigrate();
+            Pair<Prescription, Map<String, Double>> result = diagnoser.tryToMigrate();
             //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
                 int thealthiness = diagnoser.checkHealthiness(examiner.getInstantDelay(), result.getValue());
@@ -858,9 +849,11 @@ public class LatencyGuarantor extends StreamSwitch {
         Map<String, Boolean> partitionValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
         examiner.updateState(timeIndex, partitionArrived, partitionProcessed, executorUtilization, partitionValid, executorMapping);
-        boolean validity = examiner.checkStateValidity(partitionValid);
-        if(validity)examiner.updateModel(timeIndex, executorMapping);
-        return validity;
+        if(examiner.checkStateValidity(partitionValid)){
+            examiner.updateModel(timeIndex, executorMapping);
+            return true;
+        }
+        return false;
     }
 
     //Treatment for Samza
