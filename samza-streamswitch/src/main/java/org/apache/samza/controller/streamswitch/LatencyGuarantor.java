@@ -13,7 +13,6 @@ public class LatencyGuarantor extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(LatencyGuarantor.class);
     private long latencyReq, windowReq;
     private double alpha, beta; // Check with latencyReq * coefficient. instantDelay * alpha < req and longtermDelay * beta < req
-    private boolean isValid;
     private Prescription pendingPres;
     private Examiner examiner;
     public LatencyGuarantor(Config config){
@@ -23,7 +22,6 @@ public class LatencyGuarantor extends StreamSwitch {
         alpha = config.getDouble("streamswitch.system.alpha", 0.8);
         beta = config.getDouble("streamswitch.system.beta", 0.8);
         examiner = new Examiner();
-        isValid = false;
         pendingPres = null;
     }
 
@@ -848,7 +846,8 @@ public class LatencyGuarantor extends StreamSwitch {
         }
     }
 
-    void examine(long timeIndex){
+    //Return state validity
+    boolean examine(long timeIndex){
         Map<String, Object> metrics = metricsRetriever.retrieveMetrics();
         Map<String, Long> partitionArrived =
                 (HashMap<String, Long>) (metrics.get("Arrived"));
@@ -859,8 +858,9 @@ public class LatencyGuarantor extends StreamSwitch {
         Map<String, Boolean> partitionValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
         examiner.updateState(timeIndex, partitionArrived, partitionProcessed, executorUtilization, partitionValid, executorMapping);
-        isValid = examiner.checkStateValidity(partitionValid);
-        if(isValid)examiner.updateModel(timeIndex, executorMapping);
+        boolean validity = examiner.checkStateValidity(partitionValid);
+        if(validity)examiner.updateModel(timeIndex, executorMapping);
+        return validity;
     }
 
     //Treatment for Samza
@@ -907,9 +907,9 @@ public class LatencyGuarantor extends StreamSwitch {
     void work(long timeIndex) {
         LOG.info("Examine...");
         //Examine
-        examine(timeIndex);
+        boolean stateValidity = examine(timeIndex);
         LOG.info("Diagnose...");
-        if (isValid && !isMigrating && (timeIndex * metricsRetreiveInterval + startTime) - lastMigratedTime > migrationInterval) {
+        if (stateValidity && !isMigrating && (timeIndex * metricsRetreiveInterval + startTime) - lastMigratedTime > migrationInterval) {
             //Diagnose
             Prescription pres = diagnose(examiner);
             if (pres.migratingPartitions != null) {
@@ -919,7 +919,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Nothing to do this time.");
             }
         } else {
-            if (!isValid) LOG.info("Current examine data is not valid, need to wait until valid");
+            if (!stateValidity) LOG.info("Current examine data is not valid, need to wait until valid");
             else if (isMigrating) LOG.info("One migration is in process");
             else LOG.info("Too close to last migration");
         }
