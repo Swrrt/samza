@@ -851,13 +851,13 @@ public class LatencyGuarantor extends StreamSwitch {
     void examine(long timeIndex){
         Map<String, Object> metrics = metricsRetriever.retrieveMetrics();
         Map<String, Long> partitionArrived =
-                (HashMap<String, Long>) (metrics.get("PartitionArrived"));
+                (HashMap<String, Long>) (metrics.get("Arrived"));
         Map<String, Long> partitionProcessed =
-                (HashMap<String, Long>) (metrics.get("PartitionProcessed"));
+                (HashMap<String, Long>) (metrics.get("Processed"));
         Map<String, Double> executorUtilization =
-                (HashMap<String, Double>) (metrics.get("ExecutorUtilization"));
+                (HashMap<String, Double>) (metrics.get("Utilization"));
         Map<String, Boolean> partitionValid =
-                (HashMap<String,Boolean>)metrics.getOrDefault("PartitionValid", null);
+                (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
         examiner.updateState(timeIndex, partitionArrived, partitionProcessed, executorUtilization, partitionValid, executorMapping);
         isValid = examiner.checkStateValidity(partitionValid);
         if(isValid)examiner.updateModel(timeIndex, executorMapping);

@@ -380,10 +380,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         HashMap<String, Long> partitionArrived = new HashMap<>();
         HashMap<String, Double> executorUtilization = new HashMap<>();
         HashMap<String, Boolean> partitionValid = new HashMap<>();
-        metrics.put("PartitionArrived", partitionArrived);
-        metrics.put("PartitionProcessed", partitionProcessed);
-        metrics.put("ExecutorUtilization", executorUtilization);
-        metrics.put("PartitionValid", partitionValid); //For validation check
+        metrics.put("Arrived", partitionArrived);
+        metrics.put("Processed", partitionProcessed);
+        metrics.put("Utilization", executorUtilization);
+        metrics.put("Validity", partitionValid); //For validation check
         HashMap<String, String> debugProcessed = new HashMap<>();
         HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
