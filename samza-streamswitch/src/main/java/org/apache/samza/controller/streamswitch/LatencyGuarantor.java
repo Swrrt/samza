@@ -35,14 +35,14 @@ public class LatencyGuarantor extends StreamSwitch {
             private Map<String, Map<Long, Double>> executorUtilizations;
             //For calculate instant delay
             private Map<String, Map<Long, Long>> partitionTotalLatencyPerTimeslot;
-            private Map<String, Long> partitionArrivalIndex;
-
-            long beginTimeIndex;
+            private Map<String, Long> partitionArrivedIndex;
+            private Map<String, Long> partitionArrivedRemainedIndex;
+            private long lastValidTimeIndex;
             long currentTimeIndex;
             long storedTimeWindowSize;
             private State() {
                 currentTimeIndex = 0;
-                beginTimeIndex = 0;
+                lastValidTimeIndex = 0;
                 storedTimeWindowSize = Math.max(100, windowReq + 2);
                 partitionArrived = new HashMap<>();
                 partitionCompleted = new HashMap<>();
@@ -50,7 +50,8 @@ public class LatencyGuarantor extends StreamSwitch {
                 partitionLastValid = new HashMap<>();
                 mappings = new HashMap<>();
                 partitionTotalLatencyPerTimeslot = new HashMap<>();
-                partitionArrivalIndex = new HashMap<>();
+                partitionArrivedIndex = new HashMap<>();
+                partitionArrivedRemainedIndex = new HashMap<>();
             }
 
             protected long getTimepoint(long timeIndex){
@@ -95,40 +96,70 @@ public class LatencyGuarantor extends StreamSwitch {
             //Calculate the total latency in new slot. Drop useless data during calculation.
             private void updatePartitionLatency(String partition, long timeIndex){
                 //Calculate total latency and # of tuples in current time slots
-                long arrivalIndex = partitionArrivalIndex.getOrDefault(partition, 1l);
+                long arrivalIndex = partitionArrivedIndex.getOrDefault(partition, 1l);
                 long complete = getPartitionCompleted(partition, timeIndex);
                 long lastComplete = getPartitionCompleted(partition, timeIndex - 1);
+                long arrived = getPartitionArrived(partition, arrivalIndex);
+                long lastArrived = getPartitionArrived(partition, arrivalIndex - 1);
                 long totalDelay = 0;
-                while(arrivalIndex <= timeIndex){
-                    long arrived = getPartitionArrived(partition, arrivalIndex);
-                    long lastArrived = getPartitionArrived(partition, arrivalIndex - 1);
-                    if(lastArrived >= complete)break;
+                while(arrivalIndex <= timeIndex && lastArrived < complete){
                     if(arrived > lastComplete){ //Should count into this slot
                         long number = Math.min(complete, arrived) - Math.max(lastComplete, lastArrived);
                         totalDelay += number * (timeIndex - arrivalIndex + 1);
                     }
-                    if(arrivalIndex < timeIndex - windowReq){
-                        partitionArrived.get(partition).remove(arrivalIndex);
-                        partitionCompleted.get(partition).remove(arrivalIndex);
-                    }
                     arrivalIndex++;
                 }
+                arrivalIndex--; //TODO: check here
                 partitionTotalLatencyPerTimeslot.putIfAbsent(partition, new HashMap<>());
                 partitionTotalLatencyPerTimeslot.get(partition).put(timeIndex, totalDelay);
-                partitionArrivalIndex.put(partition, arrivalIndex);
+                if(partitionTotalLatencyPerTimeslot.get(partition).containsKey(timeIndex - windowReq)){
+                    partitionTotalLatencyPerTimeslot.get(partition).remove(timeIndex - windowReq);
+                }
+                partitionArrivedIndex.put(partition, arrivalIndex);
             }
+
             private void updateLatencyWindowAndDropUselessData(long timeIndex){
-                for(String executor: executorMapping.keySet()) {
-                    for (String partition : executorMapping.get(executor)) {
-                        updatePartitionLatency(partition, timeIndex);
-                    }
-                    //Remove old utilization
-                    if(executorUtilizations.containsKey(executor) && executorUtilizations.get(executor).containsKey(timeIndex - windowReq)){
-                        executorUtilizations.get(executor).remove(timeIndex - windowReq);
+                for(long index = lastValidTimeIndex + 1; index <= timeIndex; index++) {
+                    //Calculate old latency
+                    for (String executor : executorMapping.keySet()) {
+                        for (String partition : executorMapping.get(executor)) {
+                            updatePartitionLatency(partition, index);
+                        }
                     }
                 }
-                //Remove old mappings
-                if(mappings.containsKey(timeIndex - windowReq))mappings.remove(timeIndex - windowReq);
+            }
+
+            private void dropState(long timeIndex){
+                //Drop arrived
+                for (String executor : executorMapping.keySet()) {
+                    for (String partition : executorMapping.get(executor)) {
+                        long remainedIndex = partitionArrivedRemainedIndex.get(partition);
+                        while(remainedIndex < partitionArrivedIndex.get(partition) - 1 && remainedIndex < timeIndex - windowReq){
+                            partitionArrived.get(partition).remove(remainedIndex);
+                            remainedIndex++;
+                        }
+                        partitionArrivedRemainedIndex.put(partition, remainedIndex);
+                    }
+                }
+
+                //Drop completed, utilization, mappings. These are fixed window
+                for(long index = lastValidTimeIndex + 1; index <= timeIndex; index++) {
+                    for (String executor : executorMapping.keySet()) {
+                        for (String partition : executorMapping.get(executor)) {
+                            //Drop completed
+                            if (partitionCompleted.containsKey(partition) && partitionCompleted.get(partition).containsKey(index - windowReq - 1)) {
+                                partitionCompleted.get(partition).remove(index - windowReq - 1);
+                            }
+                        }
+                        //Drop utilization
+                        if (executorUtilizations.containsKey(executor) && executorUtilizations.get(executor).containsKey(index - windowReq)) {
+                            executorUtilizations.get(executor).remove(index - windowReq);
+                        }
+                    }
+                    //Drop mappings
+                    if (mappings.containsKey(index - windowReq)) mappings.remove(index - windowReq);
+                }
+                lastValidTimeIndex = timeIndex;
             }
 
             //Only called when time n is valid, also update partitionLastValid
@@ -309,8 +340,8 @@ public class LatencyGuarantor extends StreamSwitch {
                         }
                     }
                 }
-                if(totalCompleted > 0) totalDelay /= totalCompleted;
-                return totalDelay;
+                if(totalCompleted > 0) return totalDelay / totalCompleted;
+                return 0;
             }
 
             //Calculate model snapshot from state
@@ -406,6 +437,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
             if(checkValidity(partitionValid)){
                 state.updateLatencyWindowAndDropUselessData(timeIndex);
+                state.dropState(timeIndex);
                 return true;
             }else return false;
         }
