@@ -496,7 +496,9 @@ public class LatencyGuarantor extends StreamSwitch {
                 });
 
                 for(String partition: executorMapping.get(srcExecutor)){
-                    priorityQueue.add(new Pair(partition, examiner.state.getPartitionTotalLatencyInTimeSlot(partition, examiner.state.currentTimeIndex)));
+                    double delay = examiner.state.getPartitionTotalLatencyInTimeSlot(partition, examiner.state.currentTimeIndex) /
+                            ((double) examiner.state.getPartitionCompleted(partition, examiner.state.currentTimeIndex) - examiner.state.getPartitionCompleted(partition, examiner.state.currentTimeIndex - 1));
+                    priorityQueue.add(new Pair(partition, delay));
                 }
 
                 List<String> partitions = new LinkedList<>();
@@ -654,7 +656,9 @@ public class LatencyGuarantor extends StreamSwitch {
 
                             //TODO: Modify this to average longterm delay
                             for(String partition: executorMapping.get(srcExecutor)){
-                                partitions.add(new Pair(partition, examiner.state.getPartitionTotalLatencyInTimeSlot(partition, examiner.state.currentTimeIndex)));
+                                double delay = examiner.state.getPartitionTotalLatencyInTimeSlot(partition, examiner.state.currentTimeIndex) /
+                                        ((double) examiner.state.getPartitionCompleted(partition, examiner.state.currentTimeIndex) - examiner.state.getPartitionCompleted(partition, examiner.state.currentTimeIndex - 1));
+                                partitions.add(new Pair(partition, delay));
                             }
                             //Debugging
                             for(Pair<String, Double> x:partitions){
