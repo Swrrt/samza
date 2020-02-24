@@ -68,7 +68,7 @@ class InMemoryManager {
       offset = IncomingMessageEnvelope.END_OF_STREAM_OFFSET;
     }
 
-    IncomingMessageEnvelope messageEnvelope = new IncomingMessageEnvelope(ssp, offset, key, message);
+    IncomingMessageEnvelope messageEnvelope = new IncomingMessageEnvelope(ssp, offset, key, message, 0);
     bufferedMessages.get(ssp)
         .add(messageEnvelope);
   }

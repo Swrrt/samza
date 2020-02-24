@@ -35,7 +35,7 @@ public class KinesisIncomingMessageEnvelope extends IncomingMessageEnvelope {
 
   public KinesisIncomingMessageEnvelope(SystemStreamPartition systemStreamPartition, String offset, Object key,
       Object message, String shardId, String sequenceNumber, Date approximateArrivalTimestamp) {
-    super(systemStreamPartition, offset, key, message);
+    super(systemStreamPartition, offset, key, message, 0);
     this.shardId = shardId;
     this.sequenceNumber = sequenceNumber;
     this.approximateArrivalTimestamp = approximateArrivalTimestamp;

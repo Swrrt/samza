@@ -148,7 +148,8 @@ class SerdeManager(
         envelope.getSystemStreamPartition,
         envelope.getOffset,
         key,
-        message)
+        message,
+        envelope.getTimestamp)
     }
   }
 }

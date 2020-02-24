@@ -31,7 +31,7 @@ public class EventHubIncomingMessageEnvelope extends IncomingMessageEnvelope {
 
   public EventHubIncomingMessageEnvelope(SystemStreamPartition systemStreamPartition, String offset, Object key,
                                          Object message, EventData eventData) {
-    super(systemStreamPartition, offset, key, message);
+    super(systemStreamPartition, offset, key, message, 0);
 
     this.eventData = eventData;
   }
