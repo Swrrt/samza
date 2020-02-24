@@ -133,7 +133,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 //Drop arrived
                 for (String executor : executorMapping.keySet()) {
                     for (String partition : executorMapping.get(executor)) {
-                        long remainedIndex = partitionArrivedRemainedIndex.get(partition);
+                        long remainedIndex = partitionArrivedRemainedIndex.getOrDefault(partition, 0l);
                         while(remainedIndex < partitionArrivedIndex.get(partition) - 1 && remainedIndex < timeIndex - windowReq){
                             partitionArrived.get(partition).remove(remainedIndex);
                             remainedIndex++;
