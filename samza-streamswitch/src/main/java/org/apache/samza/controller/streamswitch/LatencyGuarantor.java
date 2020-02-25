@@ -125,7 +125,9 @@ public class LatencyGuarantor extends StreamSwitch {
                         for (String partition : executorMapping.get(executor)) {
                             updatePartitionLatency(partition, index);
                         }
-                    }
+                    };
+                    LOG.info("Debugging, time=" + index + " arrival index=" + partitionArrivedIndex);
+                    LOG.info("Debugging, time=" + index + " total latency=" + partitionTotalLatencyPerTimeslot);
                 }
             }
 
