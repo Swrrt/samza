@@ -340,6 +340,8 @@ public class LatencyGuarantor extends StreamSwitch {
                         }
                     }
                 }
+                //In state, latency is count as # of timeslots, need to transfer to real time
+                totalDelay *= metricsRetreiveInterval;
                 if(totalCompleted > 0) return totalDelay / totalCompleted;
                 return 0;
             }
