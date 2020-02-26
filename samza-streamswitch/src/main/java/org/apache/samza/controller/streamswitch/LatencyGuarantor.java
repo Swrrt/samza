@@ -365,7 +365,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     executorArrivalRate.put(executor, arrivalRate);
                     double util = state.getAverageExecutorUtilization(executor);
                     double mu = calculateExecutorServiceRate(executor, timeIndex);
-                    if(util > 1e-9 && util <= 1){
+                    if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
                     }
                     executorServiceRate.put(executor, mu);
