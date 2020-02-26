@@ -927,8 +927,8 @@ public class LatencyGuarantor extends StreamSwitch {
                 //Scale in, remove useless information
                 if(pres.migratingSubstreams.size() == executorMapping.get(pres.source).size()){
                     examiner.state.executorUtilizations.remove(pres.source);
+                    examiner.model.executorServiceRate.remove(pres.source);
                 }
-
                 executorMapping = pres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
             }
