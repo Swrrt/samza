@@ -397,7 +397,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Current time slots number is smaller than beta, not valid");
                 return false;
             }
-            //Partition Metrics Valid
+            //Substream Metrics Valid
             for(String executor: executorMapping.keySet()) {
                 for (String substream : executorMapping.get(executor)) {
                     if (!substreamValid.containsKey(substream) || !substreamValid.get(substream)) {
@@ -472,23 +472,23 @@ public class LatencyGuarantor extends StreamSwitch {
     }
     class Prescription {
         String source, target;
-        List<String> migratingPartitions;
+        List<String> migratingSubstreams;
         Prescription(){
-            migratingPartitions = null;
+            migratingSubstreams = null;
         }
-        Prescription(String source, String target, List<String> migratingPartitions){
+        Prescription(String source, String target, List<String> migratingSubstreams){
             this.source = source;
             this.target = target;
-            this.migratingPartitions = migratingPartitions;
+            this.migratingSubstreams = migratingSubstreams;
         }
-        Map<String, List<String>> generateNewPartitionAssignment(Map<String, List<String>> oldAssignment){
+        Map<String, List<String>> generateNewSubstreamAssignment(Map<String, List<String>> oldAssignment){
             Map<String, List<String>> newAssignment = new HashMap<>();
             for(String executor: oldAssignment.keySet()){
                 List<String> substreams = new ArrayList<>(oldAssignment.get(executor));
                 newAssignment.put(executor, substreams);
             }
             if (!newAssignment.containsKey(target)) newAssignment.put(target, new LinkedList<>());
-            for (String substream : migratingPartitions) {
+            for (String substream : migratingSubstreams) {
                 newAssignment.get(source).remove(substream);
                 newAssignment.get(target).add(substream);
             }
@@ -571,23 +571,23 @@ public class LatencyGuarantor extends StreamSwitch {
                 //Debugging
                 LOG.info("Debugging, substreams' latency=" + substreams);
 
-                List<String> sortedPartitions = new LinkedList<>();
+                List<String> sortedSubstreams = new LinkedList<>();
                 for(Map.Entry<Double, Set<String>> entry: substreams.entrySet()){
-                    sortedPartitions.addAll(entry.getValue());
+                    sortedSubstreams.addAll(entry.getValue());
                 }
 
                 double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor), arrivalrate1 = 0;
                 //double executorServiceRate = examiner.model.executorServiceRate.get(srcExecutor); //Assume new executor has same service rate
                 double best = 1e100;
-                List<String> migratingPartitions = new ArrayList<>();
-                for(String substream: sortedPartitions){
+                List<String> migratingSubstreams = new ArrayList<>();
+                for(String substream: sortedSubstreams){
                     double arrival = examiner.model.substreamArrivalRate.get(substream);
                     arrivalrate0 -= arrival;
                     arrivalrate1 += arrival;
 
                     if(Math.max(arrivalrate0, arrivalrate1) < best){
                         best = Math.max(arrivalrate0, arrivalrate1);
-                        migratingPartitions.add(substream);
+                        migratingSubstreams.add(substream);
                     }
                     if(arrivalrate0 < arrivalrate1)break;
                 }
@@ -596,8 +596,8 @@ public class LatencyGuarantor extends StreamSwitch {
                 if(newExecutorId + 1 > nextExecutorID.get()){
                     nextExecutorID.set(newExecutorId + 1);
                 }
-                //LOG.info("Debugging, scale out migrating substreams: " + migratingPartitions);
-                return new Pair<Prescription, Map<String, Double>>(new Prescription(srcExecutor, tgtExecutor, migratingPartitions), null);
+                //LOG.info("Debugging, scale out migrating substreams: " + migratingSubstreams);
+                return new Pair<Prescription, Map<String, Double>>(new Prescription(srcExecutor, tgtExecutor, migratingSubstreams), null);
             }
 
             //Iterate all pairs of source and targe OE, find the one minimize delay vector
@@ -642,9 +642,9 @@ public class LatencyGuarantor extends StreamSwitch {
 
 
                 if(best != null){
-                    List<String> migratingPartitions = new ArrayList<>(executorMapping.get(minsrc));
+                    List<String> migratingSubstreams = new ArrayList<>(executorMapping.get(minsrc));
                     LOG.info("Scale in! from " + minsrc + " to " + mintgt);
-                    LOG.info("Migrating partitions: " + migratingPartitions);
+                    LOG.info("Migrating partitions: " + migratingSubstreams);
                     HashMap<String, Double> map = new HashMap<>();
                     for(String executor: executorMapping.keySet()){
                         if(executor.equals(minsrc)){
@@ -655,7 +655,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             map.put(executor, examiner.model.getLongTermDelay(executor));
                         }
                     }
-                    return new Pair<Prescription, Map<String, Double>>(new Prescription(minsrc, mintgt, migratingPartitions), map);
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(minsrc, mintgt, migratingSubstreams), map);
                 }else {
                     LOG.info("Cannot find any scale in");
                     return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
@@ -684,7 +684,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Try to migrate from largest delay container " + srcExecutor);
                 String bestTgtExecutor = null;
                 List<Double> best = null;
-                List<String> bestMigratingPartitions = null;
+                List<String> bestMigratingSubstreams = null;
                 for (String tgtExecutor : executorMapping.keySet())
                     if (!srcExecutor.equals(tgtExecutor)) {
                         double tgtArrivalRate = examiner.model.executorArrivalRate.get(tgtExecutor);
@@ -700,16 +700,16 @@ public class LatencyGuarantor extends StreamSwitch {
 
                             //Debugging
                             LOG.info("Debugging, substreams' latency=" + substreams);
-                            List<String> sortedPartitions = new LinkedList<>();
+                            List<String> sortedSubstreams = new LinkedList<>();
                             for(Map.Entry<Double, Set<String>> entry: substreams.entrySet()){
-                                sortedPartitions.addAll(entry.getValue());
+                                sortedSubstreams.addAll(entry.getValue());
                             }
 
                             double srcArrivalRate = examiner.model.executorArrivalRate.get(srcExecutor);
                             double srcServiceRate = examiner.model.executorServiceRate.get(srcExecutor);
                             List<String> migrating = new ArrayList<>();
                             //LOG.info("Debugging, try to migrate to " + tgtExecutor + "tgt la=" + tgtArrivalRate + "tgt mu=" + tgtServiceRate);
-                            for(String substream: sortedPartitions){ //Cannot migrate all substreams out?
+                            for(String substream: sortedSubstreams){ //Cannot migrate all substreams out?
                                 double arrival = examiner.model.substreamArrivalRate.get(substream);
                                 srcArrivalRate -= arrival;
                                 tgtArrivalRate += arrival;
@@ -734,7 +734,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                     if(best == null || vectorGreaterThan(best, current)){
                                         best = current;
                                         bestTgtExecutor = tgtExecutor;
-                                        bestMigratingPartitions = migrating;
+                                        bestMigratingSubstreams = migrating;
                                     }
                                     if(tgtDelay > srcDelay)break;
                                 }
@@ -746,13 +746,13 @@ public class LatencyGuarantor extends StreamSwitch {
                     LOG.info("Cannot find any migration");
                     return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
-                LOG.info("Find best migration with delay: " + best + ", from executor " + srcExecutor + " to executor " + bestTgtExecutor + " migrating Partitions: " + bestMigratingPartitions);
+                LOG.info("Find best migration with delay: " + best + ", from executor " + srcExecutor + " to executor " + bestTgtExecutor + " migrating Partitions: " + bestMigratingSubstreams);
                 Map<String, Double> map = new HashMap<>();
                 double srcArrival = examiner.model.executorArrivalRate.get(srcExecutor);
                 double tgtArrival = examiner.model.executorArrivalRate.get(bestTgtExecutor);
                 double srcService = examiner.model.executorServiceRate.get(srcExecutor);
                 double tgtService = examiner.model.executorServiceRate.get(bestTgtExecutor);
-                for(String substream: bestMigratingPartitions){
+                for(String substream: bestMigratingSubstreams){
                     double arrival = examiner.model.substreamArrivalRate.get(substream);
                     srcArrival -= arrival;
                     tgtArrival += arrival;
@@ -764,7 +764,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         map.put(executor, examiner.model.getLongTermDelay(executor));
                     }
                 }
-                Pair<Prescription, Map<String, Double>> result = new Pair<Prescription, Map<String, Double>>(new Prescription(srcExecutor, bestTgtExecutor, bestMigratingPartitions), map);
+                Pair<Prescription, Map<String, Double>> result = new Pair<Prescription, Map<String, Double>>(new Prescription(srcExecutor, bestTgtExecutor, bestMigratingSubstreams), map);
                 return result;
             }
 
@@ -842,7 +842,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
     //Treatment for Samza
     void treat(Prescription pres){
-        if(pres.migratingPartitions == null){
+        if(pres.migratingSubstreams == null){
             LOG.warn("Prescription has nothing, so do no treatment");
             return ;
         }
@@ -851,8 +851,8 @@ public class LatencyGuarantor extends StreamSwitch {
         isMigrating = true;
 
         LOG.info("Old mapping: " + executorMapping);
-        Map<String, List<String>> newAssignment = pres.generateNewPartitionAssignment(executorMapping);
-        LOG.info("Prescription : src: " + pres.source + " , tgt: " + pres.target + " , migrating: " + pres.migratingPartitions);
+        Map<String, List<String>> newAssignment = pres.generateNewSubstreamAssignment(executorMapping);
+        LOG.info("Prescription : src: " + pres.source + " , tgt: " + pres.target + " , migrating: " + pres.migratingSubstreams);
         LOG.info("New mapping: " + newAssignment);
         //Scale out
         if (!executorMapping.containsKey(pres.target)) {
@@ -863,7 +863,7 @@ public class LatencyGuarantor extends StreamSwitch {
             listener.scale(newAssignment.size(), newAssignment);
         }
         //Scale in
-        else if(executorMapping.get(pres.source).size() == pres.migratingPartitions.size()) {
+        else if(executorMapping.get(pres.source).size() == pres.migratingSubstreams.size()) {
             LOG.info("Scale in");
             //For drawing figure
             System.out.println("Migration! Scale in prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.source + " to executor " + pres.target);
@@ -889,7 +889,7 @@ public class LatencyGuarantor extends StreamSwitch {
         if (stateValidity && !isMigrating && (timeIndex * metricsRetreiveInterval + startTime) - lastMigratedTime > migrationInterval) {
             //Diagnose
             Prescription pres = diagnose(examiner);
-            if (pres.migratingPartitions != null) {
+            if (pres.migratingSubstreams != null) {
                 //Treatment
                 treat(pres);
             } else {
@@ -916,16 +916,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 isMigrating = false;
                 lastMigratedTime = System.currentTimeMillis();
                 Prescription pres = pendingPres;
-                LOG.info("Migrating " + pres.migratingPartitions + " from " + pres.source + " to " + pres.target);
+                LOG.info("Migrating " + pres.migratingSubstreams + " from " + pres.source + " to " + pres.target);
                 //For drawing figre
                 System.out.println("Change implemented at time " + System.currentTimeMillis() + " :  from " + pres.source + " to " + pres.target);
 
                 //Scale in, remove useless information
-                if(pres.migratingPartitions.size() == executorMapping.get(pres.source).size()){
+                if(pres.migratingSubstreams.size() == executorMapping.get(pres.source).size()){
                     examiner.state.executorUtilizations.remove(pres.source);
                 }
 
-                executorMapping = pres.generateNewPartitionAssignment(executorMapping);
+                executorMapping = pres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
             }
         }finally {
