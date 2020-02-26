@@ -135,8 +135,10 @@ public class LatencyGuarantor extends StreamSwitch {
                         totalDelay += number * (timeIndex - arrivalIndex + 1);
                     }
                     arrivalIndex++;
+                    arrived = getSubstreamArrived(substream, arrivalIndex);
+                    lastArrived = getSubstreamArrived(substream, arrivalIndex - 1);
                 }
-                arrivalIndex--; //TODO: check here
+                arrivalIndex--;
                 substreamState.totalLatency.put(timeIndex, totalDelay);
                 if(substreamState.totalLatency.containsKey(timeIndex - windowReq)){
                     substreamState.totalLatency.remove(timeIndex - windowReq);
