@@ -371,6 +371,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         mu /= util;
                         executorServiceRate.put(executor, mu);
                     }
+                    if(!executorServiceRate.containsKey(executor))executorServiceRate.put(executor, arrivalRate * 2);
                     executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
                 }
                 //Debugging
