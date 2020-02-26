@@ -355,6 +355,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 executorArrivalRate.clear();
                 executorServiceRate.clear();
                 executorInstantaneousDelay.clear();
+                Map<String, Double> utils = new HashMap<>();
                 for(String executor: executorMapping.keySet()){
                     double arrivalRate = 0;
                     for(String substream: executorMapping.get(executor)){
@@ -364,16 +365,19 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                     executorArrivalRate.put(executor, arrivalRate);
                     double util = state.getAverageExecutorUtilization(executor);
+                    utils.put(executor, util);
                     double mu = calculateExecutorServiceRate(executor, timeIndex);
                     if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
+                        executorServiceRate.put(executor, mu);
                     }
-                    executorServiceRate.put(executor, mu);
                     executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
                 }
+                //Debugging
+                LOG.info("Debugging, avg utilization: " + utils);
                 LOG.info("Debugging, partition arrival rate: " + substreamArrivalRate);
-                LOG.info("Debugging, executor windowed service: " + executorServiceRate);
-                LOG.info("Debugging, executor windowed delay: " + executorInstantaneousDelay);
+                LOG.info("Debugging, executor avg service rate: " + executorServiceRate);
+                LOG.info("Debugging, executor avg delay: " + executorInstantaneousDelay);
             }
         }
 
@@ -918,7 +922,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 Prescription pres = pendingPres;
                 LOG.info("Migrating " + pres.migratingSubstreams + " from " + pres.source + " to " + pres.target);
                 //For drawing figre
-                System.out.println("Change implemented at time " + System.currentTimeMillis() + " :  from " + pres.source + " to " + pres.target);
+                System.out.println("Change implemented at time " + (System.currentTimeMillis() - startTime)/metricsRetreiveInterval + " :    from " + pres.source + " to " + pres.target);
 
                 //Scale in, remove useless information
                 if(pres.migratingSubstreams.size() == executorMapping.get(pres.source).size()){
