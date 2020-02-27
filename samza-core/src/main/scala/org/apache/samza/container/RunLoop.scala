@@ -49,6 +49,10 @@ class RunLoop (
   private var lastWindowNs = clock()
   private var lastCommitNs = clock()
   private var activeNs = 0L
+  private var tuples = 0
+  private var latency = 0L
+
+
   @volatile private var shutdownNow = false
   private val coordinatorRequests: CoordinatorRequests = new CoordinatorRequests(taskInstances.keySet.asJava)
 
@@ -73,8 +77,12 @@ class RunLoop (
    * unhandled exception is thrown.
    */
   def run {
+    var start = clock()
+    var processTime = 0L
+    var timeInterval = 0L
+
     while (!shutdownNow) {
-      val loopStartTime = clock()
+      var prevNs = clock()
 
       trace("Attempting to choose a message to process.")
 
@@ -90,11 +98,33 @@ class RunLoop (
 
       window
       commit
-      val totalNs = clock() - loopStartTime
+      val currentNs = clock()
+      val totalNs = currentNs - prevNs
 
       if (totalNs != 0) {
         metrics.utilization.set(activeNs.toFloat / totalNs)
       }
+
+      processTime += activeNs
+      timeInterval += totalNs
+
+      if (currentNs - start >= 2000000000) { // totalNs is not 0 if timer metrics are enabled
+        val utilization = processTime.toFloat / timeInterval
+        val serviceRate = tuples.toFloat / (utilization * 2)
+        val avgLatency = if (tuples == 0) 0
+        else latency / tuples.toFloat
+        //          log.debug("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
+        println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency)
+        metrics.avgUtilization.set(utilization)
+        metrics.serviceRate.set(serviceRate)
+        metrics.latency.set(avgLatency)
+        start = currentNs
+        processTime = 0L
+        timeInterval = 0L
+        tuples = 0
+        latency = 0
+      }
+
       activeNs = 0L
     }
   }
@@ -116,6 +146,8 @@ class RunLoop (
 
     activeNs += updateTimerAndGetDuration(metrics.processNs) ((currentTimeNs: Long) => {
       if (envelope != null) {
+        tuples += 1
+        latency += System.currentTimeMillis() - envelope.getTimestamp
         val ssp = envelope.getSystemStreamPartition
 
         trace("Processing incoming message envelope for SSP %s." format ssp)

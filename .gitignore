@@ -32,3 +32,4 @@ out/
 samza-shell/src/main/visualizer/plan.json
 **/hs_err_pid*.log
 .vscode/
+._.DS_Store

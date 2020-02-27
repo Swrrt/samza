@@ -102,7 +102,7 @@ public class AvroFileHdfsReader implements SingleFileHdfsReader {
       curRecordOffset++;
     }
     // avro schema doesn't necessarily have key field
-    return new IncomingMessageEnvelope(systemStreamPartition, checkpoint, null, record);
+    return new IncomingMessageEnvelope(systemStreamPartition, checkpoint, null, record, 0);
   }
 
   @Override

@@ -118,7 +118,7 @@ class FileReaderSystemConsumer(
                 val cha = file.read.toChar
                 if (cha == '\n') {
                   // put into the queue. offset is the beginning of this line
-                  put(ssp, new IncomingMessageEnvelope(ssp, offset.toString, null, line));
+                  put(ssp, new IncomingMessageEnvelope(ssp, offset.toString, null, line, 0));
                   offset = i + 1 // the beginning of the newline
                   line = ""
                 } else {
