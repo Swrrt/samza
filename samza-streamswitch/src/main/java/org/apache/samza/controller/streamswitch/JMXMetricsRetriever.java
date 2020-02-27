@@ -248,10 +248,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         protected Map<String, Object> retrieveMetrics(String containerId, List<String> topics, String url){
             Map<String, Object> metrics = new HashMap<>();
             //LOG.info("Try to retrieve metrics from " + url);
+            JMXConnector jmxc = null;
             try{
                 JMXServiceURL jmxServiceURL = new JMXServiceURL(url);
                 //LOG.info("Connecting JMX server...");
-                JMXConnector jmxc = JMXConnectorFactory.connect(jmxServiceURL, null);
+                jmxc = JMXConnectorFactory.connect(jmxServiceURL, null);
                 MBeanServerConnection mbsc = jmxc.getMBeanServerConnection();
 
                 //Executor Utilization
@@ -322,7 +323,15 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
 
                 }
             }catch (Exception e){
-                LOG.info("Exception when retrieving " + containerId + "'s metrics from " + url + " : " + e);
+                LOG.warn("Exception when retrieving " + containerId + "'s metrics from " + url + " : " + e);
+            }finally {
+                if(jmxc != null){
+                    try{
+                        jmxc.close();
+                    }catch (Exception e){
+                        LOG.warn("Exception when closing jmx connection to " + containerId);
+                    }
+                }
             }
             return metrics;
         }
