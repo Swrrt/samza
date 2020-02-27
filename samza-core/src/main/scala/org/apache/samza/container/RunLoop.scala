@@ -108,9 +108,9 @@ class RunLoop (
       processTime += activeNs
       timeInterval += totalNs
 
-      if (currentNs - start >= 2000000000) { // totalNs is not 0 if timer metrics are enabled
+      if (currentNs - start >= 100000000) { // totalNs is not 0 if timer metrics are enabled
         val utilization = processTime.toFloat / timeInterval
-        val serviceRate = tuples.toFloat / (utilization * 2)
+        val serviceRate = (tuples.toFloat * 10) / (utilization)
         val avgLatency = if (tuples == 0) 0
         else latency / tuples.toFloat
         //          log.debug("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
