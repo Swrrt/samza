@@ -232,20 +232,17 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(String executor: executorMapping.keySet()) {
                     if (executorUtilizations.containsKey(executor) && executorUtilizations.get(executor).containsKey(currentTimeIndex)) {
                         Map<Long, Double> utilization = executorUtilizations.get(executor);
-                        long lastValid = -1;
-                        for(long t: utilization.keySet())
-                            if(t < currentTimeIndex  && t > lastValid) lastValid = t;
-                        if(lastValid != -1) {
-                            double ul = utilization.get(lastValid), ur = utilization.get(currentTimeIndex );
+                        if(currentTimeIndex - lastValidTimeIndex < windowReq) {
+                            double ul = utilization.get(lastValidTimeIndex), ur = utilization.get(currentTimeIndex);
                             //Esitmate utilization
-                            for (long t = lastValid + 1; t < currentTimeIndex ; t++) {
-                                double util = ul + (t - lastValid) * (ur - ul) / (currentTimeIndex - lastValid);
+                            for (long t = lastValidTimeIndex + 1; t < currentTimeIndex; t++) {
+                                double util = ul + (t - lastValidTimeIndex) * (ur - ul) / (currentTimeIndex - lastValidTimeIndex);
                                 utilization.put(t, util);
                             }
                         }else{
                             //We only have time n's utilization
-                            for(long t = currentTimeIndex  - 1; t >= 0 && t >= currentTimeIndex  - windowReq - 1; t--){
-                                utilization.put(t, utilization.get(currentTimeIndex ));
+                            for(long t = currentTimeIndex - 1; t >= 0 && t >= currentTimeIndex - windowReq - 1; t--){
+                                utilization.put(t, utilization.get(currentTimeIndex));
                             }
                         }
                     }
