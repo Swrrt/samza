@@ -163,6 +163,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             private void drop(long timeIndex){
+                long totalSize = 0;
                 //Drop arrived
                 for (String substream : substreamStates.keySet()) {
                     long remainedIndex = substreamStates.get(substream).remainedIndex;
@@ -171,6 +172,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         remainedIndex++;
                     }
                     substreamStates.get(substream).remainedIndex = remainedIndex;
+                    totalSize += substreamStates.get(substream).arrivedIndex - remainedIndex + 1;
                 }
 
                 //Drop completed, utilization, mappings. These are fixed window
@@ -191,6 +193,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     if (mappings.containsKey(index - windowReq)) mappings.remove(index - windowReq);
                 }
                 lastValidTimeIndex = timeIndex;
+                LOG.info("Useless state dropped, current arrived size: " + totalSize + " mapping size: " + mappings.size());
             }
 
             //Only called when time n is valid, also update substreamLastValid
