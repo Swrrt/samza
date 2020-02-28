@@ -802,16 +802,6 @@ class SamzaContainer(
       status = SamzaContainerStatus.STARTING
       if (config.getJMXEnabled) {
         jmxServer = new JmxServer()
-
-        //Write jmx url to our jmx file
-        import java.io.PrintWriter
-        new PrintWriter("jmxurl.txt"){
-          try{
-            write(jmxServer.url)
-          }finally{
-            close()
-          }
-        }
       }
       applicationContainerContextOption.foreach(_.start)
 
