@@ -232,11 +232,14 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(String executor: executorMapping.keySet()) {
                     if (executorUtilizations.containsKey(executor) && executorUtilizations.get(executor).containsKey(currentTimeIndex)) {
                         Map<Long, Double> utilization = executorUtilizations.get(executor);
-                        if(currentTimeIndex - lastValidTimeIndex < windowReq) {
-                            double ul = utilization.get(lastValidTimeIndex), ur = utilization.get(currentTimeIndex);
+                        long lastValid = -1;
+                        for(long t: utilization.keySet())
+                            if(t < currentTimeIndex && t > lastValid) lastValid = t;
+                        if(lastValid != -1 && currentTimeIndex - lastValid <= windowReq) {
+                            double ul = utilization.get(lastValid), ur = utilization.get(currentTimeIndex);
                             //Esitmate utilization
-                            for (long t = lastValidTimeIndex + 1; t < currentTimeIndex; t++) {
-                                double util = ul + (t - lastValidTimeIndex) * (ur - ul) / (currentTimeIndex - lastValidTimeIndex);
+                            for (long t = lastValid + 1; t < currentTimeIndex; t++) {
+                                double util = ul + (t - lastValid) * (ur - ul) / (currentTimeIndex - lastValid);
                                 utilization.put(t, util);
                             }
                         }else{
