@@ -158,7 +158,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     for(String substream: substreamStates.keySet()){
                         substreamArrivedIndex.put(substream, substreamStates.get(substream).arrivedIndex);
                     }
-                    LOG.info("Debugging, time=" + index + " arrival index=" + substreamArrivedIndex);
+                    //LOG.info("Debugging, time=" + index + " arrival index=" + substreamArrivedIndex);
                 }
             }
 

@@ -95,12 +95,13 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             if(in != -1){
                                 int ind = content.indexOf(".log", in);
                                 if(NumberUtils.isNumber(content.substring(in + 16, ind))){
-                                    String caddress = address +"/stdout/?start=0";
+                                    //String caddress = address +"/stdout/?start=0";        //Read jmx url from stdout
+                                    String caddress = address + "/samza-container-" + content.substring(in + 16, ind) + "-startup.log/?start=-8000";  //Read jmx url from startup.log
                                     Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
                                     if(ret == null){ //Cannot retrieve JMXRMI for some reason
                                         LOG.info("Cannot retrieve container's JMX from : " + caddress + ", report error");
                                     }else {
-                                        //LOG.info("container's JMX: " + ret);
+                                        LOG.info("container's JMX: " + ret);
                                         String host = url.split("[\\:]")[1].substring(2);
                                         String jmxRMI = ret.getValue().replaceAll("localhost", host);
                                         containerJMX.put(ret.getKey(), jmxRMI);
@@ -125,12 +126,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 scanner.useDelimiter("\n");
                 while(scanner.hasNext()){
                     String content = scanner.next().trim();
-                    if(content.contains("pid=")){
-                        int i = content.indexOf("pid=")+4;
-                        containerId = content.substring(i, i+6  );
+                    if(content.contains("[id=")){
+                        int i = content.indexOf("[id=")+4;
+                        containerId = content.substring(i, i+6);
                     }
-                    if(content.contains("JMX Server: ")){
-                        int i = content.indexOf("url=") + 4;
+                    if(content.contains("url=service:")){
+                        int i = content.indexOf("url=service") + 4;
                         JMXaddress = content.substring(i);
                     }
                     /*if(containerId!=null && JMXaddress != null){
