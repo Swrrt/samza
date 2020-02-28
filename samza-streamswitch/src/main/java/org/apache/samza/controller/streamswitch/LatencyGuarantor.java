@@ -235,7 +235,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         long lastValid = -1;
                         for(long t: utilization.keySet())
                             if(t < currentTimeIndex && t > lastValid) lastValid = t;
-                        if(lastValid != -1) {
+                        if(lastValid != -1 && currentTimeIndex - lastValid <= windowReq) {
                             double ul = utilization.get(lastValid), ur = utilization.get(currentTimeIndex);
                             //Esitmate utilization
                             for (long t = lastValid + 1; t < currentTimeIndex; t++) {
