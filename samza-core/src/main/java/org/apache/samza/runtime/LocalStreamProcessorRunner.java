@@ -19,14 +19,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class LocalStreamProcessorRunner {
     private static final Logger log = LoggerFactory.getLogger(LocalStreamProcessorRunner.class);
     private static volatile Throwable containerRunnerException = null;
+    private final CountDownLatch shutdownLatch = new CountDownLatch(1);
     public static void main(String[] args) throws Exception {
         Thread.setDefaultUncaughtExceptionHandler(
                 new SamzaUncaughtExceptionHandler(() -> {
@@ -59,14 +63,12 @@ public class LocalStreamProcessorRunner {
         LocalStreamProcessorRunner runner = new LocalStreamProcessorRunner();
         runner.run(appDesc, containerId, jobModel, config);
         //Keep stream processor running
-        while(true);
+        runner.waitForFinish();
         //System.exit(0);
     }
     private void run(ApplicationDescriptorImpl<? extends ApplicationDescriptor> appDesc, String containerId,
                             JobModel jobModel, Config config) {
         try {
-
-
             // create the StreamProcessors
             //config.put("containerId", containerId);
             HashMap x = new HashMap(config);
@@ -76,8 +78,27 @@ public class LocalStreamProcessorRunner {
                     sp -> new LocalStreamProcessorLifecycleListener(sp, jobConfig));
             processor.start();
         } catch (Throwable throwable) {
+            shutdownLatch.countDown();
             throw new SamzaException(String.format("Failed to start application: %s",
                     new ApplicationConfig(appDesc.getConfig()).getGlobalAppId()), throwable);
+        }
+    }
+    private void waitForFinish(){
+        long timeoutInMs = 0;
+        boolean finished = true;
+        try {
+            if (timeoutInMs < 1) {
+                shutdownLatch.await();
+            } else {
+                finished = shutdownLatch.await(timeoutInMs, TimeUnit.MILLISECONDS);
+
+                if (!finished) {
+                    log.warn("Timed out waiting for application to finish.");
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error waiting for application to finish", e);
+            throw new SamzaException(e);
         }
     }
     static StreamProcessor createStreamProcessor(Config config, ApplicationDescriptorImpl<? extends ApplicationDescriptor> appDesc,
@@ -107,6 +128,7 @@ public class LocalStreamProcessorRunner {
 
         @Override
         public void afterStop() {
+            shutdownLatch.countDown();
         }
 
         @Override

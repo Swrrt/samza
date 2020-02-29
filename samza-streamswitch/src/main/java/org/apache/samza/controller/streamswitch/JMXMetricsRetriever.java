@@ -101,7 +101,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                     if(ret == null){ //Cannot retrieve JMXRMI for some reason
                                         LOG.info("Cannot retrieve container's JMX from : " + caddress + ", report error");
                                     }else {
-                                        LOG.info("container's JMX: " + ret);
+                                        //LOG.info("container's JMX: " + ret);
                                         String host = url.split("[\\:]")[1].substring(2);
                                         String jmxRMI = ret.getValue().replaceAll("localhost", host);
                                         containerJMX.put(ret.getKey(), jmxRMI);
