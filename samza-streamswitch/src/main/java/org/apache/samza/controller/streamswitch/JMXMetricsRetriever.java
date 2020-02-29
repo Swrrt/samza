@@ -365,6 +365,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         partitionBeginOffset = new HashMap<>();
         partitionProcessed = new HashMap<>();
         partitionWatermark = new HashMap<>();
+        partitionCheckpoint = new HashMap<>();
     }
     /*
         Currently, metrics retriever only support one topic metrics
