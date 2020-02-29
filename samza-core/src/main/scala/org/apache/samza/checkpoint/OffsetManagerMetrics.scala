@@ -27,8 +27,11 @@ import org.apache.samza.system.SystemStreamPartition
 class OffsetManagerMetrics(val registry: MetricsRegistry = new MetricsRegistryMap) extends MetricsHelper {
 
   val checkpointedOffsets = new ConcurrentHashMap[SystemStreamPartition, Gauge[String]]
+  //For our calculation of processed
+  val loadedCheckpointedOffsets = new ConcurrentHashMap[SystemStreamPartition, Gauge[String]]
 
   def addCheckpointedOffset(systemStreamPartition: SystemStreamPartition, checkpointedOffset: String) {
     checkpointedOffsets.put(systemStreamPartition, newGauge("%s-%s-%d-checkpointed-offset" format (systemStreamPartition.getSystem, systemStreamPartition.getStream, systemStreamPartition.getPartition.getPartitionId), checkpointedOffset))
+    loadedCheckpointedOffsets.put(systemStreamPartition, newGauge("%s-%s-%d-loaded-checkpointed-offset" format (systemStreamPartition.getSystem, systemStreamPartition.getStream, systemStreamPartition.getPartition.getPartitionId), checkpointedOffset))
   }
 }

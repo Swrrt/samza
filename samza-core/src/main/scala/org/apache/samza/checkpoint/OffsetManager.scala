@@ -318,6 +318,9 @@ class OffsetManager(
               if (!shouldKeep) {
                 info("Ignoring previously checkpointed offset %s for %s since the offset is for a stream that is not currently an input stream." format (offset, systemStreamPartition))
               }
+              //For our calculation of processed
+              offsetManagerMetrics.loadedCheckpointedOffsets.get(systemStreamPartition).set(offset)
+              //
               info("Checkpointed offset is currently %s for %s" format (offset, systemStreamPartition))
               shouldKeep
           }.asJava))
