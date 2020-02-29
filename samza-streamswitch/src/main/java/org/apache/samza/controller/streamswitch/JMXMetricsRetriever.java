@@ -230,7 +230,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     && name.getKeyProperty("type").startsWith("samza-container-"); //For join operator
         }
         private boolean isCheckpoint(ObjectName name, String topic){
-            return name.getDomain().equals("org.apache.samza.checkpoint.OffsetManagerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").endsWith("checkpointed-offset")
+            return name.getDomain().equals("org.apache.samza.checkpoint.OffsetManagerMetrics") && name.getKeyProperty("name").startsWith("kafka-" + topic + "-") && name.getKeyProperty("name").endsWith("-loaded-checkpointed-offset")
                     && !name.getKeyProperty("name").contains("window-count") && !name.getKeyProperty("name").contains(topic + "-changelog-")
                     && name.getKeyProperty("type").startsWith("samza-container-"); //For join operator
         }
@@ -324,17 +324,19 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             LOG.info("Partition " + partitionId + " arrived: " + arrived);
                             partitionArrived.put(partitionId, String.valueOf(arrived));
                         }*/
-                            }else if(isCheckpoint(name, topic)){
+                            }else if(isCheckpoint(name, topic)){    //Checkpoint offset
                                 String ok = mbsc.getAttribute(name, "Value").toString();
-                                String partitionId = name.getKeyProperty("name");
-                                int i = partitionId.indexOf('-', 6 + topic.length());
-                                i++;
-                                int j = partitionId.indexOf('-', i);
-                                partitionId = partitionId.substring(i, j);
-                                if(!partitionCheckpoint.containsKey(topic)){
-                                    partitionCheckpoint.put(topic, new HashMap<>());
+                                if(!ok.equals("")) {
+                                    String partitionId = name.getKeyProperty("name");
+                                    int i = partitionId.indexOf('-', 6 + topic.length());
+                                    i++;
+                                    int j = partitionId.indexOf('-', i);
+                                    partitionId = partitionId.substring(i, j);
+                                    if (!partitionCheckpoint.containsKey(topic)) {
+                                        partitionCheckpoint.put(topic, new HashMap<>());
+                                    }
+                                    partitionCheckpoint.get(topic).put(partitionId, ok);
                                 }
-                                partitionCheckpoint.get(topic).put(partitionId, ok);
                             }
                         }
                     }
@@ -423,7 +425,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         //Map<String, HashMap<String, Long>> checkpointOffset = yarnLogRetriever.retrieveCheckpointOffsets(containers, topics);
         Map<String, Object> metrics = new HashMap<>();
         JMXclient jmxClient = new JMXclient();
-        LOG.info("Retrieving metrics...... ");
+        LOG.info("Retrieving metrics from JMX...... ");
         HashMap<String, Long> partitionArrived = new HashMap<>();
         HashMap<String, Double> executorUtilization = new HashMap<>();
         HashMap<String, Boolean> partitionValid = new HashMap<>();
