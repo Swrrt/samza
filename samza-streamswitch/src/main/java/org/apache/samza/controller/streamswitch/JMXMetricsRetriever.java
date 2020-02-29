@@ -96,7 +96,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 int ind = content.indexOf(".log", in);
                                 if(NumberUtils.isNumber(content.substring(in + 16, ind))){
                                     //String caddress = address +"/stdout/?start=0";        //Read jmx url from stdout
-                                    String caddress = address + "/samza-container-" + content.substring(in + 16, ind) + "-startup.log/?start=-8000";  //Read jmx url from startup.log
+                                    String caddress = address + "/samza-container-" + content.substring(in + 16, ind) + "-startup.log/?start=-40000";  //Read jmx url from startup.log
                                     Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
                                     if(ret == null){ //Cannot retrieve JMXRMI for some reason
                                         LOG.info("Cannot retrieve container's JMX from : " + caddress + ", report error");
@@ -126,11 +126,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 scanner.useDelimiter("\n");
                 while(scanner.hasNext()){
                     String content = scanner.next().trim();
-                    if(content.contains("[id=")){
+                    if(content.substring(0,200).contains("[id=")){
                         int i = content.indexOf("[id=")+4;
                         containerId = content.substring(i, i+6);
-                    }
-                    if(content.contains("url=service:")){
+                    }else if(content.length() < 500 && content.contains("url=service:")){
                         int i = content.indexOf("url=service") + 4;
                         JMXaddress = content.substring(i);
                     }
