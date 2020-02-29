@@ -436,12 +436,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, topics, entry.getValue());
-            /*
-                Watermark is in format of:
-                <Topic, Map<Partition, Watermark>>
-             */
+
             if(ret.containsKey("PartitionCheckpoint")){
                 HashMap<String, HashMap<String, String>> checkpoint = (HashMap<String, HashMap<String, String>>)ret.get("PartitionCheckpoint");
+                LOG.info("Debug, checkpoint=" + checkpoint);
                 for(String topic: topics){
                     if(checkpoint.containsKey(topic)){
                         if(!partitionCheckpoint.containsKey(topic))partitionCheckpoint.put(topic, new HashMap<>());
@@ -459,6 +457,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     }
                 }
             }
+            /*
+                Watermark is in format of:
+                <Topic, Map<Partition, Watermark>>
+             */
             if(ret.containsKey("PartitionWatermark")) {
                 HashMap<String, HashMap<String, String>> watermark = (HashMap<String, HashMap<String, String>>)ret.get("PartitionWatermark");
                 for(String topic: topics) {
