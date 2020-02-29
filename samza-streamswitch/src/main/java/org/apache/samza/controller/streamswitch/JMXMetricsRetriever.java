@@ -249,6 +249,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             Map<String, Object> metrics = new HashMap<>();
             //LOG.info("Try to retrieve metrics from " + url);
             JMXConnector jmxc = null;
+
             try{
                 JMXServiceURL jmxServiceURL = new JMXServiceURL(url);
                 //LOG.info("Connecting JMX server...");
@@ -364,6 +365,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     //Return a bad flag.
     @Override
     public Map<String, Object> retrieveMetrics(){
+        //Debugging
+        LOG.info("Start retrieving metrics...");
+
         YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
         String YarnHomePage = config.get("yarn.web.address");
         int nTopic = config.getInt( "topic.number", -1);
@@ -379,9 +383,25 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         String jobName = config.get("job.name");
         String jobId = config.get("job.id");
         // In metrics, topic will be changed to lowercase
+
+        //Debugging
+        LOG.info("Start retrieving AppId");
+
         String appId = yarnLogRetriever.retrieveAppId(YarnHomePage,jobName + "_" + jobId);
+
+        //Debugging
+        LOG.info("Start retrieving Containers' address");
+
         List<String> containers = yarnLogRetriever.retrieveContainersAddress(YarnHomePage, appId);
+
+        //Debugging
+        LOG.info("Start retrieving Containers' JMX url");
+
         containerRMI = yarnLogRetriever.retrieveContainerJMX(containers);
+
+        //Debugging
+        LOG.info("Start retrieving Checkpoint offsets url");
+
         Map<String, HashMap<String, Long>> checkpointOffset = yarnLogRetriever.retrieveCheckpointOffsets(containers, topics);
         Map<String, Object> metrics = new HashMap<>();
         JMXclient jmxClient = new JMXclient();
