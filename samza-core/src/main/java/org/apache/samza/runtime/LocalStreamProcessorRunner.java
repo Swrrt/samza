@@ -128,6 +128,7 @@ public class LocalStreamProcessorRunner {
 
         @Override
         public void afterStop() {
+            log.warn("StreamProcessor stopped, try to shutdown");
             shutdownLatch.countDown();
         }
 
