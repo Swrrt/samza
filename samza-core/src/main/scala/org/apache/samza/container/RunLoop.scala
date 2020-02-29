@@ -114,7 +114,7 @@ class RunLoop (
         val avgLatency = if (tuples == 0) 0
         else latency / tuples.toFloat
         //          log.debug("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
-        println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency)
+        println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency + " curNS: " + currentNs)
         metrics.avgUtilization.set(utilization)
         metrics.serviceRate.set(serviceRate)
         metrics.latency.set(avgLatency)
