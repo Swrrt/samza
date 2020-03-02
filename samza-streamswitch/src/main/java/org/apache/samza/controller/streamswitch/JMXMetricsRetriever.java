@@ -14,6 +14,7 @@ import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
 import java.net.URL;
 import java.net.URLConnection;
+import java.text.NumberFormat;
 import java.util.*;
 
 
@@ -387,6 +388,18 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     public Map<String, Object> retrieveMetrics(){
         //Debugging
         LOG.info("Start retrieving metrics...");
+        Runtime runtime = Runtime.getRuntime();
+        NumberFormat format = NumberFormat.getInstance();
+        StringBuilder sb = new StringBuilder();
+        long maxMemory = runtime.maxMemory();
+        long allocatedMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+        sb.append("free memory: " + format.format(freeMemory / 1024) + "<br/>");
+        sb.append("allocated memory: " + format.format(allocatedMemory / 1024) + "<br/>");
+        sb.append("max memory: " + format.format(maxMemory / 1024) + "<br/>");
+        sb.append("total free memory: " + format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024) + "<br/>");
+        LOG.info("Memory, " + sb);
+
 
         YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
         String YarnHomePage = config.get("yarn.web.address");
@@ -548,51 +561,18 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         LOG.info("Debugging, begin: " + partitionBeginOffset);
         LOG.info("Debugging, valid: " + partitionValid);*/
         LOG.info("Retrieved Metrics: " + metrics);
+
+        //Debugging
+        sb = new StringBuilder();
+        maxMemory = runtime.maxMemory();
+        allocatedMemory = runtime.totalMemory();
+        freeMemory = runtime.freeMemory();
+        sb.append("free memory: " + format.format(freeMemory / 1024) + "<br/>");
+        sb.append("allocated memory: " + format.format(allocatedMemory / 1024) + "<br/>");
+        sb.append("max memory: " + format.format(maxMemory / 1024) + "<br/>");
+        sb.append("total free memory: " + format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024) + "<br/>");
+        LOG.info("Memory, " + sb);
+
         return metrics;
-    }
-
-    //For testing
-    public static void main(String args[]){
-        YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
-        System.out.println("Testing YarnLogRetriever from: " + args[0]);
-        String appId = yarnLogRetriever.retrieveAppId(args[0], args[0]);
-        System.out.println("Retrieved appId is " + appId);
-        List<String> containerAddress = yarnLogRetriever.retrieveContainersAddress(args[0], appId);
-        System.out.println("Retrieved containers' address : " + containerAddress);
-        Map<String, String> containerRMI = yarnLogRetriever.retrieveContainerJMX(containerAddress);
-        System.out.println("Retrieved containers' RMI url : " + containerRMI);
-        JMXclient jmxClient = new JMXclient();
-
-        System.out.println("Topic name: " + args[1]);
-        String topic = args[1];
-
-        Map<String, Object> metrics = new HashMap<>();
-        System.out.println("Retrieving metrics: ");
-        metrics.put("PartitionArrived", new HashMap());
-        metrics.put("PartitionProcessed", new HashMap());
-        metrics.put("ProcessCPUTime", new HashMap());
-        metrics.put("Time", new HashMap<>());
-        for(Map.Entry<String, String> entry: containerRMI.entrySet()){
-            String containerId = entry.getKey();
-            Map<String, Object> ret = new HashMap<>();//jmxClient.retrieveMetrics(containerId, topic, entry.getValue());
-            if(ret.containsKey("PartitionWatermark")) {
-                ((HashMap<String, Object>)metrics.get("PartitionWatermark")).put(containerId, ret.get("PartitionWatermark"));
-            }
-            if(ret.containsKey("PartitionNextOffset")) {
-                ((HashMap<String, Object>)metrics.get("PartitionNextOffset")).put(containerId, ret.get("PartitionNextOffset"));
-            }
-            if(ret.containsKey("PartitionProcessed")) {
-                ((HashMap<String, Object>)metrics.get("PartitionProcessed")).put(containerId, ret.get("PartitionProcessed"));
-            }
-            if(ret.containsKey("ProcessCPUTime")){
-                ((HashMap<String, Object>)metrics.get("ProcessCPUTime")).put(containerId, ret.get("ProcessCPUTime"));
-            }
-            if(ret.containsKey("Time")){
-                ((HashMap<String, Object>)metrics.get("Time")).put(containerId, ret.get("Time"));
-            }
-        }
-        System.out.println("Retrieved Metrics: " + metrics);
-
-        return ;
     }
 }
