@@ -80,8 +80,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }
             return containerAddress;
         }
-        protected Map<String, String> retrieveContainerJMX(List<String> containerAddress){
-            Map<String, String> containerJMX = new HashMap<>();
+        protected void retrieveContainerJMX(Map<String, String> containerJMX, List<String> containerAddress){
             for(String address: containerAddress){
                 try {
                     String url = address;
@@ -98,31 +97,31 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 if(NumberUtils.isNumber(content.substring(in + 16, ind))){
                                     //String caddress = address +"/stdout/?start=0";        //Read jmx url from stdout
                                     String caddress = address + "/samza-container-" + content.substring(in + 16, ind) + "-startup.log/?start=-40000";  //Read jmx url from startup.log
-                                    Map.Entry<String, String> ret = retrieveContainerJMX(caddress);
+                                    List<String> ret = retrieveContainerJMX(caddress);
                                     if(ret == null){ //Cannot retrieve JMXRMI for some reason
                                         LOG.info("Cannot retrieve container's JMX from : " + caddress + ", report error");
                                     }else {
                                         //LOG.info("container's JMX: " + ret);
                                         String host = url.split("[\\:]")[1].substring(2);
-                                        String jmxRMI = ret.getValue().replaceAll("localhost", host);
-                                        containerJMX.put(ret.getKey(), jmxRMI);
+                                        String jmxRMI = ret.get(1).replaceAll("localhost", host);
+                                        containerJMX.put(ret.get(0), jmxRMI);
+                                        ret.clear();
                                     }
                                 }
                             }
                         }
                     }
+                    scanner.close();
                 }catch (Exception e){
                     LOG.info("Exception happened when retrieve containers' JMX address : " + e);
                 }
             }
-            return containerJMX;
         }
-        protected Map.Entry<String, String> retrieveContainerJMX(String address){
+        protected List<String> retrieveContainerJMX(String address){
             String containerId = null, JMXaddress = null;
             try{
-                String url = address;
                 //LOG.info("Try to retrieve container's JMXRMI from url: " + url);
-                URLConnection connection = new URL(url).openConnection();
+                URLConnection connection = new URL(address).openConnection();
                 Scanner scanner = new Scanner(connection.getInputStream());
                 scanner.useDelimiter("\n");
                 while(scanner.hasNext()){
@@ -142,7 +141,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 LOG.info("Exception happened when retrieve container's address : " + e);
             }
             if(containerId != null && JMXaddress != null){
-                return new DefaultMapEntry(containerId, JMXaddress);
+                List<String> ret = new LinkedList<>();
+                ret.add(containerId);
+                ret.add(JMXaddress);
+                return ret;
             }
             LOG.info("Warning, cannot find container's JMXRMI");
             return null;
@@ -359,8 +361,29 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     }
     Config config;
     Map<String, String> containerRMI;
+    YarnLogRetriever yarnLogRetriever;
+    String YarnHomePage, jobName, jobId;
+    List<String> topics;
+    JMXclient jmxClient;
+    Map<String, Object> metrics;
     public JMXMetricsRetriever(Config config){
         this.config = config;
+        yarnLogRetriever = new YarnLogRetriever();
+        YarnHomePage = config.get("yarn.web.address");
+        int nTopic = config.getInt( "topic.number", -1);
+        topics = new ArrayList<>();
+        if(nTopic == -1) {
+            topics.add(config.get("topic.name").toLowerCase());
+        }else{
+            //Start from 1.
+            for(int i=1;i<=nTopic;i++){
+                topics.add(config.get("topic."+i+".name").toLowerCase());
+            }
+        }
+        jobName = config.get("job.name");
+        jobId = config.get("job.id");
+        jmxClient = new JMXclient();
+        metrics = new HashMap<>();
     }
 
     @Override
@@ -369,6 +392,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         partitionProcessed = new HashMap<>();
         partitionWatermark = new HashMap<>();
         partitionCheckpoint = new HashMap<>();
+        partitionArrived = new HashMap<>();
+        executorUtilization = new HashMap<>();
+        partitionValid = new HashMap<>();
+
     }
     /*
         Currently, metrics retriever only support one topic metrics
@@ -380,7 +407,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         4) Even JMX metrics are not correct after migration?
      */
 
-    HashMap<String, Long> partitionProcessed;
+    HashMap<String, Long> partitionProcessed, partitionArrived;
+    HashMap<String, Double> executorUtilization;
+    HashMap<String, Boolean> partitionValid;
     HashMap<String, HashMap<String, Long>> partitionWatermark, partitionBeginOffset, partitionCheckpoint;
 
     //Return a bad flag.
@@ -400,22 +429,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         sb.append("total free memory: " + format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024));
         LOG.info("Memory, " + sb);
 
-
-        YarnLogRetriever yarnLogRetriever = new YarnLogRetriever();
-        String YarnHomePage = config.get("yarn.web.address");
-        int nTopic = config.getInt( "topic.number", -1);
-        List<String> topics = new ArrayList<>();
-        if(nTopic == -1) {
-            topics.add(config.get("topic.name").toLowerCase());
-        }else{
-            //Start from 1.
-            for(int i=1;i<=nTopic;i++){
-                topics.add(config.get("topic."+i+".name").toLowerCase());
-            }
-        }
-        String jobName = config.get("job.name");
-        String jobId = config.get("job.id");
-        // In metrics, topic will be changed to lowercase
+       // In metrics, topic will be changed to lowercase
 
         //Debugging
         LOG.info("Start retrieving AppId");
@@ -430,24 +444,25 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         //Debugging
         LOG.info("Start retrieving Containers' JMX url");
 
-        containerRMI = yarnLogRetriever.retrieveContainerJMX(containers);
+        yarnLogRetriever.retrieveContainerJMX(containerRMI, containers);
+        containers.clear();
 
         //Debugging
         LOG.info("Start retrieving Checkpoint offsets url");
 
         //Map<String, HashMap<String, Long>> checkpointOffset = yarnLogRetriever.retrieveCheckpointOffsets(containers, topics);
-        Map<String, Object> metrics = new HashMap<>();
-        JMXclient jmxClient = new JMXclient();
+        metrics.clear();
+
         LOG.info("Retrieving metrics from JMX...... ");
-        HashMap<String, Long> partitionArrived = new HashMap<>();
-        HashMap<String, Double> executorUtilization = new HashMap<>();
-        HashMap<String, Boolean> partitionValid = new HashMap<>();
+        partitionArrived.clear();
+        executorUtilization.clear();
+        partitionValid.clear();
         metrics.put("Arrived", partitionArrived);
         metrics.put("Processed", partitionProcessed);
         metrics.put("Utilization", executorUtilization);
         metrics.put("Validity", partitionValid); //For validation check
-        HashMap<String, String> debugProcessed = new HashMap<>();
-        HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
+        //HashMap<String, String> debugProcessed = new HashMap<>();
+        //HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, topics, entry.getValue());
@@ -490,10 +505,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         }
                         pwatermark = partitionWatermark.get(topic);
                         for (Map.Entry<String, String> ent : watermark.get(topic).entrySet()) {
-                            if(!debugWatermark.containsKey(topic)){
+                            /*if(!debugWatermark.containsKey(topic)){
                                 debugWatermark.put(topic, new HashMap<>());
                             }
-                            debugWatermark.get(topic).put(containerId + ent.getKey(), ent.getValue());
+                            debugWatermark.get(topic).put(containerId + ent.getKey(), ent.getValue());*/
                             if (!beginOffset.containsKey(ent.getKey())) {
                                 beginOffset.put(ent.getKey(), Long.parseLong(ent.getValue()));
                             }
@@ -521,7 +536,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             if(t > 0) val += t;
                         }
                     }
-                    debugProcessed.put(containerId + partitionId, String.valueOf(val));
+                    //debugProcessed.put(containerId + partitionId, String.valueOf(val));
                     if (!partitionProcessed.containsKey(partitionId)) {
                         partitionProcessed.put(partitionId, val);
                         partitionValid.put(partitionId, true);
@@ -563,6 +578,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         LOG.info("Retrieved Metrics: " + metrics);
 
         //Debugging
+        runtime = Runtime.getRuntime();
         sb = new StringBuilder();
         maxMemory = runtime.maxMemory();
         allocatedMemory = runtime.totalMemory();

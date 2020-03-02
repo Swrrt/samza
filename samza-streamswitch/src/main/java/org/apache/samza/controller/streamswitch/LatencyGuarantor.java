@@ -166,15 +166,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 long totalSize = 0;
                 //Drop arrived
                 for (String substream : substreamStates.keySet()) {
+                    SubstreamState substreamState = substreamStates.get(substream);
                     if (substreamValid.containsKey(substream) && substreamValid.get(substream)) {
-                        long remainedIndex = substreamStates.get(substream).remainedIndex;
-                        while (remainedIndex < substreamStates.get(substream).arrivedIndex - 1 && remainedIndex < timeIndex - windowReq) {
-                            substreamStates.get(substream).arrived.remove(remainedIndex);
+                        long remainedIndex = substreamState.remainedIndex;
+                        while (remainedIndex < substreamState.arrivedIndex - 1 && remainedIndex < timeIndex - windowReq) {
+                            substreamState.arrived.remove(remainedIndex);
                             remainedIndex++;
                         }
-                        substreamStates.get(substream).remainedIndex = remainedIndex;
+                        substreamState.remainedIndex = remainedIndex;
                     }
-                    totalSize += substreamStates.get(substream).arrivedIndex - substreamStates.get(substream).remainedIndex + 1;
+                    totalSize += substreamState.arrivedIndex - substreamState.remainedIndex + 1;
                 }
 
                 //Drop completed, utilization, mappings. These are fixed window
