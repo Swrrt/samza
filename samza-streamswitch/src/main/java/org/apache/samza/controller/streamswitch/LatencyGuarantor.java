@@ -154,52 +154,58 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
 
                     //Debugging
-                    Map<String, Long> substreamArrivedIndex = new HashMap<>();
+                    /*Map<String, Long> substreamArrivedIndex = new HashMap<>();
                     for(String substream: substreamStates.keySet()){
                         substreamArrivedIndex.put(substream, substreamStates.get(substream).arrivedIndex);
-                    }
+                    }*/
                     //LOG.info("Debugging, time=" + index + " arrival index=" + substreamArrivedIndex);
                 }
             }
 
-            private void drop(long timeIndex){
+            private void drop(long timeIndex, Map<String, Boolean> substreamValid) {
                 long totalSize = 0;
                 //Drop arrived
                 for (String substream : substreamStates.keySet()) {
-                    long remainedIndex = substreamStates.get(substream).remainedIndex;
-                    while (remainedIndex < substreamStates.get(substream).arrivedIndex - 1 && remainedIndex < timeIndex - windowReq) {
-                        substreamStates.get(substream).arrived.remove(remainedIndex);
-                        remainedIndex++;
+                    if (substreamValid.containsKey(substream) && substreamValid.get(substream)) {
+                        long remainedIndex = substreamStates.get(substream).remainedIndex;
+                        while (remainedIndex < substreamStates.get(substream).arrivedIndex - 1 && remainedIndex < timeIndex - windowReq) {
+                            substreamStates.get(substream).arrived.remove(remainedIndex);
+                            remainedIndex++;
+                        }
+                        substreamStates.get(substream).remainedIndex = remainedIndex;
                     }
-                    substreamStates.get(substream).remainedIndex = remainedIndex;
-                    totalSize += substreamStates.get(substream).arrivedIndex - remainedIndex + 1;
+                    totalSize += substreamStates.get(substream).arrivedIndex - substreamStates.get(substream).remainedIndex + 1;
                 }
 
                 //Drop completed, utilization, mappings. These are fixed window
-                for(long index = lastValidTimeIndex + 1; index <= timeIndex; index++) {
-                    for (String executor : executorMapping.keySet()) {
-                        for (String substream : executorMapping.get(executor)) {
-                            //Drop completed
-                            if (substreamStates.get(substream).completed.containsKey(index - windowReq - 1)) {
-                                substreamStates.get(substream).completed.remove(index - windowReq - 1);
+                if (checkValidity(substreamValid)) {
+                    for (long index = lastValidTimeIndex + 1; index <= timeIndex; index++) {
+                        for (String executor : executorMapping.keySet()) {
+                            for (String substream : executorMapping.get(executor)) {
+                                //Drop completed
+                                if (substreamStates.get(substream).completed.containsKey(index - windowReq - 1)) {
+                                    substreamStates.get(substream).completed.remove(index - windowReq - 1);
+                                }
+                            }
+                            //Drop utilization
+                            if (executorUtilizations.containsKey(executor) && executorUtilizations.get(executor).containsKey(index - windowReq)) {
+                                executorUtilizations.get(executor).remove(index - windowReq);
                             }
                         }
-                        //Drop utilization
-                        if (executorUtilizations.containsKey(executor) && executorUtilizations.get(executor).containsKey(index - windowReq)) {
-                            executorUtilizations.get(executor).remove(index - windowReq);
-                        }
+                        //Drop mappings
+                        if (mappings.containsKey(index - windowReq)) mappings.remove(index - windowReq);
                     }
-                    //Drop mappings
-                    if (mappings.containsKey(index - windowReq)) mappings.remove(index - windowReq);
+                    lastValidTimeIndex = timeIndex;
                 }
-                lastValidTimeIndex = timeIndex;
+
                 LOG.info("Useless state dropped, current arrived size: " + totalSize + " mapping size: " + mappings.size());
             }
 
             //Only called when time n is valid, also update substreamLastValid
             private void calibrateSubstream(String substream, long timeIndex){
-                long n0 = substreamStates.get(substream).lastValidIndex;
-                substreamStates.get(substream).lastValidIndex = timeIndex;
+                SubstreamState substreamState = substreamStates.get(substream);
+                long n0 = substreamState.lastValidIndex;
+                substreamState.lastValidIndex = timeIndex;
                 if(n0 < timeIndex - 1) {
                     //LOG.info("Calibrate state for " + substream + " from time=" + n0);
                     long a0 = state.getSubstreamArrived(substream, n0);
@@ -209,9 +215,14 @@ public class LatencyGuarantor extends StreamSwitch {
                     for (long i = n0 + 1; i < timeIndex; i++) {
                         long ai = (a1 - a0) * (i - n0) / (timeIndex - n0) + a0;
                         long ci = (c1 - c0) * (i - n0) / (timeIndex - n0) + c0;
-                        state.substreamStates.get(substream).arrived.put(i, ai);
-                        state.substreamStates.get(substream).completed.put(i, ci);
+                        substreamState.arrived.put(i, ai);
+                        substreamState.completed.put(i, ci);
                     }
+                }
+
+                //Calculate total latency here
+                for(long index = n0 + 1; index <= timeIndex; index++){
+                    calculateSubstreamLatency(substream, index);
                 }
             }
 
@@ -431,7 +442,7 @@ public class LatencyGuarantor extends StreamSwitch {
             LOG.info("Updating state...");
             state.insert(timeIndex, substreamArrived, substreamProcessed, executorUtilization, executorMapping);
             state.calibrate(substreamValid);
-
+            state.drop(timeIndex, substreamValid);
             //Debug & Statistics
             HashMap<String, Long> arrived = new HashMap<>(), completed = new HashMap<>();
             for(String substream: state.substreamStates.keySet()) {
@@ -442,8 +453,8 @@ public class LatencyGuarantor extends StreamSwitch {
             System.out.println("State, time " + timeIndex  + " , Partition Completed: " + completed);
 
             if(checkValidity(substreamValid)){
-                state.calculate(timeIndex);
-                state.drop(timeIndex);
+                //state.calculate(timeIndex);
+                //state.drop(timeIndex);
                 return true;
             }else return false;
         }
