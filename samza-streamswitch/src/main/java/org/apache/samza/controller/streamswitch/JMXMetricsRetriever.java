@@ -384,6 +384,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         jobId = config.get("job.id");
         jmxClient = new JMXclient();
         metrics = new HashMap<>();
+        containerRMI = new HashMap<>();
     }
 
     @Override
