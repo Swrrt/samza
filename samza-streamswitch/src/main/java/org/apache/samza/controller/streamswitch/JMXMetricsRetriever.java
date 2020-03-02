@@ -394,10 +394,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         long maxMemory = runtime.maxMemory();
         long allocatedMemory = runtime.totalMemory();
         long freeMemory = runtime.freeMemory();
-        sb.append("free memory: " + format.format(freeMemory / 1024) + "<br/>");
-        sb.append("allocated memory: " + format.format(allocatedMemory / 1024) + "<br/>");
-        sb.append("max memory: " + format.format(maxMemory / 1024) + "<br/>");
-        sb.append("total free memory: " + format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024) + "<br/>");
+        sb.append("free memory: " + format.format(freeMemory / 1024) + ", ");
+        sb.append("allocated memory: " + format.format(allocatedMemory / 1024) + ", ");
+        sb.append("max memory: " + format.format(maxMemory / 1024) + ", ");
+        sb.append("total free memory: " + format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024));
         LOG.info("Memory, " + sb);
 
 
@@ -567,10 +567,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         maxMemory = runtime.maxMemory();
         allocatedMemory = runtime.totalMemory();
         freeMemory = runtime.freeMemory();
-        sb.append("free memory: " + format.format(freeMemory / 1024) + "<br/>");
-        sb.append("allocated memory: " + format.format(allocatedMemory / 1024) + "<br/>");
-        sb.append("max memory: " + format.format(maxMemory / 1024) + "<br/>");
-        sb.append("total free memory: " + format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024) + "<br/>");
+        sb.append("free memory: " + format.format(freeMemory / 1024) + ", ");
+        sb.append("allocated memory: " + format.format(allocatedMemory / 1024) + ", ");
+        sb.append("max memory: " + format.format(maxMemory / 1024) + ", ");
+        sb.append("total free memory: " + format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024));
         LOG.info("Memory, " + sb);
 
         return metrics;
