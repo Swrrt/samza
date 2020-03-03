@@ -197,7 +197,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     for (long index = lastValidTimeIndex + 1; index <= timeIndex; index++) {
                         for (String executor : executorMapping.keySet()) {
                             //Drop utilization
-                            if (executorUtilizations.containsKey(executor) && executorUtilizations.get(executor).containsKey(index - windowReq)) {
+                                if (executorUtilizations.containsKey(executor) && executorUtilizations.get(executor).containsKey(index - windowReq)) {
                                 executorUtilizations.get(executor).remove(index - windowReq);
                             }
                         }
@@ -391,8 +391,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
                         executorServiceRate.put(executor, mu);
-                    }
-                    if(!executorServiceRate.containsKey(executor))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate
+                    }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate or historical rate too low
                     executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
                 }
                 //Debugging
