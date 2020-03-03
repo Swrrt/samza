@@ -143,7 +143,9 @@ public class LatencyGuarantor extends StreamSwitch {
                 if(substreamState.totalLatency.containsKey(timeIndex - windowReq)){
                     substreamState.totalLatency.remove(timeIndex - windowReq);
                 }
-                substreamState.arrivedIndex = arrivalIndex;
+                if(arrivalIndex > substreamState.arrivedIndex) {
+                    substreamState.arrivedIndex = arrivalIndex;
+                }
             }
 
             private void calculate(long timeIndex){
@@ -854,6 +856,10 @@ public class LatencyGuarantor extends StreamSwitch {
                 (HashMap<String, Double>) (metrics.get("Utilization"));
         Map<String, Boolean> substreamValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
+
+        //Memory usage
+        LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
+
         if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, executorUtilization, substreamValid, executorMapping)){
             examiner.updateModel(timeIndex, executorMapping);
             return true;

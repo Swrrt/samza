@@ -1,9 +1,6 @@
 package org.apache.samza.controller.streamswitch;
 
-import javafx.util.Pair;
-import org.apache.commons.collections.keyvalue.DefaultMapEntry;
 import org.apache.commons.lang.math.NumberUtils;
-import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 import org.apache.samza.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
