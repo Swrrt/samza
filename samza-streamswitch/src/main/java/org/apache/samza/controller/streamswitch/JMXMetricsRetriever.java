@@ -243,6 +243,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             return name.getDomain().equals("org.apache.samza.container.TaskInstanceMetrics") && name.getKeyProperty("name").equals("messages-actually-processed");
         }
 
+        private boolean isExecutorRunning(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.container.SamzaContainerMetrics") && name.getKeyProperty("name").equals("is-running");
+        }
+
         private boolean isExecutorUtilization(ObjectName name){
             return name.getDomain().equals("org.apache.samza.container.SamzaContainerMetrics") && name.getKeyProperty("name").equals("average-utilization");
         }
@@ -296,14 +300,14 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         String partitionId = name.getKeyProperty("type");
                         partitionId = partitionId.substring(partitionId.indexOf("Partition") + 10);
                         //LOG.info("Retrieved: " + ok);
-                        if(!metrics.containsKey("PartitionProcessed")){
-                            metrics.put("PartitionProcessed", new HashMap<String, String>());
-                        }
-                        ((HashMap<String, String>) (metrics.get("PartitionProcessed"))).put(partitionId, ok);
+                        partitionProcessed.put(partitionId, ok);
                     }else if(isExecutorUtilization(name)){ // Utilization
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         metrics.put("ExecutorUtilization", Double.parseDouble(ok));
-                    }else { //Partition WaterMark and CheckpointOffset
+                    }else if(isExecutorRunning(name)){ //Running
+                        String ok = mbsc.getAttribute(name, "Value").toString();
+                        metrics.put("ExecutorRunning", Boolean.parseBoolean(ok));
+                    }else{ //Partition WaterMark and CheckpointOffset
                         for(String topic: topics) {
                             if (isWaterMark(name, topic)) { //Watermark
                                 //LOG.info(mbean.toString());
@@ -392,6 +396,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         partitionCheckpoint = new HashMap<>();
         partitionArrived = new HashMap<>();
         executorUtilization = new HashMap<>();
+        executorRunning = new HashMap<>();
         partitionValid = new HashMap<>();
 
     }
@@ -407,6 +412,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
 
     HashMap<String, Long> partitionProcessed, partitionArrived;
     HashMap<String, Double> executorUtilization;
+    HashMap<String, Boolean> executorRunning;
     HashMap<String, Boolean> partitionValid;
     HashMap<String, HashMap<String, Long>> partitionWatermark, partitionBeginOffset, partitionCheckpoint;
 
@@ -454,10 +460,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         LOG.info("Retrieving metrics from JMX...... ");
         partitionArrived.clear();
         executorUtilization.clear();
+        executorRunning.clear();
         partitionValid.clear();
         metrics.put("Arrived", partitionArrived);
         metrics.put("Processed", partitionProcessed);
         metrics.put("Utilization", executorUtilization);
+        metrics.put("Running", executorRunning);
         metrics.put("Validity", partitionValid); //For validation check
         //HashMap<String, String> debugProcessed = new HashMap<>();
         //HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
@@ -551,6 +559,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }
             if(ret.containsKey("ExecutorUtilization")){
                 executorUtilization.put(containerId, (Double)ret.get("ExecutorUtilization"));
+            }
+            if(ret.containsKey("ExecutorRunning")){
+                executorRunning.put(containerId, (Boolean)ret.get("ExecutorRunning"));
             }
         }
         //Why need this? Translate

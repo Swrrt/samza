@@ -50,6 +50,7 @@ class SamzaContainerMetrics(
   val avgUtilization = newGauge("average-utilization", 0.0F)
   val serviceRate = newGauge("service-rate", 0.0F)
   val latency = newGauge("average-latency", 0.0F)
+  val isRunning = newGauge("is-running", false)
 
   val taskStoreRestorationMetrics: util.Map[TaskName, Gauge[Long]] = new util.HashMap[TaskName, Gauge[Long]]()
 
