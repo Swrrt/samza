@@ -793,6 +793,7 @@ class SamzaContainer(
   def run {
     try {
       info("Starting container.")
+      metrics.isRunning.set(false);
 
       if (containerListener != null) {
         containerListener.beforeStart()

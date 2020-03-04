@@ -550,9 +550,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         if (val >= partitionProcessed.get(partitionId)) {
                             partitionProcessed.put(partitionId, val);
                             partitionValid.put(partitionId, true);
-                        }else {
-                            LOG.info(partitionId + "'s processed is invalid");
-                            partitionValid.put(partitionId, false);
+                        }else{
+                            LOG.warn(partitionId + "'s processed is still smaller then last: processed=" + partitionProcessed.get(partitionId) + " offset=" + val);
+                            partitionValid.put(partitionId, true); //partitionValid.put(partitionId, false);
                         }
                     }
                 }
@@ -575,9 +575,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 }
                 long processed = partitionProcessed.getOrDefault("Partition " + partitionId, 0l);
                 if (arrived < processed) {
-                    LOG.info("Attention, partition " + partitionId + "'s arrival is smaller than processed, arrival: " + arrived + " processed: " + processed);
+                    LOG.warn("Attention, partition " + partitionId + "'s arrival is smaller than processed, arrival: " + arrived + " processed: " + processed);
                     arrived = processed;
-                    partitionValid.put("Partition " + partitionId, false);
+                    if(arrived + 1 < processed)partitionValid.put("Partition " + partitionId, false);
                 }
                 partitionArrived.put("Partition " + partitionId, arrived);
             }
