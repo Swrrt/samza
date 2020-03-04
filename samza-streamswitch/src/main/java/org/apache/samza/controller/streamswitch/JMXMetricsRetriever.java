@@ -427,7 +427,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         sb.append("total free memory: " + format.format((freeMemory + (maxMemory - allocatedMemory)) / 1024));
         LOG.info("Memory, " + sb);
 
-       // In metrics, topic will be changed to lowercase
+        // In metrics, topic will be changed to lowercase
 
         //Debugging
         LOG.info("Start retrieving AppId");
