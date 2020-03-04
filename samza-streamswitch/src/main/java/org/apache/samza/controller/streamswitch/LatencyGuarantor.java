@@ -29,7 +29,6 @@ public class LatencyGuarantor extends StreamSwitch {
     @Override
     public void init(OperatorControllerListener listener, List<String> executors, List<String> substreams) {
         super.init(listener, executors, substreams);
-        //TODO: Initialize state/model here
         examiner.init(executorMapping);
     }
     class Examiner{

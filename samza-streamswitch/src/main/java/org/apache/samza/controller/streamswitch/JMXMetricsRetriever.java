@@ -441,7 +441,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
 
         //Debugging
         LOG.info("Start retrieving Containers' JMX url");
-
+        containerRMI.clear();
         yarnLogRetriever.retrieveContainerJMX(containerRMI, containers);
         containers.clear();
 
@@ -542,7 +542,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         if (val >= partitionProcessed.get(partitionId)) {
                             partitionProcessed.put(partitionId, val);
                             partitionValid.put(partitionId, true);
-                        }else partitionValid.put(partitionId, false);
+                        }else {
+                            LOG.info(partitionId + "'s processed is invalid");
+                            partitionValid.put(partitionId, false);
+                        }
                     }
                 }
             }
