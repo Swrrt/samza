@@ -826,6 +826,7 @@ class SamzaContainer(
         containerListener.afterStart()
       }
       metrics.containerStartupTime.update(System.nanoTime() - startTime)
+      metrics.isRunning.set(true)
       runLoop.run
     } catch {
       case e: Throwable =>
@@ -862,7 +863,7 @@ class SamzaContainer(
       if (!status.equals(SamzaContainerStatus.FAILED)) {
         status = SamzaContainerStatus.STOPPED
       }
-
+      metrics.isRunning.set(false)
       info("Shutdown complete.")
     } catch {
       case e: Throwable =>

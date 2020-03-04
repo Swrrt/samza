@@ -54,6 +54,7 @@ class SamzaContainerMetrics(
   //For delay guarantee
   val avgUtilization = newGauge("average-utilization", 0.0F)
   val serviceRate = newGauge("service-rate", 0.0F)
+  val isRunning = newGauge("is-running", false)
   //For delay guarantee
   def addStoreRestorationGauge(taskName: TaskName, storeName: String) {
     taskStoreRestorationMetrics.put(taskName, newGauge("%s-%s-restore-time" format(taskName.toString, storeName), -1L))
