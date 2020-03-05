@@ -190,7 +190,9 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
 
                 //Drop completed, utilization, mappings. These are fixed window
-                if (mappings.containsKey(timeIndex - windowReq)) mappings.remove(timeIndex - windowReq);
+                for(long index = timeIndex - 2 * windowReq - 1; index <= timeIndex - windowReq - 2; index++){
+                    if (mappings.containsKey(index)) mappings.remove(index);
+                }
                 if (checkValidity(substreamValid)) {
                     for (long index = lastValidTimeIndex + 1; index <= timeIndex; index++) {
                         for (String executor : executorMapping.keySet()) {
