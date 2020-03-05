@@ -16,6 +16,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private double alpha, beta; // Check with latencyReq * coefficient. instantDelay * alpha < req and longtermDelay * beta < req
     private Prescription pendingPres;
     private Examiner examiner;
+
     public LatencyGuarantor(Config config){
         super(config);
         latencyReq = config.getLong("streamswitch.requirement.latency", 400); //Unit: millisecond
@@ -978,15 +979,21 @@ public class LatencyGuarantor extends StreamSwitch {
                 isMigrating = false;
                 lastMigratedTime = System.currentTimeMillis();
                 Prescription pres = pendingPres;
-                LOG.info("Migrating " + pres.migratingSubstreams + " from " + pres.source + " to " + pres.target);
-                //For drawing figre
-                System.out.println("Change implemented at time " + (System.currentTimeMillis() - startTime)/metricsRetreiveInterval + " :    from " + pres.source + " to " + pres.target);
-
+                String migrationType = "migration";
                 //Scale in, remove useless information
                 if(pres.migratingSubstreams.size() == executorMapping.get(pres.source).size()){
                     examiner.state.executorUtilizations.remove(examiner.state.executorIdFromStringToInt(pres.source));
                     examiner.model.executorServiceRate.remove(pres.source);
+                    migrationType = "scale-in";
                 }
+                if(!executorMapping.containsKey(pres.target)){
+                    migrationType = "scale-out";
+                }
+                //For drawing figre
+                LOG.info("Migrating " + pres.migratingSubstreams + " from " + pres.source + " to " + pres.target);
+
+                System.out.println("Change implemented at time " + (System.currentTimeMillis() - startTime)/metricsRetreiveInterval + " : " + migrationType + " from " + pres.source + " to " + pres.target);
+
                 executorMapping = pres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
             }
