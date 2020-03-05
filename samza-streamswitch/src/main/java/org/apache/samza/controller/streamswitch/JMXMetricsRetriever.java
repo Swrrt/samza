@@ -93,7 +93,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 int ind = content.indexOf(".log", in);
                                 if(NumberUtils.isNumber(content.substring(in + 16, ind))){
                                     //String caddress = address +"/stdout/?start=0";        //Read jmx url from stdout
-                                    String caddress = address + "/samza-container-" + content.substring(in + 16, ind) + "-startup.log/?start=-40000";  //Read jmx url from startup.log
+                                    String caddress = address + "/samza-container-" + content.substring(in + 16, ind) + "-startup.log/?start=-80000";  //Read jmx url from startup.log
                                     List<String> ret = retrieveContainerJMX(caddress);
                                     if(ret == null){ //Cannot retrieve JMXRMI for some reason
                                         LOG.info("Cannot retrieve container's JMX from : " + caddress + ", report error");
