@@ -190,9 +190,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
 
                 //Drop completed, utilization, mappings. These are fixed window
-                for(long index = timeIndex - 2 * windowReq - 1; index <= timeIndex - windowReq - 2; index++){
-                    if (mappings.containsKey(index)) mappings.remove(index);
+                List<Long> removeIndex = new LinkedList<>();
+                for(long index:mappings.keySet()){
+                    if(index < timeIndex - windowReq - 1){
+                        removeIndex.add(index);
+                    }
                 }
+                for(long index:removeIndex){
+                    mappings.remove(index);
+                }
+                removeIndex.clear();
                 if (checkValidity(substreamValid)) {
                     for (long index = lastValidTimeIndex + 1; index <= timeIndex; index++) {
                         for (String executor : executorMapping.keySet()) {
@@ -783,7 +790,8 @@ public class LatencyGuarantor extends StreamSwitch {
                                     if(best == null || vectorGreaterThan(best, current)){
                                         best = current;
                                         bestTgtExecutor = tgtExecutor;
-                                        bestMigratingSubstreams = migrating;
+                                        if(bestMigratingSubstreams != null)bestMigratingSubstreams.clear();
+                                        bestMigratingSubstreams = new ArrayList<>(migrating);
                                     }
                                     if(tgtDelay > srcDelay)break;
                                 }
