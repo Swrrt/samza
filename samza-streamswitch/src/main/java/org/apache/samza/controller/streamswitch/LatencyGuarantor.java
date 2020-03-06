@@ -21,7 +21,7 @@ public class LatencyGuarantor extends StreamSwitch {
         super(config);
         latencyReq = config.getLong("streamswitch.requirement.latency", 400); //Unit: millisecond
         windowReq = config.getLong("streamswitch.requirement.window", 1000) / metricsRetreiveInterval; //Unit: # of time slots
-        alpha = config.getDouble("streamswitch.system.alpha", 0.8);
+        alpha = config.getDouble("streamswitch.system.alpha", 0.5);
         beta = config.getDouble("streamswitch.system.beta", 1.0);
         examiner = new Examiner();
         pendingPres = null;
@@ -418,7 +418,9 @@ public class LatencyGuarantor extends StreamSwitch {
                         mu /= util;
                         executorServiceRate.put(executor, mu);
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
-                    executorServiceRate.put(executor, mu / util);
+                    if(util > 1e-9) { //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
+                        executorServiceRate.put(executor, mu / util);
+                    }
                     executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
                 }
                 //Debugging
