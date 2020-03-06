@@ -22,7 +22,7 @@ public class LatencyGuarantor extends StreamSwitch {
         latencyReq = config.getLong("streamswitch.requirement.latency", 400); //Unit: millisecond
         windowReq = config.getLong("streamswitch.requirement.window", 1000) / metricsRetreiveInterval; //Unit: # of time slots
         alpha = config.getDouble("streamswitch.system.alpha", 0.8);
-        beta = config.getDouble("streamswitch.system.beta", 0.8);
+        beta = config.getDouble("streamswitch.system.beta", 1.0);
         examiner = new Examiner();
         pendingPres = null;
     }
@@ -414,10 +414,11 @@ public class LatencyGuarantor extends StreamSwitch {
                     double util = state.getAverageExecutorUtilization(state.executorIdFromStringToInt(executor));
                     utils.put(executor, util);
                     double mu = calculateExecutorServiceRate(executor, timeIndex);
-                    if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
+                    /*if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
                         executorServiceRate.put(executor, mu);
-                    }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate
+                    }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
+                    executorServiceRate.put(executor, mu / util);
                     executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
                 }
                 //Debugging
@@ -468,8 +469,7 @@ public class LatencyGuarantor extends StreamSwitch {
             return true;
         }
 
-
-        private boolean updateState(long timeIndex, Map<String, Long> substreamArrived, Map<String, Long> substreamProcessed, Map<String, Double> executorUtilization, Map<String, Boolean> substreamValid, Map<String, Boolean> executorRunning, Map<String, List<String>> executorMapping){
+        private boolean updateState(long timeIndex, Map<String, Long> substreamArrived, Map<String, Long> substreamProcessed, Map<String, Double> executorUtilization, Map<String, Boolean> substreamValid, Map<String, List<String>> executorMapping){
             LOG.info("Updating state...");
             state.insert(timeIndex, substreamArrived, substreamProcessed, executorUtilization, executorMapping);
             state.calibrate(substreamValid);
@@ -483,14 +483,7 @@ public class LatencyGuarantor extends StreamSwitch {
             System.out.println("State, time " + timeIndex  + " , Partition Arrived: " + arrived);
             System.out.println("State, time " + timeIndex  + " , Partition Completed: " + completed);
 
-            boolean allRunning = true;
-            for(String executor: executorMapping.keySet())
-                if(!executorRunning.containsKey(executor) || !executorRunning.get(executor)){
-                    LOG.info("Executor " + executor + " is not running");
-                    allRunning = false;
-                    break;
-                }
-            if(checkValidity(substreamValid) && allRunning){
+            if(checkValidity(substreamValid)){
                 //state.calculate(timeIndex);
                 //state.drop(timeIndex);
                 return true;
@@ -888,15 +881,13 @@ public class LatencyGuarantor extends StreamSwitch {
                 (HashMap<String, Long>) (metrics.get("Processed"));
         Map<String, Double> executorUtilization =
                 (HashMap<String, Double>) (metrics.get("Utilization"));
-        Map<String, Boolean> executorRunning =
-                (HashMap<String, Boolean>) (metrics.get("Running"));
         Map<String, Boolean> substreamValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
 
         //Memory usage
         LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
 
-        if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, executorUtilization, substreamValid, executorRunning, executorMapping)){
+        if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, executorUtilization, substreamValid, executorMapping)){
             examiner.updateModel(timeIndex, executorMapping);
             return true;
         }
