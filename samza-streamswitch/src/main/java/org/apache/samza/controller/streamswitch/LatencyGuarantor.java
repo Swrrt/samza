@@ -420,7 +420,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
                     if(util > 1e-9) { //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
                         executorServiceRate.put(executor, mu / util);
-                    }
+                    }else if(!executorServiceRate.containsKey(executor))executorServiceRate.put(executor, arrivalRate * 1.5);
                     executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
                 }
                 //Debugging
