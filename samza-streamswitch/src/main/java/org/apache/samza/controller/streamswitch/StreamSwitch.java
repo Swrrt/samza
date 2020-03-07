@@ -18,6 +18,7 @@ public abstract class StreamSwitch implements OperatorController{
     protected StreamSwitchMetricsRetriever metricsRetriever;
     protected Map<String, List<String>> executorMapping;
     protected long migrationInterval, metricsRetreiveInterval;
+    protected int maxNumberOfExecutors;
     protected boolean isMigrating;
     protected long lastMigratedTime;
     protected long startTime;
@@ -29,6 +30,7 @@ public abstract class StreamSwitch implements OperatorController{
         this.config = config;
         migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l); //Scale-out takes some time
         metricsRetreiveInterval = config.getInt("streamswitch.system.metrics_interval", 100);
+        maxNumberOfExecutors = config.getInt("streamswitch.system.max_executors", 64);
         metricsRetriever = createMetricsRetriever();
         isMigrating = false;
         lastMigratedTime = 0;

@@ -17,6 +17,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private Prescription pendingPres;
     private Examiner examiner;
 
+
     public LatencyGuarantor(Config config){
         super(config);
         latencyReq = config.getLong("streamswitch.requirement.latency", 400); //Unit: millisecond
@@ -35,7 +36,7 @@ public class LatencyGuarantor extends StreamSwitch {
     class Examiner{
         class State {
             private Map<Long, Map<Integer, List<Integer>>> mappings;
-            private Map<Integer, Map<Long, Double>> executorUtilizations;
+            private Map<Integer, Double> executorUtilization;
             class SubstreamState{
                 private Map<Long, Long> arrived, completed; //Instead of actual time, use the n-th time point as key
                 private long lastValidIndex;    //Last valid state time point
@@ -54,7 +55,7 @@ public class LatencyGuarantor extends StreamSwitch {
             private State() {
                 currentTimeIndex = 0;
                 lastValidTimeIndex = 0;
-                executorUtilizations = new HashMap<>();
+                executorUtilization = new HashMap<>();
                 mappings = new HashMap<>();
                 substreamStates = new HashMap<>();
             }
@@ -103,16 +104,8 @@ public class LatencyGuarantor extends StreamSwitch {
                 return completed;
             }
 
-            private double getAverageExecutorUtilization(Integer executorId){
-                double totalUtilization = 0;
-                long totalTime = 0;
-                for(Map.Entry<Long, Double> entry: executorUtilizations.get(executorId).entrySet()){
-                    long time = state.getTimepoint(entry.getKey()) - state.getTimepoint(entry.getKey() - 1);
-                    totalTime += time;
-                    totalUtilization += entry.getValue() * time;
-                }
-                if(totalTime > 0) totalUtilization/= totalTime;
-                return totalUtilization;
+            private double getExecutorUtilization(Integer executorId){
+                return executorUtilization.getOrDefault(executorId, 0.0);
             }
 
 
@@ -190,7 +183,9 @@ public class LatencyGuarantor extends StreamSwitch {
                     totalSize += substreamState.arrivedIndex - substreamState.remainedIndex + 1;
                 }
 
-                //Drop completed, utilization, mappings. These are fixed window
+                //Drop completed, mappings. These are fixed window
+
+                //Drop mappings
                 List<Long> removeIndex = new LinkedList<>();
                 for(long index:mappings.keySet()){
                     if(index < timeIndex - windowReq - 1){
@@ -210,12 +205,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                     substreamStates.get(substreamIdFromStringToInt(substream)).completed.remove(index - windowReq - 1);
                                 }
                             }
-                            //Drop utilization
-                            if (executorUtilizations.containsKey(executorIdFromStringToInt(executor)) && executorUtilizations.get(executorIdFromStringToInt(executor)).containsKey(index - windowReq)) {
-                                executorUtilizations.get(executorIdFromStringToInt(executor)).remove(index - windowReq);
-                            }
                         }
-                        //Drop mappings
 
                     }
                     lastValidTimeIndex = timeIndex;
@@ -262,29 +252,6 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                 }
 
-                //Calibrate executor utilizations
-                for(String executor: executorMapping.keySet()) {
-                    if (executorUtilizations.containsKey(executorIdFromStringToInt(executor)) && executorUtilizations.get(executorIdFromStringToInt(executor)).containsKey(currentTimeIndex)) {
-                        Map<Long, Double> utilization = executorUtilizations.get(executorIdFromStringToInt(executor));
-                        long lastValid = -1;
-                        for(long t: utilization.keySet())
-                            if(t < currentTimeIndex && t > lastValid) lastValid = t;
-                        if(lastValid != -1 && currentTimeIndex - lastValid <= windowReq) {
-                            double ul = utilization.get(lastValid), ur = utilization.get(currentTimeIndex);
-                            //Esitmate utilization
-                            for (long t = lastValid + 1; t < currentTimeIndex; t++) {
-                                double util = ul + (t - lastValid) * (ur - ul) / (currentTimeIndex - lastValid);
-                                utilization.put(t, util);
-                            }
-                        }else{
-                            //We only have time n's utilization
-                            for(long t = currentTimeIndex - 1; t >= 0 && t >= currentTimeIndex - windowReq - 1; t--){
-                                utilization.put(t, utilization.get(currentTimeIndex));
-                            }
-                        }
-                    }
-                }
-
                 //Calibrate substreams' state
                 if(substreamValid == null)return ;
                 for(String substream: substreamValid.keySet()){
@@ -321,9 +288,11 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(String substream: substreamProcessed.keySet()){
                     substreamStates.get(substreamIdFromStringToInt(substream)).completed.put(currentTimeIndex, substreamProcessed.get(substream));
                 }
+
                 for(String executor: utilization.keySet()){
-                    executorUtilizations.putIfAbsent(executorIdFromStringToInt(executor), new HashMap<>());
-                    executorUtilizations.get(executorIdFromStringToInt(executor)).put(currentTimeIndex, utilization.get(executor));
+                    double lastUtilization = executorUtilization.getOrDefault(executorIdFromStringToInt(executor), 0.0);
+                    double decayFactor = 0.2;
+                    executorUtilization.put(executorIdFromStringToInt(executor), lastUtilization * decayFactor + utilization.get(executor) * (1 - decayFactor));
                 }
             }
         }
@@ -411,16 +380,17 @@ public class LatencyGuarantor extends StreamSwitch {
                         arrivalRate += t;
                     }
                     executorArrivalRate.put(executor, arrivalRate);
-                    double util = state.getAverageExecutorUtilization(state.executorIdFromStringToInt(executor));
+                    double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
                     utils.put(executor, util);
                     double mu = calculateExecutorServiceRate(executor, timeIndex);
                     /*if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
                         executorServiceRate.put(executor, mu);
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
-                    if(util > 1e-9) { //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
-                        executorServiceRate.put(executor, mu / util);
-                    }else if(!executorServiceRate.containsKey(executor))executorServiceRate.put(executor, arrivalRate * 1.5);
+
+                    //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
+                    executorServiceRate.put(executor, mu / util);
+
                     executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
                 }
                 //Debugging
@@ -463,7 +433,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
             //State Valid
             for(String executor: executorMapping.keySet()){
-                if(!state.executorUtilizations.containsKey(state.executorIdFromStringToInt(executor))){
+                if(!state.executorUtilization.containsKey(state.executorIdFromStringToInt(executor))){
                     LOG.info("Current state is not valid, because " + executor + " utilization is missing");
                     return false;
                 }
@@ -601,6 +571,10 @@ public class LatencyGuarantor extends StreamSwitch {
                 if(executorMapping.size() <= 0){
                     LOG.info("No executor to move");
                     return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
+                }
+                if(executorMapping.size() + 1 > maxNumberOfExecutors){
+                    LOG.info("Reach executor number limit, cannot scale out");
+                    return new Pair<>(new Prescription(), null);
                 }
                 Pair<String, Double> a = getWorstExecutor(executorMapping);
                 String srcExecutor = a.getKey();
@@ -975,7 +949,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 String migrationType = "migration";
                 //Scale in, remove useless information
                 if(pres.migratingSubstreams.size() == executorMapping.get(pres.source).size()){
-                    examiner.state.executorUtilizations.remove(examiner.state.executorIdFromStringToInt(pres.source));
+                    examiner.state.executorUtilization.remove(examiner.state.executorIdFromStringToInt(pres.source));
                     examiner.model.executorServiceRate.remove(pres.source);
                     migrationType = "scale-in";
                 }
