@@ -114,7 +114,7 @@ class RunLoop (
         val avgLatency = if (tuples == 0) 0
         else latency / tuples.toFloat
         //          log.debug("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
-        println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency + " curNS: " + currentNs)
+//        println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency + " curNS: " + currentNs)
         metrics.avgUtilization.set(utilization)
         metrics.serviceRate.set(serviceRate)
         metrics.latency.set(avgLatency)
@@ -148,6 +148,9 @@ class RunLoop (
       if (envelope != null) {
         tuples += 1
         latency += System.currentTimeMillis() - envelope.getTimestamp
+
+        println("stock_id: " + envelope.getKey + " arrival_ts: " + envelope.getTimestamp + " completion_ts: " + System.currentTimeMillis())
+
         val ssp = envelope.getSystemStreamPartition
 
         trace("Processing incoming message envelope for SSP %s." format ssp)
