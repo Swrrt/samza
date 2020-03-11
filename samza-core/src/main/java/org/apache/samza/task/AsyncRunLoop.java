@@ -197,7 +197,7 @@ public class AsyncRunLoop implements Runnable, Throttleable {
           double serviceRate = (double) tuples/(utilization*2);
           float avgLatency = tuples==0 ? 0 : latency / (float)tuples;
 //          log.debug("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
-          System.out.println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
+//          System.out.println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
 
           containerMetrics.avgUtilization().set(utilization);
           containerMetrics.serviceRate().set(serviceRate);

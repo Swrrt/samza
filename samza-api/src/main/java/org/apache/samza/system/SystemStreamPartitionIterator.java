@@ -82,17 +82,23 @@ public class SystemStreamPartitionIterator implements Iterator<IncomingMessageEn
   }
 
   private void refresh() {
+    long time_seek = System.nanoTime();
     if (peeks.size() == 0 && !endOfStreamReached) {
       try {
+        long time_poll = System.nanoTime();
         Map<SystemStreamPartition, List<IncomingMessageEnvelope>> envelopes = systemConsumer.poll(fetchSet, SystemConsumer.BLOCK_ON_OUTSTANDING_MESSAGES);
+        System.out.println("-----kafka time to poll record: "+ (System.nanoTime() - time_poll));
 
+        long time_add = System.nanoTime();
         for (List<IncomingMessageEnvelope> systemStreamPartitionEnvelopes : envelopes.values()) {
           peeks.addAll(systemStreamPartitionEnvelopes);
         }
+        System.out.println("-----add record: "+ (System.nanoTime() - time_add));
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new SamzaException(e);
       }
     }
+    System.out.println("-----kafka time to seek record: "+ (System.nanoTime() - time_seek));
   }
 }
