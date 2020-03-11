@@ -179,7 +179,7 @@ public class AsyncRunLoop implements Runnable, Throttleable {
           tuples++;
           // ground truth computation
           latency += System.currentTimeMillis() - envelope.getTimestamp();
-          System.out.println("stock_id: " + envelope.getKey() + " arrival_ts: " + envelope.getTimestamp() + " completion_ts: " + System.currentTimeMillis());
+//          System.out.println("stock_id: " + envelope.getKey() + " arrival_ts: " + envelope.getTimestamp() + " completion_ts: " + System.currentTimeMillis());
         }
 
         if (totalNs != 0) {
@@ -197,8 +197,7 @@ public class AsyncRunLoop implements Runnable, Throttleable {
           double utilization = ((double) processTime) / timeInterval;
           double serviceRate = (double) (tuples * 10) /(utilization);
           float avgLatency = tuples==0 ? 0 : latency / (float)tuples;
-//          log.debug("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
-//          System.out.println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency + " curNS: " + currentNs);
+//          System.out.println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
 
           containerMetrics.avgUtilization().set(utilization);
           containerMetrics.serviceRate().set(serviceRate);
