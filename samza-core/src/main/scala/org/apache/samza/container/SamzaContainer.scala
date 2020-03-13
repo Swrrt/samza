@@ -806,7 +806,6 @@ class SamzaContainer(
       }
       applicationContainerContextOption.foreach(_.start)
 
-      startMetrics
       startDiagnostics
       startAdmins
       startOffsetManager
@@ -819,6 +818,7 @@ class SamzaContainer(
       startTask
       startConsumers
       startSecurityManger
+      startMetrics
 
       addShutdownHook
       info("Entering run loop.")
