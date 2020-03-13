@@ -20,8 +20,8 @@ public class LatencyGuarantor extends StreamSwitch {
 
     public LatencyGuarantor(Config config){
         super(config);
-        latencyReq = config.getLong("streamswitch.requirement.latency", 400); //Unit: millisecond
-        windowReq = config.getLong("streamswitch.requirement.window", 1000) / metricsRetreiveInterval; //Unit: # of time slots
+        latencyReq = config.getLong("streamswitch.requirement.latency", 1000); //Unit: millisecond
+        windowReq = config.getLong("streamswitch.requirement.window", 2000) / metricsRetreiveInterval; //Unit: # of time slots
         alpha = config.getDouble("streamswitch.system.alpha", 0.5);
         beta = config.getDouble("streamswitch.system.beta", 1.0);
         examiner = new Examiner();
@@ -559,7 +559,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         if(instantDelay.get(entry.getKey()) > alpha * latencyReq)both = true;
                     }
                 }
-                if(both)return SERVERE;
+                if(both)return SEVERE;
                 else if(instantExceeded  || longtermExceeded)return MODERATE;
                 else return GOOD;
             }
@@ -794,7 +794,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 return new Pair<>(new Prescription(srcExecutor, bestTgtExecutor, bestMigratingSubstreams), map);
             }
 
-            private final static int GOOD = 0, MODERATE = 1, SERVERE = 2;
+            private final static int GOOD = 0, MODERATE = 1, SEVERE = 2;
         }
 
         Diagnoser diagnoser = new Diagnoser();

@@ -223,7 +223,7 @@ class KafkaConsumerProxy<K, V> {
 
       Map<SystemStreamPartition, List<IncomingMessageEnvelope>> response;
 
-      response = pollConsumer(sspsToFetch, 500L);
+      response = pollConsumer(sspsToFetch, 10L);
 
       // move the responses into the queue
       for (Map.Entry<SystemStreamPartition, List<IncomingMessageEnvelope>> e : response.entrySet()) {
