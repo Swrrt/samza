@@ -19,8 +19,7 @@ public class DefaultOperatorController implements OperatorController {
     }
     @Override
     public void start(){
-        LOG.info("Start stream switch");
-
+        LOG.info("Start DefaultJobController");
         LOG.info("DefaultJobController does nothing, quit");
     }
 
