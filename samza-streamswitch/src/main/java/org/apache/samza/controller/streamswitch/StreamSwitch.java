@@ -68,6 +68,7 @@ public abstract class StreamSwitch implements OperatorController{
         long warmUpStartTime = System.currentTimeMillis();
         //Warm up phase
         LOG.info("Warm up for " + metricsWarmupTime + " milliseconds...");
+        System.out.println("Start time=" + System.currentTimeMillis());
         do{
             long time = System.currentTimeMillis();
             if(time - warmUpStartTime > metricsWarmupTime){
