@@ -327,7 +327,7 @@ public class LatencyGuarantor extends StreamSwitch {
             private double calculateExecutorServiceRate(String executorId, double util, long n){
                 //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
                 double lastServiceRate = executorServiceRate.getOrDefault(executorId, 0.0);
-                if(util == 0.0){
+                if(util < 0.1){
                     return lastServiceRate;
                 }
                 long completed = 0;
