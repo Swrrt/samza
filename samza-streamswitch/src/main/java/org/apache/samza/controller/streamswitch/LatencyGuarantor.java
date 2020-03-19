@@ -334,7 +334,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(int substream: state.getMapping(n).get(state.executorIdFromStringToInt(executorId))){
                     completed += state.getSubstreamCompleted(substream, n) - state.getSubstreamCompleted(substream, n - 1);
                 }
-                double instantServiceRate = completed / ((double)state.getTimepoint(n) - state.getTimepoint(n - 1));
+                double instantServiceRate = (completed / ((double)state.getTimepoint(n) - state.getTimepoint(n - 1))) / util;
                 double decayFactor = 0.875;
                 return decayFactor * lastServiceRate + (1 - decayFactor) * instantServiceRate;
             }
