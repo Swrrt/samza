@@ -130,7 +130,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 while(arrivalIndex <= timeIndex && lastArrived < complete){
                     if(arrived > lastComplete){ //Should count into this slot
                         long number = Math.min(complete, arrived) - Math.max(lastComplete, lastArrived);
-                        totalDelay += number * (timeIndex - arrivalIndex + 1);
+                        totalDelay += number * (timeIndex - arrivalIndex);
                     }
                     arrivalIndex++;
                     arrived = getSubstreamArrived(substream, arrivalIndex);
