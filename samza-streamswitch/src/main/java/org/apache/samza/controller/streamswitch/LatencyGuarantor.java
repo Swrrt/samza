@@ -130,7 +130,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 while(arrivalIndex <= timeIndex && lastArrived < complete){
                     if(arrived > lastComplete){ //Should count into this slot
                         long number = Math.min(complete, arrived) - Math.max(lastComplete, lastArrived);
-                        totalDelay += number * (timeIndex - arrivalIndex + 1);
+                        totalDelay += number * (timeIndex - arrivalIndex);
                     }
                     arrivalIndex++;
                     arrived = getSubstreamArrived(substream, arrivalIndex);
@@ -290,9 +290,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
 
                 for(String executor: utilization.keySet()){
-                    double lastUtilization = executorUtilization.getOrDefault(executorIdFromStringToInt(executor), 0.0);
-                    double decayFactor = 0.2;
-                    executorUtilization.put(executorIdFromStringToInt(executor), lastUtilization * decayFactor + utilization.get(executor) * (1 - decayFactor));
+                    executorUtilization.put(executorIdFromStringToInt(executor), utilization.get(executor));
                 }
             }
         }
@@ -326,21 +324,19 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             // Calculate window service rate of n - beta ~ n (exclude n - beta)
-            private double calculateExecutorServiceRate(String executorId, long n){
-                long totalCompleted = 0;
-                long totalTime = 0;
-                long n0 = n - windowReq + 1;
-                if(n0 < 1)n0 = 1;
-                totalTime = state.getTimepoint(n) - state.getTimepoint(n0 - 1);
-                for(long i = n0; i <= n; i++){
-                    if(state.getMapping(i).containsKey(state.executorIdFromStringToInt(executorId))){ //Could be scaled out or scaled in
-                        for(int substream: state.getMapping(i).get(state.executorIdFromStringToInt(executorId))) {
-                            totalCompleted += state.getSubstreamCompleted(substream, i) - state.getSubstreamCompleted(substream, i - 1);
-                        }
-                    }
+            private double calculateExecutorServiceRate(String executorId, double util, long n){
+                //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
+                double lastServiceRate = executorServiceRate.getOrDefault(executorId, 0.0);
+                if(util == 0.0){
+                    return lastServiceRate;
                 }
-                if(totalTime > 0) return totalCompleted/((double)totalTime);
-                return 0;
+                long completed = 0;
+                for(int substream: state.getMapping(n).get(state.executorIdFromStringToInt(executorId))){
+                    completed += state.getSubstreamCompleted(substream, n) - state.getSubstreamCompleted(substream, n - 1);
+                }
+                double instantServiceRate = completed / ((double)state.getTimepoint(n) - state.getTimepoint(n - 1));
+                double decayFactor = 0.875;
+                return decayFactor * lastServiceRate + (1 - decayFactor) * instantServiceRate;
             }
 
             //Window average delay
@@ -382,14 +378,13 @@ public class LatencyGuarantor extends StreamSwitch {
                     executorArrivalRate.put(executor, arrivalRate);
                     double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
                     utils.put(executor, util);
-                    double mu = calculateExecutorServiceRate(executor, timeIndex);
+                    double mu = calculateExecutorServiceRate(executor, util, timeIndex);
                     /*if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
                         executorServiceRate.put(executor, mu);
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
 
-                    //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
-                    executorServiceRate.put(executor, mu / util);
+                    executorServiceRate.put(executor, mu);
 
                     executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
                 }
