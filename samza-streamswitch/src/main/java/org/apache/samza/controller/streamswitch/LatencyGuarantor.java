@@ -518,7 +518,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private Prescription diagnose(Examiner examiner){
 
         class Diagnoser { //Algorithms and utility methods
-            //Get  severe executor with largest instant latency.
+            //Get severe executor with largest longterm latency.
             private Pair<String, Double> getWorstExecutor(Map<String, List<String>> executorMapping){
                 double initialDelay = -1.0;
                 String maxExecutor = "";
@@ -561,6 +561,17 @@ public class LatencyGuarantor extends StreamSwitch {
                 if(both)return SEVERE;
                 else if(instantExceeded  || longtermExceeded)return MODERATE;
                 else return GOOD;
+            }
+
+            //Debug
+            private int countSevereExecutors(Map<String, Double> instantDelay, Map<String, Double> longtermDelay){
+                int numberOfSevere = 0;
+                for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
+                    if(entry.getValue() > beta * latencyReq && instantDelay.get(entry.getKey()) > alpha * latencyReq){
+                        numberOfSevere ++;
+                    }
+                }
+                return numberOfSevere;
             }
 
             // Find the subset which minimizes delay by greedy:
@@ -830,6 +841,7 @@ public class LatencyGuarantor extends StreamSwitch {
         //Severe
         else{
             LOG.info("Current healthiness is Servere");
+            System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay()));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad();
             //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
