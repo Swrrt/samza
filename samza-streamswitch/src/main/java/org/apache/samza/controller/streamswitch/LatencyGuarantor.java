@@ -518,15 +518,18 @@ public class LatencyGuarantor extends StreamSwitch {
     private Prescription diagnose(Examiner examiner){
 
         class Diagnoser { //Algorithms and utility methods
-            //Get largest long-term latency executor
+            //Get  severe executor with largest instant latency.
             private Pair<String, Double> getWorstExecutor(Map<String, List<String>> executorMapping){
                 double initialDelay = -1.0;
                 String maxExecutor = "";
                 for (String executor : executorMapping.keySet()) {
                     double longtermDelay = examiner.model.getLongTermDelay(executor);
-                    if (longtermDelay > initialDelay) {
-                        initialDelay = longtermDelay;
-                        maxExecutor = executor;
+                    double instantDelay = examiner.model.executorInstantaneousDelay.get(executor);
+                    if(instantDelay * alpha > latencyReq && longtermDelay * beta > latencyReq) {
+                        if (longtermDelay > initialDelay) {
+                            initialDelay = longtermDelay;
+                            maxExecutor = executor;
+                        }
                     }
                 }
                 return new Pair(maxExecutor, initialDelay);
