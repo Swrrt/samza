@@ -525,7 +525,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 for (String executor : executorMapping.keySet()) {
                     double longtermDelay = examiner.model.getLongTermDelay(executor);
                     double instantDelay = examiner.model.executorInstantaneousDelay.get(executor);
-                    if(instantDelay * alpha > latencyReq && longtermDelay * beta > latencyReq) {
+                    if(instantDelay > alpha * latencyReq && longtermDelay > beta * latencyReq) {
                         if (longtermDelay > initialDelay) {
                             initialDelay = longtermDelay;
                             maxExecutor = executor;
