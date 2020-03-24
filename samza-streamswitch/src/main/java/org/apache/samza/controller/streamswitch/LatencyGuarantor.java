@@ -313,10 +313,14 @@ public class LatencyGuarantor extends StreamSwitch {
             // Calculate window service rate of n - beta ~ n (exclude n - beta)
             private double calculateExecutorServiceRate(String executorId, double util, long n){
                 //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
-                double lastServiceRate = executorServiceRate.getOrDefault(executorId, initialServiceRate);
+                double lastServiceRate = executorServiceRate.getOrDefault(executorId, 0.0);
                 //Only update service rate when util > 1%
                 if(util < 0.01){
                     return lastServiceRate;
+                }
+                //Put here to avoid scale-in at the beginning.
+                if(lastServiceRate == 0.0){
+                    lastServiceRate = initialServiceRate;
                 }
                 long completed = 0;
                 for(int substream: state.getMapping(n).get(state.executorIdFromStringToInt(executorId))){
