@@ -822,6 +822,7 @@ class SamzaContainer(
 
       addShutdownHook
       info("Entering run loop.")
+      println("Entering run loop. " + System.currentTimeMillis())
       status = SamzaContainerStatus.STARTED
       if (containerListener != null) {
         containerListener.afterStart()
@@ -866,6 +867,7 @@ class SamzaContainer(
       }
       metrics.isRunning.set(false)
       info("Shutdown complete.")
+      println("Shutdown complete. " + System.currentTimeMillis()) 
     } catch {
       case e: Throwable =>
         error("Caught exception/error while shutting down container.", e)
