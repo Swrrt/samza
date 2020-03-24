@@ -367,6 +367,7 @@ public class YarnApplicationMaster {
         return (LeaderJobCoordinator)Util.getObj(jobCoordinatorFactoryClassName, LeaderJobCoordinatorFactory.class).getJobCoordinator(config);
     }
     private void startLeader(){
+        long migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l);
         leaderJobCoordinator = createLeaderJobCoordinator(config);
         leaderJobCoordinator.start();
         leaderJobCoordinator.setListener(new JobCoordinatorListener() {
@@ -377,7 +378,23 @@ public class YarnApplicationMaster {
             @Override
             public void onNewJobModel(String processorId, JobModel jobModel) {
                 log.info("New Job Model actually deployed!");
-                controller.onChangeImplemented();
+                controller.onMigrationExecutorsStopped();
+                //TODO: add thread to wait for 5s and call
+                log.info("Start a thread wait for migration interval then call migration completed");
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try{
+                            log.info("Sleep for "+ migrationInterval + " then call migration completed");
+                            Thread.sleep(migrationInterval);
+                            controller.onMigrationCompleted();
+                        }catch (Exception e){
+                            log.warn("Exception when sleep for migration interval");
+                            //Still need to call migration completed
+                            controller.onMigrationCompleted();
+                        }
+                    }
+                }).start();
             }
 
             @Override
