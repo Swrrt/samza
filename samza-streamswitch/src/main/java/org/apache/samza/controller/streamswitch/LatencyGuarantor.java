@@ -14,6 +14,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(LatencyGuarantor.class);
     private long latencyReq, windowReq; //Window requirment is stored as number of timeslot
     private double alpha, beta; // Check with latencyReq * coefficient. instantDelay * alpha < req and longtermDelay * beta < req
+    double initialServiceRate; // Initial prediction by user or system on service rate.
     private Prescription pendingPres;
     private Examiner examiner;
 
@@ -24,6 +25,7 @@ public class LatencyGuarantor extends StreamSwitch {
         windowReq = config.getLong("streamswitch.requirement.window", 2000) / metricsRetreiveInterval; //Unit: # of time slots
         alpha = config.getDouble("streamswitch.system.alpha", 0.5);
         beta = config.getDouble("streamswitch.system.beta", 1.0);
+        initialServiceRate = config.getDouble("streamswitch.system.initialservicerate", 0.2);
         examiner = new Examiner();
         pendingPres = null;
     }
@@ -136,6 +138,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     arrived = getSubstreamArrived(substream, arrivalIndex);
                     lastArrived = getSubstreamArrived(substream, arrivalIndex - 1);
                 }
+                //TODO: find out when to --
                 arrivalIndex--;
                 substreamState.totalLatency.put(timeIndex, totalDelay);
                 if(substreamState.totalLatency.containsKey(timeIndex - windowReq)){
@@ -143,22 +146,6 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
                 if(arrivalIndex > substreamState.arrivedIndex) {
                     substreamState.arrivedIndex = arrivalIndex;
-                }
-            }
-
-            private void calculate(long timeIndex){
-                for(long index = lastValidTimeIndex + 1; index <= timeIndex; index++) {
-                    //Calculate latency from last valid time index
-                    for(int substream: substreamStates.keySet()){
-                        calculateSubstreamLatency(substream, index);
-                    }
-
-                    //Debugging
-                    /*Map<String, Long> substreamArrivedIndex = new HashMap<>();
-                    for(String substream: substreamStates.keySet()){
-                        substreamArrivedIndex.put(substream, substreamStates.get(substream).arrivedIndex);
-                    }*/
-                    //LOG.info("Debugging, time=" + index + " arrival index=" + substreamArrivedIndex);
                 }
             }
 
@@ -326,7 +313,7 @@ public class LatencyGuarantor extends StreamSwitch {
             // Calculate window service rate of n - beta ~ n (exclude n - beta)
             private double calculateExecutorServiceRate(String executorId, double util, long n){
                 //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
-                double lastServiceRate = executorServiceRate.getOrDefault(executorId, 0.0);
+                double lastServiceRate = executorServiceRate.getOrDefault(executorId, initialServiceRate);
                 //Only update service rate when util > 1%
                 if(util < 0.01){
                     return lastServiceRate;
@@ -402,7 +389,6 @@ public class LatencyGuarantor extends StreamSwitch {
         Examiner(){
             state = new State();
             model = new Model(state);
-            lastMigratedTime = 0l;
         }
 
         private void init(Map<String, List<String>> executorMapping){
@@ -840,7 +826,7 @@ public class LatencyGuarantor extends StreamSwitch {
         }
         //Severe
         else{
-            LOG.info("Current healthiness is Servere");
+            LOG.info("Current healthiness is Severe");
             System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay()));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad();
             //LOG.info("The result of load-balance: " + result.getValue());
@@ -927,7 +913,7 @@ public class LatencyGuarantor extends StreamSwitch {
         //Examine
         boolean stateValidity = examine(timeIndex);
         LOG.info("Diagnose...");
-        if (stateValidity && !isMigrating && (timeIndex * metricsRetreiveInterval + startTime) - lastMigratedTime > migrationInterval) {
+        if (stateValidity && !isMigrating) {
             //Diagnose
             Prescription pres = diagnose(examiner);
             if (pres.migratingSubstreams != null) {
@@ -944,40 +930,48 @@ public class LatencyGuarantor extends StreamSwitch {
     }
 
     @Override
-    public synchronized void onChangeImplemented(){
-        LOG.info("Migration actually deployed, try to acquire lock...");
+    public synchronized void onMigrationExecutorsStopped(){
+        LOG.info("Migration executors stopped, try to acquire lock...");
         updateLock.lock();
         try {
-            LOG.info("Lock acquired, set migrating flag to false");
             if (examiner == null) {
                 LOG.warn("Examiner haven't been initialized");
             } else if (!isMigrating || pendingPres == null) {
                 LOG.warn("There is no pending migration, please checkout");
             } else {
-                isMigrating = false;
-                lastMigratedTime = System.currentTimeMillis();
-                Prescription pres = pendingPres;
                 String migrationType = "migration";
                 //Scale in, remove useless information
-                if(pres.migratingSubstreams.size() == executorMapping.get(pres.source).size()){
-                    examiner.state.executorUtilization.remove(examiner.state.executorIdFromStringToInt(pres.source));
-                    examiner.model.executorServiceRate.remove(pres.source);
+                if(pendingPres.migratingSubstreams.size() == executorMapping.get(pendingPres.source).size()){
+                    examiner.state.executorUtilization.remove(examiner.state.executorIdFromStringToInt(pendingPres.source));
+                    examiner.model.executorServiceRate.remove(pendingPres.source);
                     migrationType = "scale-in";
                 }
-                if(!executorMapping.containsKey(pres.target)){
+                if(!executorMapping.containsKey(pendingPres.target)){
                     migrationType = "scale-out";
                 }
                 //For drawing figre
-                LOG.info("Migrating " + pres.migratingSubstreams + " from " + pres.source + " to " + pres.target);
+                LOG.info("Migrating " + pendingPres.migratingSubstreams + " from " + pendingPres.source + " to " + pendingPres.target);
 
-                System.out.println("Change implemented at time " + (System.currentTimeMillis() - startTime)/metricsRetreiveInterval + " : " + migrationType + " from " + pres.source + " to " + pres.target);
+                System.out.println("Executors stopped at time " + (System.currentTimeMillis() - startTime)/metricsRetreiveInterval + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
 
-                executorMapping = pres.generateNewSubstreamAssignment(executorMapping);
+                executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
             }
         }finally {
             updateLock.unlock();
-            LOG.info("Migration complete, unlock");
+            LOG.info("Mapping changed, unlock");
+        }
+    }
+    @Override
+    public void onMigrationCompleted(){
+        LOG.info("Migration completed, try to acquire lock...");
+        updateLock.lock();
+        try {
+            LOG.info("Lock acquired, set migrating flag to false");
+            isMigrating = false;
+        }finally {
+            updateLock.unlock();
+            LOG.info("Migration completed, unlock");
         }
     }
 }

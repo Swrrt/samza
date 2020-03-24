@@ -88,6 +88,9 @@ public class TestJobModelChangeOperatorController implements OperatorController 
         }
     }
     @Override
-    public void onChangeImplemented(){
+    public void onMigrationExecutorsStopped(){
+    }
+    @Override
+    public void onMigrationCompleted(){
     }
 }
