@@ -48,6 +48,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class LeaderJobCoordinator implements JobCoordinator{
     private static final Logger LOG = LoggerFactory.getLogger(LeaderJobCoordinator.class);
@@ -90,6 +91,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
     private String cachedJobModelVersion = null;
 
     private JobModel nextJobModel = null;
+    private ReentrantLock updateLock;
 
     @VisibleForTesting
     ScheduleAfterDebounceTime debounceTimer;
@@ -118,6 +120,8 @@ public class LeaderJobCoordinator implements JobCoordinator{
         this.barrier =  new ZkBarrierForVersionUpgrade(zkUtils.getKeyBuilder().getJobModelVersionBarrierPrefix(), zkUtils, new LeaderJobCoordinator.ZkBarrierListenerImpl(), debounceTimer);
         systemAdmins = new SystemAdmins(config);
         streamMetadataCache = new StreamMetadataCache(systemAdmins, METADATA_CACHE_TTL_MS, SystemClock.instance());
+
+        updateLock = new ReentrantLock();
     }
 
     @Override
@@ -244,16 +248,21 @@ public class LeaderJobCoordinator implements JobCoordinator{
             LOG.info("Processors: {} has duplicates. Not generating JobModel.", currentProcessorIds);
             return;
         }
-        JobModel jobModel = nextJobModel;
-        if(nextJobModel == null) {
-            // Generate the JobModel
-            LOG.info("No next JobModel, waiting for controller");
+        LOG.info("Acquring lock...");
+        updateLock.lock();
+        try {
+            JobModel jobModel = nextJobModel;
+            if (nextJobModel == null) {
+                // Generate the JobModel
+                LOG.info("No next JobModel, waiting for controller");
             /*LOG.info("Generating new JobModel with processors: {}.", currentProcessorIds);
             jobModel = generateNewJobModel(currentProcessorIds);*/
-        }else{
-            LOG.info("Try to deploy next JobModel");
-            if(tryToDeployNewJobModel(jobModel))nextJobModel = null;
-            return ;
+            } else {
+                LOG.info("Try to deploy next JobModel");
+                if (tryToDeployNewJobModel(jobModel)) nextJobModel = null;
+            }
+        }finally {
+            updateLock.unlock();
         }
         /*// Create checkpoint and changelog streams if they don't exist
         if (!hasCreatedStreams) {
@@ -516,9 +525,15 @@ public class LeaderJobCoordinator implements JobCoordinator{
     }
 
     public void setNewJobModel(JobModel newJobModel){
-        LOG.info("Next JobModel to deploy: " + newJobModel);
-        nextJobModel = newJobModel;
-        if(tryToDeployNewJobModel(nextJobModel))nextJobModel = null;
+        LOG.info("Acquiring lock...");
+        updateLock.lock();
+        try {
+            LOG.info("Next JobModel to deploy: " + newJobModel);
+            nextJobModel = newJobModel;
+            if (tryToDeployNewJobModel(nextJobModel)) nextJobModel = null;
+        }finally {
+            updateLock.unlock();
+        }
     }
 
     private boolean tryToDeployNewJobModel(JobModel jobModel){

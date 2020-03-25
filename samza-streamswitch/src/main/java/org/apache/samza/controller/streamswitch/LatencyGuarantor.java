@@ -972,6 +972,7 @@ public class LatencyGuarantor extends StreamSwitch {
         updateLock.lock();
         try {
             LOG.info("Lock acquired, set migrating flag to false");
+            System.out.println("Migration completed at time " + (System.currentTimeMillis() - startTime)/metricsRetreiveInterval);
             isMigrating = false;
         }finally {
             updateLock.unlock();

@@ -87,7 +87,13 @@ public abstract class StreamSwitch implements OperatorController{
         boolean stopped = false;
         while(!stopped) {
             //Actual calculation, decision here
-            work(timeIndex);
+            //Should not invoke any thing when updating!
+            updateLock.lock();
+            try{
+                work(timeIndex);
+            }finally {
+                updateLock.unlock();
+            }
             //Calculate # of time slots we have to skip due to longer calculation
             long deltaT = System.currentTimeMillis() - startTime;
             long nextIndex = deltaT / metricsRetreiveInterval + 1;
