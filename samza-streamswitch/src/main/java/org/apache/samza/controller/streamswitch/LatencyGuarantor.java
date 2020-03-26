@@ -13,7 +13,7 @@ import java.util.*;
 public class LatencyGuarantor extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(LatencyGuarantor.class);
     private long latencyReq, windowReq; //Window requirment is stored as number of timeslot
-    private double alpha, beta; // Check with latencyReq * coefficient. instantDelay * alpha < req and longtermDelay * beta < req
+    private double l_threshold; // Check instantDelay  < l and longtermDelay < req
     double initialServiceRate; // Initial prediction by user or system on service rate.
     private Prescription pendingPres;
     private Examiner examiner;
@@ -23,8 +23,7 @@ public class LatencyGuarantor extends StreamSwitch {
         super(config);
         latencyReq = config.getLong("streamswitch.requirement.latency", 1000); //Unit: millisecond
         windowReq = config.getLong("streamswitch.requirement.window", 2000) / metricsRetreiveInterval; //Unit: # of time slots
-        alpha = config.getDouble("streamswitch.system.alpha", 0.5);
-        beta = config.getDouble("streamswitch.system.beta", 1.0);
+        l_threshold = config.getDouble("streamswitch.system.l", 100); //Unit: millisecond
         initialServiceRate = config.getDouble("streamswitch.system.initialservicerate", 0.2);
         examiner = new Examiner();
         pendingPres = null;
@@ -515,7 +514,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 for (String executor : executorMapping.keySet()) {
                     double longtermDelay = examiner.model.getLongTermDelay(executor);
                     double instantDelay = examiner.model.executorInstantaneousDelay.get(executor);
-                    if(instantDelay > alpha * latencyReq && longtermDelay > beta * latencyReq) {
+                    if(instantDelay > l_threshold && longtermDelay > latencyReq) {
                         if (longtermDelay > initialDelay) {
                             initialDelay = longtermDelay;
                             maxExecutor = executor;
@@ -540,12 +539,12 @@ public class LatencyGuarantor extends StreamSwitch {
                 boolean longtermExceeded = false;
                 boolean both = false;
                 for(Map.Entry<String, Double> entry: instantDelay.entrySet()){
-                    if(entry.getValue() > alpha * latencyReq)instantExceeded = true;
+                    if(entry.getValue() > l_threshold)instantExceeded = true;
                 }
                 for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
-                    if(entry.getValue() > beta * latencyReq){
+                    if(entry.getValue() > latencyReq){
                         longtermExceeded = true;
-                        if(instantDelay.get(entry.getKey()) > alpha * latencyReq)both = true;
+                        if(instantDelay.get(entry.getKey()) > latencyReq)both = true;
                     }
                 }
                 if(both)return SEVERE;
@@ -557,7 +556,7 @@ public class LatencyGuarantor extends StreamSwitch {
             private int countSevereExecutors(Map<String, Double> instantDelay, Map<String, Double> longtermDelay){
                 int numberOfSevere = 0;
                 for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
-                    if(entry.getValue() > beta * latencyReq && instantDelay.get(entry.getKey()) > alpha * latencyReq){
+                    if(entry.getValue() > latencyReq && instantDelay.get(entry.getKey()) > l_threshold){
                         numberOfSevere ++;
                     }
                 }
