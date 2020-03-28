@@ -80,6 +80,7 @@ class RunLoop (
     var start = clock()
     var processTime = 0L
     var timeInterval = 0L
+    var chooseTime = 0L;
 
     while (!shutdownNow) {
       var prevNs = clock()
@@ -88,9 +89,13 @@ class RunLoop (
 
       // Exclude choose time from activeNs. Although it includes deserialization time,
       // it most closely captures idle time.
+      val chooseStart = clock()
       val envelope = updateTimer(metrics.chooseNs) {
         consumerMultiplexer.choose()
       }
+      val chooseNs = clock() - chooseStart
+
+      val processStart = clock()
 
       executor.execute(new Runnable() {
         override def run(): Unit = process(envelope)
@@ -100,21 +105,29 @@ class RunLoop (
       commit
       val currentNs = clock()
       val totalNs = currentNs - prevNs
+      // need to add deserialization ns, this is non trivial when processing time is short
+      var usefulTime = currentNs - processStart
+      if (envelope != null) {
+        usefulTime += chooseNs
+      }
 
       if (totalNs != 0) {
         metrics.utilization.set(activeNs.toFloat / totalNs)
       }
 
-      processTime += activeNs
+      processTime += usefulTime
       timeInterval += totalNs
+      chooseTime += chooseNs
 
-      if (currentNs - start >= 2000000000) { // totalNs is not 0 if timer metrics are enabled
+
+      if (currentNs - start >= 1000000000) { // totalNs is not 0 if timer metrics are enabled
         val utilization = processTime.toFloat / timeInterval
-        val serviceRate = tuples.toFloat / (utilization * 2)
+        val idleTime = chooseTime.toFloat / timeInterval
+        val serviceRate = tuples.toFloat / (utilization * 1)
         val avgLatency = if (tuples == 0) 0
         else latency / tuples.toFloat
         //          log.debug("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency);
-//        println("utilization: " + utilization + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency)
+        println("utilization: " + utilization + " chooseNs: " + idleTime + " tuples: " + tuples + " service rate: " + serviceRate + " average latency: " + avgLatency)
         metrics.avgUtilization.set(utilization)
         metrics.serviceRate.set(serviceRate)
         metrics.latency.set(avgLatency)
@@ -123,6 +136,7 @@ class RunLoop (
         timeInterval = 0L
         tuples = 0
         latency = 0
+        chooseTime = 0
       }
 
       activeNs = 0L
@@ -147,7 +161,6 @@ class RunLoop (
     activeNs += updateTimerAndGetDuration(metrics.processNs) ((currentTimeNs: Long) => {
       if (envelope != null) {
         tuples += 1
-        latency += System.currentTimeMillis() - envelope.getTimestamp
         val ssp = envelope.getSystemStreamPartition
 
         trace("Processing incoming message envelope for SSP %s." format ssp)
@@ -162,6 +175,8 @@ class RunLoop (
             coordinatorRequests.update(coordinator)
           }
         }
+        // latency should be the time when the tuple has been processed - envelope timestamp.
+        latency += System.currentTimeMillis() - envelope.getTimestamp
       } else {
         trace("No incoming message envelope was available.")
         metrics.nullEnvelopes.inc
