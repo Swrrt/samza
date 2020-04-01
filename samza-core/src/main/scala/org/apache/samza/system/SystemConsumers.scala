@@ -207,8 +207,13 @@ class SystemConsumers (
   }
 
   def choose (updateChooser: Boolean = true): IncomingMessageEnvelope = {
+    val chooseStart = clock()
+
     val envelopeFromChooser = chooser.choose
 
+    val chooseNs = clock() - chooseStart
+
+//    val deStart = clock()
     updateTimer(metrics.deserializationNs) {
       if (envelopeFromChooser == null) {
         trace("Chooser returned null.")
@@ -239,6 +244,9 @@ class SystemConsumers (
           trace("Update chooser for " + systemStreamPartition.getPartition)
           tryUpdate(systemStreamPartition)
         }
+
+//        val deNs = clock() - deStart
+//        envelopeFromChooser.setDeserializationNs(deNs)
       }
     }
 

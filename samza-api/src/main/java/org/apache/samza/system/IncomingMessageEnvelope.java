@@ -37,6 +37,7 @@ public class IncomingMessageEnvelope {
   private final Object message;
   private final int size;
   private long timestamp = 0L;
+//  private long deserializationNs = 0L;
 
   /**
    * Constructs a new IncomingMessageEnvelope from specified components.
@@ -100,6 +101,14 @@ public class IncomingMessageEnvelope {
   public boolean isEndOfStream() {
     return END_OF_STREAM_OFFSET.equals(offset);
   }
+
+//  public void setDeserializationNs(long deserializationNs) {
+//    this.deserializationNs = deserializationNs;
+//  }
+//
+//  public long getDeserializationNs() {
+//    return deserializationNs;
+//  }
 
   /**
    * This method is deprecated in favor of WatermarkManager.buildEndOfStreamEnvelope(SystemStreamPartition ssp).
