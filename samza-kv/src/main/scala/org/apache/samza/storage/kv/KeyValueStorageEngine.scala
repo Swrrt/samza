@@ -110,11 +110,24 @@ class KeyValueStorageEngine[K, V](
   def restore(envelopes: java.util.Iterator[IncomingMessageEnvelope]) {
     info("Restoring entries for store: " + storeName + " in directory: " + storeDir.toString)
 
+    object timer {
+      var time_restore = 0L
+      def start(): Unit = {
+        time_restore = System.nanoTime()
+      }
+
+      def end(timer_name: String): Unit = {
+        println("+++++++++++" + timer_name +": "+ (System.nanoTime() - time_restore))
+      }
+    }
+
     val batch = new java.util.ArrayList[Entry[Array[Byte], Array[Byte]]](batchSize)
 
     for (envelope <- envelopes.asScala) {
+
       val keyBytes = envelope.getKey.asInstanceOf[Array[Byte]]
       val valBytes = envelope.getMessage.asInstanceOf[Array[Byte]]
+
 
       batch.add(new Entry(keyBytes, valBytes))
 

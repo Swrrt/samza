@@ -791,6 +791,7 @@ class SamzaContainer(
   def hasStopped(): Boolean = status == SamzaContainerStatus.STOPPED || status == SamzaContainerStatus.FAILED
 
   def run {
+
     try {
       info("Starting container.")
       metrics.isRunning.set(false);
@@ -811,13 +812,21 @@ class SamzaContainer(
       startAdmins
       startOffsetManager
       storeContainerLocality
+      info("------------Starting restore.")
       startStores
+      info("-------------end restore.")
       startTableManager
       startDiskSpaceMonitor
       startHostStatisticsMonitor
+      info("------------Starting producer.")
       startProducers
+      info("------------end producer.")
+      info("------------Starting task.")
       startTask
+      info("------------end task.")
+      info("------------Starting consumer.")
       startConsumers
+      info("------------end consumer.")
       startSecurityManger
 
       addShutdownHook

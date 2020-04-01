@@ -35,6 +35,8 @@ class SystemConsumersMetrics(val registry: MetricsRegistry = new MetricsRegistry
   val pollNs = newTimer("poll-ns")
   val deserializationNs = newTimer("deserialization-ns")
 
+
+
   def setNeededByChooser(getValue: () => Int) {
     newGauge("ssps-needed-by-chooser", getValue)
   }
