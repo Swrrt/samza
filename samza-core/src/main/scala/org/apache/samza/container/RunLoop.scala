@@ -51,6 +51,8 @@ class RunLoop (
   private var activeNs = 0L
   private var tuples = 0
   private var latency = 0L
+  private var startTime = 0L
+
 
 
   @volatile private var shutdownNow = false
@@ -165,6 +167,10 @@ class RunLoop (
     activeNs += updateTimerAndGetDuration(metrics.processNs) ((currentTimeNs: Long) => {
       if (envelope != null) {
         tuples += 1
+        if (startTime == 0) {
+          startTime = System.currentTimeMillis()
+          println("start time: " + startTime)
+        }
 
         val ssp = envelope.getSystemStreamPartition
 
@@ -183,7 +189,6 @@ class RunLoop (
         // latency should be the time when the tuple has been processed - envelope timestamp.
         latency += System.currentTimeMillis() - envelope.getTimestamp
         println("stock_id: " + envelope.getKey + " arrival_ts: " + envelope.getTimestamp + " completion_ts: " + System.currentTimeMillis())
-
       } else {
         trace("No incoming message envelope was available.")
         metrics.nullEnvelopes.inc

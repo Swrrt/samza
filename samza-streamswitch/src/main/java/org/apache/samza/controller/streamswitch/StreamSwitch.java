@@ -17,10 +17,9 @@ public abstract class StreamSwitch implements OperatorController{
     protected OperatorControllerListener listener;
     protected StreamSwitchMetricsRetriever metricsRetriever;
     protected Map<String, List<String>> executorMapping;
-    protected long migrationInterval, metricsRetreiveInterval;
+    protected long metricsRetreiveInterval;
     protected int maxNumberOfExecutors;
     protected boolean isMigrating;
-    protected long lastMigratedTime;
     protected long startTime;
     ReentrantLock updateLock; //Lock is used to avoid concurrent modify between update() and changeImplemented()
     AtomicLong nextExecutorID;
@@ -28,12 +27,10 @@ public abstract class StreamSwitch implements OperatorController{
 
     public StreamSwitch(Config config){
         this.config = config;
-        migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l); //Scale-out takes some time
         metricsRetreiveInterval = config.getInt("streamswitch.system.metrics_interval", 100);
         maxNumberOfExecutors = config.getInt("streamswitch.system.max_executors", 64);
         metricsRetriever = createMetricsRetriever();
         isMigrating = false;
-        lastMigratedTime = 0;
         updateLock = new ReentrantLock();
     }
     @Override
@@ -68,6 +65,7 @@ public abstract class StreamSwitch implements OperatorController{
         long warmUpStartTime = System.currentTimeMillis();
         //Warm up phase
         LOG.info("Warm up for " + metricsWarmupTime + " milliseconds...");
+        System.out.println("Start time=" + System.currentTimeMillis());
         do{
             long time = System.currentTimeMillis();
             if(time - warmUpStartTime > metricsWarmupTime){
@@ -89,7 +87,13 @@ public abstract class StreamSwitch implements OperatorController{
         boolean stopped = false;
         while(!stopped) {
             //Actual calculation, decision here
-            work(timeIndex);
+            //Should not invoke any thing when updating!
+            updateLock.lock();
+            try{
+                work(timeIndex);
+            }finally {
+                updateLock.unlock();
+            }
             //Calculate # of time slots we have to skip due to longer calculation
             long deltaT = System.currentTimeMillis() - startTime;
             long nextIndex = deltaT / metricsRetreiveInterval + 1;
