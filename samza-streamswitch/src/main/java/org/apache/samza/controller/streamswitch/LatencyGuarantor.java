@@ -70,6 +70,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
             private void init(Map<String, List<String>> executorMapping){
                 LOG.info("Initialize time point 0...");
+                System.out.println("New mapping at time: " + 0 + " mapping:" + executorMapping);
                 for (String executor : executorMapping.keySet()) {
                     for (String substream : executorMapping.get(executor)) {
                         SubstreamState substreamState = new SubstreamState();
@@ -884,6 +885,7 @@ public class LatencyGuarantor extends StreamSwitch {
         Map<String, List<String>> newAssignment = pres.generateNewSubstreamAssignment(executorMapping);
         LOG.info("Prescription : src: " + pres.source + " , tgt: " + pres.target + " , migrating: " + pres.migratingSubstreams);
         LOG.info("New mapping: " + newAssignment);
+        System.out.println("New mapping at time: " + examiner.state.currentTimeIndex + " mapping:" + newAssignment);
         //Scale out
         if (!executorMapping.containsKey(pres.target)) {
             LOG.info("Scale out");
