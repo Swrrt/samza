@@ -545,7 +545,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
                     if(entry.getValue() > latencyReq){
                         longtermExceeded = true;
-                        if(instantDelay.get(entry.getKey()) > latencyReq)both = true;
+                        if(instantDelay.get(entry.getKey()) > l_threshold)both = true;
                     }
                 }
                 if(both)return SEVERE;
