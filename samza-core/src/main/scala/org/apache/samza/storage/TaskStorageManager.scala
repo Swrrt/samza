@@ -71,16 +71,65 @@ class TaskStorageManager(
   def getStore(storeName: String): Option[StorageEngine] = taskStores.get(storeName)
 
   def init {
+    object timer {
+      var time_restore = 0L
+//      var time_others = 0L
+//      var time_total = 0L
+
+//      def start(timer_type: String) {
+//        timer_type match {
+//          case "restore" => time_restore = System.nanoTime()
+//          case "others" => time_others = System.nanoTime()
+//          case "total" => time_total = System.nanoTime()
+//        }
+//      }
+//      def end(timer_type: String): Unit = {
+//        timer_type match {
+//          case "restore" => time_restore = System.nanoTime() - time_restore
+//          case "others" => time_others = System.nanoTime() - time_others
+//          case "total" => time_total = System.nanoTime() - time_total
+//        }
+//      }
+      def start(): Unit = {
+          time_restore = System.nanoTime()
+      }
+
+      def end(timer_name: String): Unit = {
+        println("+++++++++++" + timer_name +": "+ (System.nanoTime() - time_restore))
+      }
+    }
+
+    var time_restore = System.nanoTime()
+
+//    timer.start()
     cleanBaseDirs()
+//    timer.end("cleanBaseDirs")
+
+//    timer.start()
     setupBaseDirs()
+//    timer.end("setupBaseDirs")
+
+//    timer.start()
     validateChangelogStreams()
+//    timer.end("validateChangelogStreams")
+
+//    timer.start()
     startConsumers()
+//    timer.end("startConsumers")
+
+    timer.start()
     restoreStores()
+    timer.end("restoreStores")
+
+//    timer.start()
     stopConsumers()
+//    timer.end("stopConsumers")
+
+    println("+++++++++++Total time to restore: "+ (System.nanoTime() - time_restore))
   }
 
   private def cleanBaseDirs() {
-    debug("Cleaning base directories for stores.")
+    info("Cleaning base directories for stores.")
 
     taskStores.keys.foreach(storeName => {
       val nonLoggedStorePartitionDir = TaskStorageManager.getStorePartitionDir(nonLoggedStoreBaseDir, storeName, taskName)
@@ -127,7 +176,7 @@ class TaskStorageManager(
   }
 
   private def setupBaseDirs() {
-    debug("Setting up base directories for stores.")
+    info("Setting up base directories for stores.")
     taskStores.foreach {
       case (storeName, storageEngine) =>
         if (storageEngine.getStoreProperties.isLoggedStore) {
@@ -203,7 +252,7 @@ class TaskStorageManager(
   }
 
   private def restoreStores() {
-    debug("Restoring stores for task: %s." format taskName.getTaskName)
+    info("Restoring stores for task: %s." format taskName.getTaskName)
 
     for ((storeName, store) <- taskStoresToRestore) {
       if (changeLogSystemStreams.contains(storeName)) {

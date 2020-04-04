@@ -122,18 +122,18 @@ class TaskInstance(
 
   def startStores {
     if (storageManager != null) {
-      debug("Starting storage manager for taskName: %s" format taskName)
+      info("Starting storage manager for taskName: %s" format taskName)
 
       storageManager.init
     } else {
-      debug("Skipping storage manager initialization for taskName: %s" format taskName)
+      info("Skipping storage manager initialization for taskName: %s" format taskName)
     }
 
     if (sideInputStorageManager != null) {
-      debug("Starting side input storage manager for taskName: %s" format taskName)
+      info("Starting side input storage manager for taskName: %s" format taskName)
       sideInputStorageManager.init()
     } else {
-      debug("Skipping side input storage manager initialization for taskName: %s" format taskName)
+      info("Skipping side input storage manager initialization for taskName: %s" format taskName)
     }
   }
 
