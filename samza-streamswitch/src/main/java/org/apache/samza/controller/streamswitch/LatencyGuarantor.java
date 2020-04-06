@@ -70,6 +70,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
             private void init(Map<String, List<String>> executorMapping){
                 LOG.info("Initialize time point 0...");
+                System.out.println("New mapping at time: " + 0 + " mapping:" + executorMapping);
                 for (String executor : executorMapping.keySet()) {
                     for (String substream : executorMapping.get(executor)) {
                         SubstreamState substreamState = new SubstreamState();
@@ -284,6 +285,7 @@ public class LatencyGuarantor extends StreamSwitch {
         class Model {
             private State state;
             Map<String, Double> substreamArrivalRate, executorArrivalRate, executorServiceRate, executorInstantaneousDelay; //Longterm delay could be calculated from arrival rate and service rate
+            Map<String, Long> executorCompleted; //For debugging instant delay
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
@@ -348,6 +350,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                 }
                 //In state, latency is count as # of timeslots, need to transfer to real time
+                executorCompleted.put(executorId, totalCompleted);
                 if(totalCompleted > 0) return totalDelay * metricsRetreiveInterval / ((double)totalCompleted);
                 return 0;
             }
@@ -358,6 +361,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 substreamArrivalRate.clear();
                 executorArrivalRate.clear();
                 executorInstantaneousDelay.clear();
+                executorCompleted.clear();
                 Map<String, Double> utils = new HashMap<>();
                 for(String executor: executorMapping.keySet()){
                     double arrivalRate = 0;
@@ -461,6 +465,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 System.out.println("Model, time " + timeIndex  + " , Arrival Rate: " + model.executorArrivalRate);
                 System.out.println("Model, time " + timeIndex  + " , Service Rate: " + model.executorServiceRate);
                 System.out.println("Model, time " + timeIndex  + " , Instantaneous Delay: " + model.executorInstantaneousDelay);
+                System.out.println("Model, time " + timeIndex  + " , executors completed: " + model.executorCompleted);
                 System.out.println("Model, time " + timeIndex  + " , Longterm Delay: " + longtermDelay);
                 System.out.println("Model, time " + timeIndex  + " , Partition Arrival Rate: " + model.substreamArrivalRate);
             }
@@ -544,7 +549,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
                     if(entry.getValue() > latencyReq){
                         longtermExceeded = true;
-                        if(instantDelay.get(entry.getKey()) > latencyReq)both = true;
+                        if(instantDelay.get(entry.getKey()) > l_threshold)both = true;
                     }
                 }
                 if(both)return SEVERE;
@@ -884,6 +889,7 @@ public class LatencyGuarantor extends StreamSwitch {
         Map<String, List<String>> newAssignment = pres.generateNewSubstreamAssignment(executorMapping);
         LOG.info("Prescription : src: " + pres.source + " , tgt: " + pres.target + " , migrating: " + pres.migratingSubstreams);
         LOG.info("New mapping: " + newAssignment);
+        System.out.println("New mapping at time: " + examiner.state.currentTimeIndex + " mapping: " + newAssignment);
         //Scale out
         if (!executorMapping.containsKey(pres.target)) {
             LOG.info("Scale out");
