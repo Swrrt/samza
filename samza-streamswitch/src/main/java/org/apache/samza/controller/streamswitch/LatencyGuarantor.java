@@ -291,6 +291,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 executorArrivalRate = new HashMap<>();
                 executorServiceRate = new HashMap<>();
                 executorInstantaneousDelay = new HashMap<>();
+                executorCompleted = new HashMap<>();
                 this.state = state;
             }
 
