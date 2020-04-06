@@ -538,7 +538,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     long val = Long.parseLong(ent.getValue());
                     for(String topic:topics){
                         if(partitionCheckpoint.containsKey(topic) && partitionBeginOffset.containsKey(topic) && partitionBeginOffset.get(topic).containsKey(ent.getKey()) && partitionCheckpoint.get(topic).containsKey(ent.getKey())){
-                            long t = partitionCheckpoint.get(topic).get(ent.getKey()) - partitionBeginOffset.get(topic).get(ent.getKey());
+                            long t = partitionCheckpoint.get(topic).get(ent.getKey()) - partitionBeginOffset.get(topic).get(ent.getKey()) + 1;
                             if(t > 0) val += t;
                         }
                     }
