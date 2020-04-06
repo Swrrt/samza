@@ -285,6 +285,7 @@ public class LatencyGuarantor extends StreamSwitch {
         class Model {
             private State state;
             Map<String, Double> substreamArrivalRate, executorArrivalRate, executorServiceRate, executorInstantaneousDelay; //Longterm delay could be calculated from arrival rate and service rate
+            Map<String, Long> executorCompleted; //For debugging instant delay
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
@@ -349,6 +350,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                 }
                 //In state, latency is count as # of timeslots, need to transfer to real time
+                executorCompleted.put(executorId, totalCompleted);
                 if(totalCompleted > 0) return totalDelay * metricsRetreiveInterval / ((double)totalCompleted);
                 return 0;
             }
@@ -359,6 +361,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 substreamArrivalRate.clear();
                 executorArrivalRate.clear();
                 executorInstantaneousDelay.clear();
+                executorCompleted.clear();
                 Map<String, Double> utils = new HashMap<>();
                 for(String executor: executorMapping.keySet()){
                     double arrivalRate = 0;
@@ -462,6 +465,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 System.out.println("Model, time " + timeIndex  + " , Arrival Rate: " + model.executorArrivalRate);
                 System.out.println("Model, time " + timeIndex  + " , Service Rate: " + model.executorServiceRate);
                 System.out.println("Model, time " + timeIndex  + " , Instantaneous Delay: " + model.executorInstantaneousDelay);
+                System.out.println("Model, time " + timeIndex  + " , executors completed: " + model.executorCompleted);
                 System.out.println("Model, time " + timeIndex  + " , Longterm Delay: " + longtermDelay);
                 System.out.println("Model, time " + timeIndex  + " , Partition Arrival Rate: " + model.substreamArrivalRate);
             }
