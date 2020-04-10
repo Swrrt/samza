@@ -422,6 +422,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     @Override
     public Map<String, Object> retrieveMetrics(){
         //Debugging
+        HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
         LOG.info("Start retrieving metrics...");
         Runtime runtime = Runtime.getRuntime();
         NumberFormat format = NumberFormat.getInstance();
@@ -513,10 +514,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         }
                         pwatermark = partitionWatermark.get(topic);
                         for (Map.Entry<String, String> ent : watermark.get(topic).entrySet()) {
-                            /*if(!debugWatermark.containsKey(topic)){
+                            if(!debugWatermark.containsKey(topic)){
                                 debugWatermark.put(topic, new HashMap<>());
                             }
-                            debugWatermark.get(topic).put(containerId + ent.getKey(), ent.getValue());*/
+                            debugWatermark.get(topic).put(containerId + ent.getKey(), ent.getValue());
                             if (!beginOffset.containsKey(ent.getKey())) {
                                 beginOffset.put(ent.getKey(), Long.parseLong(ent.getValue()));
                             }
@@ -530,6 +531,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 }
                             }
                         }
+
                     }
                 }
             }
@@ -584,8 +586,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 partitionArrived.put("Partition " + partitionId, arrived);
             }
         }
-        /*LOG.info("Debugging, watermark: " + debugWatermark);
-        LOG.info("Debugging, checkpoint: " + partitionCheckpoint);
+        LOG.info("Debugging, retrieved watermark: " + debugWatermark);
+        /*LOG.info("Debugging, checkpoint: " + partitionCheckpoint);
         LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Debugging, begin: " + partitionBeginOffset);
         LOG.info("Debugging, valid: " + partitionValid);*/
