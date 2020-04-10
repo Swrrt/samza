@@ -513,11 +513,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             partitionWatermark.put(topic, new HashMap<>());
                         }
                         pwatermark = partitionWatermark.get(topic);
+
                         for (Map.Entry<String, String> ent : watermark.get(topic).entrySet()) {
-                            if(!debugWatermark.containsKey(topic)){
+                            /*if(!debugWatermark.containsKey(topic)){
                                 debugWatermark.put(topic, new HashMap<>());
                             }
-                            debugWatermark.get(topic).put(containerId + ent.getKey(), ent.getValue());
+                            debugWatermark.get(topic).put(containerId + ent.getKey(), ent.getValue());*/
                             if (!beginOffset.containsKey(ent.getKey())) {
                                 beginOffset.put(ent.getKey(), Long.parseLong(ent.getValue()));
                             }
@@ -526,9 +527,16 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 pwatermark.put(ent.getKey(), Long.parseLong(ent.getValue()));
                             } else {
                                 long value = Long.parseLong(ent.getValue());
-                                if (value > pwatermark.get(ent.getKey())) {
+                                if (value >= pwatermark.get(ent.getKey())) {
                                     pwatermark.put(ent.getKey(), value);
+                                }else{
+                                    partitionValid.put("Partition " + ent.getKey(), false);
                                 }
+                            }
+                        }
+                        for(String partitionId: pwatermark.keySet()){
+                            if(!watermark.get(topic).containsKey(partitionId)){
+                                partitionValid.put("Partition " + partitionId, false);
                             }
                         }
 
@@ -586,8 +594,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 partitionArrived.put("Partition " + partitionId, arrived);
             }
         }
-        LOG.info("Debugging, retrieved watermark: " + debugWatermark);
-        /*LOG.info("Debugging, checkpoint: " + partitionCheckpoint);
+        /*LOG.info("Debugging, retrieved watermark: " + debugWatermark);
+        LOG.info("Debugging, checkpoint: " + partitionCheckpoint);
         LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Debugging, begin: " + partitionBeginOffset);
         LOG.info("Debugging, valid: " + partitionValid);*/
