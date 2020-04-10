@@ -316,8 +316,8 @@ public class LatencyGuarantor extends StreamSwitch {
             private double calculateExecutorServiceRate(String executorId, double util, long n){
                 //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
                 double lastServiceRate = executorServiceRate.getOrDefault(executorId, 0.0);
-                //Only update service rate when util > 1%
-                if(util < 0.01){
+                //Only update service rate when util > 10%
+                if(util < 0.1){
                     return lastServiceRate;
                 }
                 //Put here to avoid scale-in at the beginning.
@@ -444,6 +444,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
             System.out.println("State, time " + timeIndex  + " , Partition Arrived: " + arrived);
             System.out.println("State, time " + timeIndex  + " , Partition Completed: " + completed);
+            System.out.println("State, time " + timeIndex  + " , Executor Utilizations: " + state.executorUtilization);
 
             if(checkValidity(substreamValid)){
                 //state.calculate(timeIndex);

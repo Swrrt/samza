@@ -303,7 +303,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         partitionProcessed.put(partitionId, ok);
                     }else if(isExecutorUtilization(name)){ // Utilization
                         String ok = mbsc.getAttribute(name, "Value").toString();
-                        metrics.put("ExecutorUtilization", Double.parseDouble(ok));
+                        if(Double.parseDouble(ok) >= 0.0) {
+                            metrics.put("ExecutorUtilization", Double.parseDouble(ok));
+                        }
                     }else if(isExecutorRunning(name)){ //Running
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         metrics.put("ExecutorRunning", Boolean.parseBoolean(ok));
