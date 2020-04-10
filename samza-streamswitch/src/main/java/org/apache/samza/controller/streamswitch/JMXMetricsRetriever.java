@@ -422,7 +422,6 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
     @Override
     public Map<String, Object> retrieveMetrics(){
         //Debugging
-        HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
         LOG.info("Start retrieving metrics...");
         Runtime runtime = Runtime.getRuntime();
         NumberFormat format = NumberFormat.getInstance();
@@ -472,6 +471,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         metrics.put("Validity", partitionValid); //For validation check
         //HashMap<String, String> debugProcessed = new HashMap<>();
         //HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
+        HashMap<String, Set<String>> retrievedWatermarks = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, topics, entry.getValue());
@@ -513,12 +513,17 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                             partitionWatermark.put(topic, new HashMap<>());
                         }
                         pwatermark = partitionWatermark.get(topic);
-
                         for (Map.Entry<String, String> ent : watermark.get(topic).entrySet()) {
                             /*if(!debugWatermark.containsKey(topic)){
                                 debugWatermark.put(topic, new HashMap<>());
                             }
                             debugWatermark.get(topic).put(containerId + ent.getKey(), ent.getValue());*/
+                            //To check whether all partitions' watermark is ready.
+                            if(!retrievedWatermarks.containsKey(topic)){
+                                retrievedWatermarks.put(topic, new HashSet<>());
+                            }
+                            retrievedWatermarks.get(topic).add(ent.getKey());
+
                             if (!beginOffset.containsKey(ent.getKey())) {
                                 beginOffset.put(ent.getKey(), Long.parseLong(ent.getValue()));
                             }
@@ -529,17 +534,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 long value = Long.parseLong(ent.getValue());
                                 if (value >= pwatermark.get(ent.getKey())) {
                                     pwatermark.put(ent.getKey(), value);
-                                }else{
-                                    partitionValid.put("Partition " + ent.getKey(), false);
                                 }
                             }
                         }
-                        for(String partitionId: pwatermark.keySet()){
-                            if(!watermark.get(topic).containsKey(partitionId)){
-                                partitionValid.put("Partition " + partitionId, false);
-                            }
-                        }
-
                     }
                 }
             }
@@ -580,9 +577,13 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         if(partitionWatermark.containsKey(topics.get(0))) {
             for (String partitionId : partitionWatermark.get(topics.get(0)).keySet()) {
                 long arrived = 0;
+                boolean allExisted = true;
                 for (String topic : topics) {
                     long watermark = partitionWatermark.get(topic).get(partitionId);
                     long begin = partitionBeginOffset.get(topic).get(partitionId);
+                    if(!retrievedWatermarks.get(topic).contains(partitionId)){
+                        partitionValid.put("Partition " + partitionId, false);
+                    }
                     arrived += watermark - begin;
                 }
                 long processed = partitionProcessed.getOrDefault("Partition " + partitionId, 0l);
@@ -592,8 +593,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     if(arrived + 1 < processed)partitionValid.put("Partition " + partitionId, false);
                 }
                 partitionArrived.put("Partition " + partitionId, arrived);
+
             }
         }
+
         /*LOG.info("Debugging, retrieved watermark: " + debugWatermark);
         LOG.info("Debugging, checkpoint: " + partitionCheckpoint);
         LOG.info("Debugging, processed: " + debugProcessed);
