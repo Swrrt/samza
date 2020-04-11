@@ -13,7 +13,7 @@ import java.util.*;
 public class LatencyGuarantor extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(LatencyGuarantor.class);
     private long latencyReq, windowReq; //Window requirment is stored as number of timeslot
-    private double l_threshold; // Check instantDelay  < l and longtermDelay < req
+    private double l_low, l_high; // Check instantDelay  < l and longtermDelay < req
     double initialServiceRate; // Initial prediction by user or system on service rate.
     private Prescription pendingPres;
     private Examiner examiner;
@@ -23,7 +23,8 @@ public class LatencyGuarantor extends StreamSwitch {
         super(config);
         latencyReq = config.getLong("streamswitch.requirement.latency", 1000); //Unit: millisecond
         windowReq = config.getLong("streamswitch.requirement.window", 2000) / metricsRetreiveInterval; //Unit: # of time slots
-        l_threshold = config.getDouble("streamswitch.system.l", 100); //Unit: millisecond
+        l_low = config.getDouble("streamswitch.system.l_low", 50); //Unit: millisecond
+        l_high = config.getDouble("streamswtich.system.l_high", 100);
         initialServiceRate = config.getDouble("streamswitch.system.initialservicerate", 0.2);
         examiner = new Examiner();
         pendingPres = null;
@@ -521,7 +522,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 for (String executor : executorMapping.keySet()) {
                     double longtermDelay = examiner.model.getLongTermDelay(executor);
                     double instantDelay = examiner.model.executorInstantaneousDelay.get(executor);
-                    if(instantDelay > l_threshold && longtermDelay > latencyReq) {
+                    if(instantDelay > l_high && longtermDelay > latencyReq) {
                         if (longtermDelay > initialDelay) {
                             initialDelay = longtermDelay;
                             maxExecutor = executor;
@@ -542,28 +543,25 @@ public class LatencyGuarantor extends StreamSwitch {
             }
             //Calculate healthisness of input delay vectors: 0 for Good, 1 for Moderate, 2 for Severe
             private int getHealthiness(Map<String, Double> instantDelay, Map<String, Double> longtermDelay){
-                boolean instantExceeded = false;
-                boolean longtermExceeded = false;
-                boolean both = false;
-                for(Map.Entry<String, Double> entry: instantDelay.entrySet()){
-                    if(entry.getValue() > l_threshold)instantExceeded = true;
-                }
+                boolean isGood = true;
                 for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
-                    if(entry.getValue() > latencyReq){
-                        longtermExceeded = true;
-                        if(instantDelay.get(entry.getKey()) > l_threshold)both = true;
+                    double L = entry.getValue();
+                    double l = instantDelay.get(entry.getKey());
+                    if(L > latencyReq){
+                        if(l > l_high)return SEVERE;
+                        isGood = false;
                     }
+                    if(l > l_low)isGood = false;
                 }
-                if(both)return SEVERE;
-                else if(instantExceeded  || longtermExceeded)return MODERATE;
-                else return GOOD;
+                if(isGood)return GOOD;
+                else return MODERATE;
             }
 
             //Debug
             private int countSevereExecutors(Map<String, Double> instantDelay, Map<String, Double> longtermDelay){
                 int numberOfSevere = 0;
                 for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
-                    if(entry.getValue() > latencyReq && instantDelay.get(entry.getKey()) > l_threshold){
+                    if(entry.getValue() > latencyReq && instantDelay.get(entry.getKey()) > l_high){
                         numberOfSevere ++;
                     }
                 }
