@@ -303,7 +303,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         partitionProcessed.put(partitionId, ok);
                     }else if(isExecutorUtilization(name)){ // Utilization
                         String ok = mbsc.getAttribute(name, "Value").toString();
-                        metrics.put("ExecutorUtilization", Double.parseDouble(ok));
+                        if(Double.parseDouble(ok) >= 0.0) {
+                            metrics.put("ExecutorUtilization", Double.parseDouble(ok));
+                        }
                     }else if(isExecutorRunning(name)){ //Running
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         metrics.put("ExecutorRunning", Boolean.parseBoolean(ok));
@@ -469,6 +471,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         metrics.put("Validity", partitionValid); //For validation check
         //HashMap<String, String> debugProcessed = new HashMap<>();
         //HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
+        HashMap<String, Set<String>> retrievedWatermarks = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, topics, entry.getValue());
@@ -515,6 +518,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 debugWatermark.put(topic, new HashMap<>());
                             }
                             debugWatermark.get(topic).put(containerId + ent.getKey(), ent.getValue());*/
+                            //To check whether all partitions' watermark is ready.
+                            if(!retrievedWatermarks.containsKey(topic)){
+                                retrievedWatermarks.put(topic, new HashSet<>());
+                            }
+                            retrievedWatermarks.get(topic).add(ent.getKey());
+
                             if (!beginOffset.containsKey(ent.getKey())) {
                                 beginOffset.put(ent.getKey(), Long.parseLong(ent.getValue()));
                             }
@@ -523,7 +532,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 pwatermark.put(ent.getKey(), Long.parseLong(ent.getValue()));
                             } else {
                                 long value = Long.parseLong(ent.getValue());
-                                if (value > pwatermark.get(ent.getKey())) {
+                                if (value >= pwatermark.get(ent.getKey())) {
                                     pwatermark.put(ent.getKey(), value);
                                 }
                             }
@@ -568,9 +577,13 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         if(partitionWatermark.containsKey(topics.get(0))) {
             for (String partitionId : partitionWatermark.get(topics.get(0)).keySet()) {
                 long arrived = 0;
+                boolean allExisted = true;
                 for (String topic : topics) {
                     long watermark = partitionWatermark.get(topic).get(partitionId);
                     long begin = partitionBeginOffset.get(topic).get(partitionId);
+                    if(!retrievedWatermarks.containsKey(topic) || !retrievedWatermarks.get(topic).contains(partitionId)){
+                        partitionValid.put("Partition " + partitionId, false);
+                    }
                     arrived += watermark - begin;
                 }
                 long processed = partitionProcessed.getOrDefault("Partition " + partitionId, 0l);
@@ -580,9 +593,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     if(arrived + 1 < processed)partitionValid.put("Partition " + partitionId, false);
                 }
                 partitionArrived.put("Partition " + partitionId, arrived);
+
             }
         }
-        /*LOG.info("Debugging, watermark: " + debugWatermark);
+
+        /*LOG.info("Debugging, retrieved watermark: " + debugWatermark);
         LOG.info("Debugging, checkpoint: " + partitionCheckpoint);
         LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Debugging, begin: " + partitionBeginOffset);
