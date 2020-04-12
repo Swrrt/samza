@@ -645,13 +645,16 @@ public class LatencyGuarantor extends StreamSwitch {
                     LOG.info("Not enough executor to merge");
                     return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
+                //Only consider unlocked oes
+                HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
+                unlockedOEs.removeAll(oeUnlockTime.keySet());
 
                 String minsrc = "", mintgt = "";
                 List<Double> best = null;
 
-                for(String src: executorMapping.keySet()){
+                for(String src: unlockedOEs){
                     double srcArrival = examiner.model.executorArrivalRate.get(src);
-                    for(String tgt: executorMapping.keySet())
+                    for(String tgt: unlockedOEs)
                         if(!tgt.equals(src)){
                             double tgtArrival = examiner.model.executorArrivalRate.get(tgt);
                             double tgtService = examiner.model.executorServiceRate.get(tgt);
