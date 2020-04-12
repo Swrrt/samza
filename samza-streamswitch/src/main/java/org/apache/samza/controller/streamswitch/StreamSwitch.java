@@ -17,9 +17,10 @@ public abstract class StreamSwitch implements OperatorController{
     protected OperatorControllerListener listener;
     protected StreamSwitchMetricsRetriever metricsRetriever;
     protected Map<String, List<String>> executorMapping;
+    protected Map<String, Long> oeUnlockTime;
     protected long metricsRetreiveInterval;
     protected int maxNumberOfExecutors;
-    protected boolean isMigrating;
+    //protected boolean isMigrating;
     protected long startTime;
     ReentrantLock updateLock; //Lock is used to avoid concurrent modify between update() and changeImplemented()
     AtomicLong nextExecutorID;
@@ -30,7 +31,7 @@ public abstract class StreamSwitch implements OperatorController{
         metricsRetreiveInterval = config.getInt("streamswitch.system.metrics_interval", 100);
         maxNumberOfExecutors = config.getInt("streamswitch.system.max_executors", 64);
         metricsRetriever = createMetricsRetriever();
-        isMigrating = false;
+        //isMigrating = false;
         updateLock = new ReentrantLock();
     }
     @Override
@@ -40,6 +41,7 @@ public abstract class StreamSwitch implements OperatorController{
         //Default executorMapping
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
         executorMapping = new HashedMap();
+        oeUnlockTime = new HashMap<>();
         nextExecutorID = new AtomicLong();
         Iterator<String> iterator = partitions.iterator();
         for(String executor: executors){

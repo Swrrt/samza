@@ -15,6 +15,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private long latencyReq, windowReq; //Window requirment is stored as number of timeslot
     private double l_low, l_high; // Check instantDelay  < l and longtermDelay < req
     double initialServiceRate; // Initial prediction by user or system on service rate.
+    long migrationInterval;
     private Prescription pendingPres;
     private Examiner examiner;
 
@@ -26,6 +27,7 @@ public class LatencyGuarantor extends StreamSwitch {
         l_low = config.getDouble("streamswitch.system.l_low", 50); //Unit: millisecond
         l_high = config.getDouble("streamswtich.system.l_high", 100);
         initialServiceRate = config.getDouble("streamswitch.system.initialservicerate", 0.2);
+        migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l);
         examiner = new Examiner();
         pendingPres = null;
     }
@@ -516,10 +518,10 @@ public class LatencyGuarantor extends StreamSwitch {
 
         class Diagnoser { //Algorithms and utility methods
             //Get severe executor with largest longterm latency.
-            private Pair<String, Double> getWorstExecutor(Map<String, List<String>> executorMapping){
+            private Pair<String, Double> getWorstExecutor(Set<String> oes){
                 double initialDelay = -1.0;
                 String maxExecutor = "";
-                for (String executor : executorMapping.keySet()) {
+                for (String executor : oes) {
                     double longtermDelay = examiner.model.getLongTermDelay(executor);
                     double instantDelay = examiner.model.executorInstantaneousDelay.get(executor);
                     if(instantDelay > l_high && longtermDelay > latencyReq) {
@@ -544,11 +546,11 @@ public class LatencyGuarantor extends StreamSwitch {
             //Calculate healthisness of input delay vectors: 0 for Good, 1 for Moderate, 2 for Severe
             private int getHealthiness(Map<String, Double> instantDelay, Map<String, Double> longtermDelay){
                 boolean isGood = true;
-                for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
-                    double L = entry.getValue();
-                    double l = instantDelay.get(entry.getKey());
+                for(String oe: longtermDelay.keySet()){
+                    double L = longtermDelay.get(oe);
+                    double l = instantDelay.get(oe);
                     if(L > latencyReq){
-                        if(l > l_high)return SEVERE;
+                        if(oeUnlockTime.containsKey(oe) && l > l_high)return SEVERE; //Only consider unlocked OEs to scale out/LB
                         isGood = false;
                     }
                     if(l > l_low)isGood = false;
@@ -560,8 +562,10 @@ public class LatencyGuarantor extends StreamSwitch {
             //Debug
             private int countSevereExecutors(Map<String, Double> instantDelay, Map<String, Double> longtermDelay){
                 int numberOfSevere = 0;
-                for(Map.Entry<String, Double> entry: longtermDelay.entrySet()){
-                    if(entry.getValue() > latencyReq && instantDelay.get(entry.getKey()) > l_high){
+                for(String oe: longtermDelay.keySet()){
+                    double L = longtermDelay.get(oe);
+                    double l = instantDelay.get(oe);
+                    if(oeUnlockTime.containsKey(oe) && L > latencyReq && l > l_high){
                         numberOfSevere ++;
                     }
                 }
@@ -580,7 +584,11 @@ public class LatencyGuarantor extends StreamSwitch {
                     LOG.info("Reach executor number limit, cannot scale out");
                     return new Pair<>(new Prescription(), null);
                 }
-                Pair<String, Double> a = getWorstExecutor(executorMapping);
+                //Only consider unlocked oes
+                HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
+                unlockedOEs.removeAll(oeUnlockTime.keySet());
+
+                Pair<String, Double> a = getWorstExecutor(unlockedOEs);
                 String srcExecutor = a.getKey();
                 if(srcExecutor == null || srcExecutor.equals("") || executorMapping.get(srcExecutor).size() <=1){
                     LOG.info("Cannot scale out: insufficient substream to migrate");
@@ -699,8 +707,12 @@ public class LatencyGuarantor extends StreamSwitch {
                     return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
 
+                //Only consider unlocked oes
+                HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
+                unlockedOEs.removeAll(oeUnlockTime.keySet());
+
                 //Find container with maximum delay
-                Pair<String, Double> a = getWorstExecutor(executorMapping);
+                Pair<String, Double> a = getWorstExecutor(unlockedOEs);
                 String srcExecutor = a.getKey();
                 if (srcExecutor.equals("")) { //No correct container
                     LOG.info("Cannot find the container that exceeds threshold");
@@ -715,7 +727,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 String bestTgtExecutor = null;
                 List<Double> best = null;
                 List<String> bestMigratingSubstreams = null;
-                for (String tgtExecutor : executorMapping.keySet())
+                for (String tgtExecutor : unlockedOEs)
                     if (!srcExecutor.equals(tgtExecutor)) {
                         double tgtArrivalRate = examiner.model.executorArrivalRate.get(tgtExecutor);
                         double tgtServiceRate = examiner.model.executorServiceRate.get(tgtExecutor);
@@ -754,7 +766,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                             current.add(srcDelay);
                                         }else if(executor.equals(tgtExecutor)){
                                             current.add(tgtDelay);
-                                        }else{
+                                        }else if(unlockedOEs.contains(executor)){
                                             current.add(examiner.model.getLongTermDelay(executor));
                                         }
                                     }
@@ -806,10 +818,10 @@ public class LatencyGuarantor extends StreamSwitch {
         int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay());
         Prescription pres = new Prescription(null, null, null);
         LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
-        if(isMigrating){
+        /*if(isMigrating){
             LOG.info("Migration does not complete, cannot diagnose");
             return pres;
-        }
+        }*/
 
         //Moderate
         if(healthiness == Diagnoser.MODERATE){
@@ -883,7 +895,7 @@ public class LatencyGuarantor extends StreamSwitch {
         }
 
         pendingPres = pres;
-        isMigrating = true;
+        //isMigrating = true;
 
         LOG.info("Old mapping: " + executorMapping);
         Map<String, List<String>> newAssignment = pres.generateNewSubstreamAssignment(executorMapping);
@@ -918,11 +930,19 @@ public class LatencyGuarantor extends StreamSwitch {
 
     //Main logic:  examine->diagnose->treatment->sleep
     void work(long timeIndex) {
+
+        //Update oe migration locks
+        for(String oe: new ArrayList<String>(oeUnlockTime.keySet())){
+            if(oeUnlockTime.get(oe) < timeIndex){
+                oeUnlockTime.remove(oe);
+            }
+        }
+
         LOG.info("Examine...");
         //Examine
         boolean stateValidity = examine(timeIndex);
         LOG.info("Diagnose...");
-        if (stateValidity && !isMigrating) {
+        if (stateValidity){ //&& !isMigrating) {
             //Diagnose
             Prescription pres = diagnose(examiner);
             if (pres.migratingSubstreams != null) {
@@ -933,7 +953,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
         } else {
             if (!stateValidity) LOG.info("Current examine data is not valid, need to wait until valid");
-            else if (isMigrating) LOG.info("One migration is in process");
+            //else if (isMigrating) LOG.info("One migration is in process");
             else LOG.info("Too close to last migration");
         }
     }
@@ -945,7 +965,7 @@ public class LatencyGuarantor extends StreamSwitch {
         try {
             if (examiner == null) {
                 LOG.warn("Examiner haven't been initialized");
-            } else if (!isMigrating || pendingPres == null) {
+            } if(pendingPres == null){// else if (!isMigrating || pendingPres == null) {
                 LOG.warn("There is no pending migration, please checkout");
             } else {
                 String migrationType = "migration";
@@ -961,7 +981,10 @@ public class LatencyGuarantor extends StreamSwitch {
                 //For drawing figre
                 LOG.info("Migrating " + pendingPres.migratingSubstreams + " from " + pendingPres.source + " to " + pendingPres.target);
 
-                System.out.println("Executors stopped at time " + (System.currentTimeMillis() - startTime)/metricsRetreiveInterval + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
+                long unlockTime = examiner.state.currentTimeIndex + (migrationInterval / metricsRetreiveInterval);
+                oeUnlockTime.put(pendingPres.source, unlockTime);
+                oeUnlockTime.put(pendingPres.target, unlockTime);
+                System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
 
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
@@ -973,6 +996,7 @@ public class LatencyGuarantor extends StreamSwitch {
     }
     @Override
     public void onMigrationCompleted(){
+        /*
         LOG.info("Migration completed, try to acquire lock...");
         updateLock.lock();
         try {
@@ -983,5 +1007,6 @@ public class LatencyGuarantor extends StreamSwitch {
             updateLock.unlock();
             LOG.info("Migration completed, unlock");
         }
+        */
     }
 }
