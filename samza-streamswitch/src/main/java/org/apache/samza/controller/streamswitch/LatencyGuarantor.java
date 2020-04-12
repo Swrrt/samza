@@ -943,7 +943,7 @@ public class LatencyGuarantor extends StreamSwitch {
         LOG.info("Locked OEs: " + oeUnlockTime);
 
         LOG.info("Diagnose...");
-        if (stateValidity){ //&& !isMigrating) {
+        if (stateValidity && !isMigrating){
             //Diagnose
             Prescription pres = diagnose(examiner);
             if (pres.migratingSubstreams != null) {
@@ -985,6 +985,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 long unlockTime = examiner.state.currentTimeIndex + (migrationInterval / metricsRetreiveInterval);
                 oeUnlockTime.put(pendingPres.source, unlockTime);
                 oeUnlockTime.put(pendingPres.target, unlockTime);
+                isMigrating = true;
                 System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
 
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
