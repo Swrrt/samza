@@ -895,7 +895,7 @@ public class LatencyGuarantor extends StreamSwitch {
         }
 
         pendingPres = pres;
-        //isMigrating = true;
+        isMigrating = true;
 
         LOG.info("Old mapping: " + executorMapping);
         Map<String, List<String>> newAssignment = pres.generateNewSubstreamAssignment(executorMapping);
@@ -985,7 +985,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 long unlockTime = examiner.state.currentTimeIndex + (migrationInterval / metricsRetreiveInterval);
                 oeUnlockTime.put(pendingPres.source, unlockTime);
                 oeUnlockTime.put(pendingPres.target, unlockTime);
-                isMigrating = true;
+                isMigrating = false;
                 System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
 
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
