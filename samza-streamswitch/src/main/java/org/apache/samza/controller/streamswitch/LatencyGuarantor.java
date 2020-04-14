@@ -14,7 +14,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(LatencyGuarantor.class);
     private long latencyReq, windowReq; //Window requirment is stored as number of timeslot
     private double l_low, l_high; // Check instantDelay  < l and longtermDelay < req
-    double initialServiceRate; // Initial prediction by user or system on service rate.
+    private double initialServiceRate, decayFactor; // Initial prediction by user or system on service rate.
     long migrationInterval;
     private Prescription pendingPres;
     private Examiner examiner;
@@ -27,6 +27,7 @@ public class LatencyGuarantor extends StreamSwitch {
         l_low = config.getDouble("streamswitch.system.l_low", 50); //Unit: millisecond
         l_high = config.getDouble("streamswtich.system.l_high", 100);
         initialServiceRate = config.getDouble("streamswitch.system.initialservicerate", 0.2);
+        decayFactor = config.getDouble("streamswitch.system.decayfactor", 0.875);
         migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l);
         examiner = new Examiner();
         pendingPres = null;
@@ -333,7 +334,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     completed += state.getSubstreamCompleted(substream, n) - state.getSubstreamCompleted(substream, n - 1);
                 }
                 double instantServiceRate = (completed / ((double)state.getTimepoint(n) - state.getTimepoint(n - 1))) / util;
-                double decayFactor = 0.875;
+                //double decayFactor = 0.875;
                 return decayFactor * lastServiceRate + (1 - decayFactor) * instantServiceRate;
             }
 
@@ -876,7 +877,6 @@ public class LatencyGuarantor extends StreamSwitch {
                 (HashMap<String, Double>) (metrics.get("Utilization"));
         Map<String, Boolean> substreamValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
-        System.out.println("time " + timeIndex  + " , Process CPU Usage: " + metrics.get("CPU"));
 
         //Memory usage
         LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
