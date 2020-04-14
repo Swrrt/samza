@@ -317,6 +317,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
             // Calculate window service rate of n - beta ~ n (exclude n - beta)
             private double calculateExecutorServiceRate(String executorId, double util, long n){
+                //return initialServiceRate;
                 //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
                 double lastServiceRate = executorServiceRate.getOrDefault(executorId, 0.0);
                 //Only update service rate when util > 10%
@@ -448,7 +449,6 @@ public class LatencyGuarantor extends StreamSwitch {
             System.out.println("State, time " + timeIndex  + " , Partition Arrived: " + arrived);
             System.out.println("State, time " + timeIndex  + " , Partition Completed: " + completed);
             System.out.println("State, time " + timeIndex  + " , Executor Utilizations: " + state.executorUtilization);
-
             if(checkValidity(substreamValid)){
                 //state.calculate(timeIndex);
                 //state.drop(timeIndex);
@@ -876,10 +876,10 @@ public class LatencyGuarantor extends StreamSwitch {
                 (HashMap<String, Double>) (metrics.get("Utilization"));
         Map<String, Boolean> substreamValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
+        System.out.println("time " + timeIndex  + " , Process CPU Usage: " + metrics.get("CPU"));
 
         //Memory usage
         LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
-
         if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, executorUtilization, substreamValid, executorMapping)){
             examiner.updateModel(timeIndex, executorMapping);
             return true;

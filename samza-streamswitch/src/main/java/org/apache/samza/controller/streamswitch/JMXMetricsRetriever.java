@@ -250,6 +250,15 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         private boolean isExecutorUtilization(ObjectName name){
             return name.getDomain().equals("org.apache.samza.container.SamzaContainerMetrics") && name.getKeyProperty("name").equals("average-utilization");
         }
+
+        private boolean isProcessCpuUsage(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.metrics.JvmMetrics") && name.getKeyProperty("name").equals("process-cpu-usage");
+        }
+
+        private boolean isSystemCpuUsage(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.metrics.JvmMetrics") && name.getKeyProperty("name").equals("system-cpu-usage");
+        }
+
         /*
             Metrics format:
             <Metrics Type, Object>
@@ -309,6 +318,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     }else if(isExecutorRunning(name)){ //Running
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         metrics.put("ExecutorRunning", Boolean.parseBoolean(ok));
+                    }else if(isProcessCpuUsage(name)){ //Check jvm cpu utilization
+                        String ok = mbsc.getAttribute(name, "Value").toString();
+                        metrics.put("ProcessCpuUsage", Double.parseDouble(ok));
+                    }else if(isSystemCpuUsage(name)){ //Check whole cpu utilization
+                        String ok = mbsc.getAttribute(name, "Value").toString();
+                        metrics.put("SystemCpuUsage", Double.parseDouble(ok));
                     }else{ //Partition WaterMark and CheckpointOffset
                         for(String topic: topics) {
                             if (isWaterMark(name, topic)) { //Watermark
@@ -472,6 +487,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         //HashMap<String, String> debugProcessed = new HashMap<>();
         //HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
         HashMap<String, Set<String>> retrievedWatermarks = new HashMap<>();
+        HashMap<String, Double> processCpuUsage = new HashMap<>(), systemCpuUsage = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, topics, entry.getValue());
@@ -572,6 +588,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             if(ret.containsKey("ExecutorRunning")){
                 executorRunning.put(containerId, (Boolean)ret.get("ExecutorRunning"));
             }
+            if(ret.containsKey("SystemCpuUsage")){
+                systemCpuUsage.put(containerId, (Double) ret.get("SystemCpuUsage"));
+            }
+            if(ret.containsKey("ProcessCpuUsage")){
+                processCpuUsage.put(containerId, (Double) ret.get("ProcessCpuUsage"));
+            }
         }
         //Why need this? Translate
         if(partitionWatermark.containsKey(topics.get(0))) {
@@ -603,7 +625,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         LOG.info("Debugging, begin: " + partitionBeginOffset);
         LOG.info("Debugging, valid: " + partitionValid);*/
         LOG.info("Retrieved Metrics: " + metrics);
-
+        //Check CPU usage
+        System.out.println("Process CPU Usage: " + processCpuUsage);
+        System.out.println("System CPU Usage: " + systemCpuUsage);
         //Debugging
         runtime = Runtime.getRuntime();
         sb = new StringBuilder();
