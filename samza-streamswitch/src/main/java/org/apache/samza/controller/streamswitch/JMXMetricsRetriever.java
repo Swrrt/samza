@@ -583,16 +583,17 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 }
             }
             if(ret.containsKey("ExecutorUtilization")){
-                executorUtilization.put(containerId, (Double)ret.get("ExecutorUtilization"));
+                processCpuUsage.put(containerId, (Double)ret.get("ExecutorUtilization"));
+                //executorUtilization.put(containerId, (Double)ret.get("ExecutorUtilization"));
             }
             if(ret.containsKey("ExecutorRunning")){
                 executorRunning.put(containerId, (Boolean)ret.get("ExecutorRunning"));
             }
-            if(ret.containsKey("SystemCpuUsage")){
+            /*if(ret.containsKey("SystemCpuUsage")){
                 systemCpuUsage.put(containerId, (Double) ret.get("SystemCpuUsage"));
-            }
+            }*/
             if(ret.containsKey("ProcessCpuUsage")){
-                processCpuUsage.put(containerId, (Double) ret.get("ProcessCpuUsage"));
+                executorUtilization.put(containerId, ((Double)ret.get("ProcessCpuUsage")) / 3.125);
             }
         }
         //Why need this? Translate
@@ -627,7 +628,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         LOG.info("Retrieved Metrics: " + metrics);
         //Check CPU usage
         System.out.println("Process CPU Usage: " + processCpuUsage);
-        System.out.println("System CPU Usage: " + systemCpuUsage);
+        //System.out.println("System CPU Usage: " + systemCpuUsage);
         //Debugging
         runtime = Runtime.getRuntime();
         sb = new StringBuilder();
