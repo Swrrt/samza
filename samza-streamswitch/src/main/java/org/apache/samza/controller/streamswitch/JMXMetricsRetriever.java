@@ -259,6 +259,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             return name.getDomain().equals("org.apache.samza.metrics.JvmMetrics") && name.getKeyProperty("name").equals("system-cpu-usage");
         }
 
+        private boolean isExecutorServiceRate(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.container.SamzaContainerMetrics") && name.getKeyProperty("name").equals("service-rate");
+        }
+
+
         /*
             Metrics format:
             <Metrics Type, Object>
@@ -321,9 +326,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     }else if(isProcessCpuUsage(name)){ //Check jvm cpu utilization
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         metrics.put("ProcessCpuUsage", Double.parseDouble(ok));
-                    }else if(isSystemCpuUsage(name)){ //Check whole cpu utilization
+                    }else if(isExecutorServiceRate(name)){
                         String ok = mbsc.getAttribute(name, "Value").toString();
-                        metrics.put("SystemCpuUsage", Double.parseDouble(ok));
+                        metrics.put("ServiceRate", Double.parseDouble(ok));
                     }else{ //Partition WaterMark and CheckpointOffset
                         for(String topic: topics) {
                             if (isWaterMark(name, topic)) { //Watermark
@@ -413,6 +418,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         partitionCheckpoint = new HashMap<>();
         partitionArrived = new HashMap<>();
         executorUtilization = new HashMap<>();
+        executorServiceRate = new HashMap<>();
         executorRunning = new HashMap<>();
         partitionValid = new HashMap<>();
 
@@ -428,7 +434,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
      */
 
     HashMap<String, Long> partitionProcessed, partitionArrived;
-    HashMap<String, Double> executorUtilization;
+    HashMap<String, Double> executorUtilization, executorServiceRate;
     HashMap<String, Boolean> executorRunning;
     HashMap<String, Boolean> partitionValid;
     HashMap<String, HashMap<String, Long>> partitionWatermark, partitionBeginOffset, partitionCheckpoint;
@@ -478,12 +484,14 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         partitionArrived.clear();
         executorUtilization.clear();
         executorRunning.clear();
+        executorServiceRate.clear();
         partitionValid.clear();
         metrics.put("Arrived", partitionArrived);
         metrics.put("Processed", partitionProcessed);
         metrics.put("Utilization", executorUtilization);
         metrics.put("Running", executorRunning);
         metrics.put("Validity", partitionValid); //For validation check
+        metrics.put("ServiceRate", executorServiceRate);
         //HashMap<String, String> debugProcessed = new HashMap<>();
         //HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
         HashMap<String, Set<String>> retrievedWatermarks = new HashMap<>();
@@ -594,6 +602,9 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
             }*/
             if(ret.containsKey("ProcessCpuUsage")){
                 executorUtilization.put(containerId, ((Double)ret.get("ProcessCpuUsage")) / 3.125);
+            }
+            if(ret.containsKey("ServiceRate")){
+                executorServiceRate.put(containerId, ((Double)ret.get("ServiceRate")));
             }
         }
         //Why need this? Translate

@@ -322,9 +322,9 @@ public class LatencyGuarantor extends StreamSwitch {
                 //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
                 double lastServiceRate = executorServiceRate.getOrDefault(executorId, 0.0);
                 //Only update service rate when util > 10%
-                if(util < 0.1){
-                    return lastServiceRate;
-                }
+                //if(util < 0.1){
+                //    return lastServiceRate;
+                //}
                 //Put here to avoid scale-in at the beginning.
                 if(lastServiceRate == 0.0){
                     lastServiceRate = initialServiceRate;
@@ -378,15 +378,15 @@ public class LatencyGuarantor extends StreamSwitch {
                         arrivalRate += t;
                     }
                     executorArrivalRate.put(executor, arrivalRate);
-                    double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
-                    utils.put(executor, util);
-                    double mu = calculateExecutorServiceRate(executor, util, timeIndex);
+                    //double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
+                    //utils.put(executor, util);
+                    //double mu = calculateExecutorServiceRate(executor, util, timeIndex);
                     /*if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
                         executorServiceRate.put(executor, mu);
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
 
-                    executorServiceRate.put(executor, mu);
+                    //executorServiceRate.put(executor, mu);
 
                     executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
                 }
@@ -461,7 +461,6 @@ public class LatencyGuarantor extends StreamSwitch {
         private void updateModel(long timeIndex, Map<String, List<String>> executorMapping){
             LOG.info("Updating Model");
             model.update(timeIndex, executorMapping);
-
             //Debug & Statistics
             if(true){
                 HashMap<String, Double> longtermDelay = new HashMap<>();
@@ -878,10 +877,12 @@ public class LatencyGuarantor extends StreamSwitch {
                 (HashMap<String, Double>) (metrics.get("Utilization"));
         Map<String, Boolean> substreamValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
-
+        Map<String, Double> executorServiceRate =
+                (HashMap<String, Double>) (metrics.get("ServiceRate"));
         //Memory usage
-        LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
+        //LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
         if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, executorUtilization, substreamValid, executorMapping)){
+            examiner.model.executorServiceRate.putAll(executorServiceRate);
             examiner.updateModel(timeIndex, executorMapping);
             return true;
         }
