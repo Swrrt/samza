@@ -604,7 +604,11 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 executorUtilization.put(containerId, ((Double)ret.get("ProcessCpuUsage")) / 3.125);
             }
             if(ret.containsKey("ServiceRate")){
-                executorServiceRate.put(containerId, ((Double)ret.get("ServiceRate")));
+                double t = (Double)ret.get("ServiceRate");
+                if(!Double.isNaN(t)){
+                    executorServiceRate.put(containerId, ((Double)ret.get("ServiceRate")) * 1e3);
+                }
+
             }
         }
         //Why need this? Translate
