@@ -883,6 +883,11 @@ public class LatencyGuarantor extends StreamSwitch {
         //LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
         if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, executorUtilization, substreamValid, executorMapping)){
             examiner.model.executorServiceRate.putAll(executorServiceRate);
+            for(String id: executorMapping.keySet()){
+                if(!examiner.model.executorServiceRate.containsKey(id)){
+                    examiner.model.executorServiceRate.put(id, initialServiceRate);
+                }
+            }
             examiner.updateModel(timeIndex, executorMapping);
             return true;
         }
