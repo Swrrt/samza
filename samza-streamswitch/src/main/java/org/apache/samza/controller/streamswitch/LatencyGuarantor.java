@@ -364,7 +364,7 @@ public class LatencyGuarantor extends StreamSwitch {
             //Calculate model snapshot from state
             private void update(long timeIndex, Map<String, List<String>> executorMapping){
                 LOG.info("Updating model snapshot, clear old data...");
-                substreamArrivalRate.clear();
+                //substreamArrivalRate.clear();
                 executorArrivalRate.clear();
                 executorInstantaneousDelay.clear();
                 executorCompleted.clear();
@@ -372,7 +372,8 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(String executor: executorMapping.keySet()){
                     double arrivalRate = 0;
                     for(String substream: executorMapping.get(executor)){
-                        double t = calculateSubstreamArrivalRate(substream, timeIndex - windowReq, timeIndex);
+                        double oldArrivalRate = substreamArrivalRate.getOrDefault(substream, 0.0);
+                        double t = oldArrivalRate * decayFactor + calculateSubstreamArrivalRate(substream, timeIndex - windowReq, timeIndex) * (1.0 - decayFactor);
                         substreamArrivalRate.put(substream, t);
                         arrivalRate += t;
                     }
