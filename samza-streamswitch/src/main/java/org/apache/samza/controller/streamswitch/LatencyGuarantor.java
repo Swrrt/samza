@@ -19,7 +19,6 @@ public class LatencyGuarantor extends StreamSwitch {
     private Prescription pendingPres;
     private Examiner examiner;
 
-
     public LatencyGuarantor(Config config){
         super(config);
         latencyReq = config.getLong("streamswitch.requirement.latency", 1000); //Unit: millisecond
@@ -299,13 +298,19 @@ public class LatencyGuarantor extends StreamSwitch {
                 this.state = state;
             }
 
+            private double calculateLongTermDelay(double arrival, double service){
+                // Conservative !
+                service = 0.9 * service;
+                if(arrival < 1e-15)return 0.0;
+                if(service < arrival + 1e-15)return 1e100;
+                return 1.0/(service - arrival);
+            }
+
             // 1 / ( u - n ). Return  1e100 if u <= n
             private double getLongTermDelay(String executorId){
                 double arrival = executorArrivalRate.get(executorId);
                 double service = executorServiceRate.get(executorId);
-                if(arrival < 1e-15)return 0.0;
-                if(service < arrival + 1e-15)return 1e100;
-                return 1.0/(service - arrival);
+                return calculateLongTermDelay(arrival, service);
             }
 
             private double calculateSubstreamArrivalRate(String substream, long n0, long n1){
@@ -657,8 +662,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             double tgtArrival = examiner.model.executorArrivalRate.get(tgt);
                             double tgtService = examiner.model.executorServiceRate.get(tgt);
                             //Try to migrate all substreams from src to tgt
-                            if(srcArrival + tgtArrival < tgtService){
-                                double estimatedLongtermDelay = 1.0/(tgtService - (srcArrival + tgtArrival));
+                            //if(srcArrival + tgtArrival < tgtService){
+                                double estimatedLongtermDelay = examiner.model.calculateLongTermDelay(srcArrival + tgtArrival, tgtService);
                                 List<Double> current = new ArrayList<>();
                                 for(String executor: oes){
                                     if(executor.equals(src)){
@@ -675,7 +680,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                     minsrc = src;
                                     mintgt = tgt;
                                 }
-                            }
+                            //}
                         }
                 }
 
@@ -689,7 +694,9 @@ public class LatencyGuarantor extends StreamSwitch {
                         if(executor.equals(minsrc)){
                             map.put(minsrc, 0.0);
                         }else if(executor.equals(mintgt)){
-                            map.put(mintgt, 1.0/(examiner.model.executorServiceRate.get(mintgt) - examiner.model.executorArrivalRate.get(mintgt) - examiner.model.executorArrivalRate.get(mintgt)));
+                            double arrival = examiner.model.executorArrivalRate.get(mintgt) + examiner.model.executorArrivalRate.get(mintgt);
+                            double service = examiner.model.executorServiceRate.get(mintgt);
+                            map.put(mintgt, examiner.model.calculateLongTermDelay(arrival, service));
                         }else{
                             map.put(executor, examiner.model.getLongTermDelay(executor));
                         }
@@ -753,9 +760,9 @@ public class LatencyGuarantor extends StreamSwitch {
                                 srcArrivalRate -= arrival;
                                 tgtArrivalRate += arrival;
                                 migrating.add(substream);
-                                if(srcArrivalRate < srcServiceRate && tgtArrivalRate < tgtServiceRate){
-                                    double srcDelay = 1.0 / (srcServiceRate - srcArrivalRate),
-                                            tgtDelay = 1.0 / (tgtServiceRate - tgtArrivalRate);
+                                //if(srcArrivalRate < srcServiceRate && tgtArrivalRate < tgtServiceRate){
+                                    double srcDelay = examiner.model.calculateLongTermDelay(srcArrivalRate, srcServiceRate),
+                                            tgtDelay = examiner.model.calculateLongTermDelay(tgtArrivalRate, tgtServiceRate);
                                     //LOG.info("Debugging, current src la=" + srcArrivalRate + " tgt la=" + tgtArrivalRate + " substreams=" + migrating);
                                     List<Double> current = new ArrayList<>();
                                     for(String executor: oes){
@@ -777,7 +784,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                         bestMigratingSubstreams = new ArrayList<>(migrating);
                                     }
                                     if(tgtDelay > srcDelay)break;
-                                }
+                                //}
                                 if(tgtArrivalRate > tgtServiceRate)break;
                             }
                         }
@@ -797,8 +804,8 @@ public class LatencyGuarantor extends StreamSwitch {
                     srcArrival -= arrival;
                     tgtArrival += arrival;
                 }
-                map.put(srcExecutor, 1.0/(srcService - srcArrival));
-                map.put(bestTgtExecutor, 1.0/(tgtService - tgtArrival));
+                map.put(srcExecutor, examiner.model.calculateLongTermDelay(srcArrival, srcService));
+                map.put(bestTgtExecutor, examiner.model.calculateLongTermDelay(tgtArrival, tgtService));
                 for(String executor: oes){
                     if(!executor.equals(srcExecutor) && !executor.equals(bestTgtExecutor)){
                         map.put(executor, examiner.model.getLongTermDelay(executor));
