@@ -300,7 +300,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
             private double calculateLongTermDelay(double arrival, double service){
                 // Conservative !
-                service = 0.9 * service;
+                service = 0.8 * service;
                 if(arrival < 1e-15)return 0.0;
                 if(service < arrival + 1e-15)return 1e100;
                 return 1.0/(service - arrival);
