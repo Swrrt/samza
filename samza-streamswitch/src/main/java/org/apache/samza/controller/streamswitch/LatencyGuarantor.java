@@ -14,7 +14,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private static final Logger LOG = LoggerFactory.getLogger(LatencyGuarantor.class);
     private long latencyReq, windowReq; //Window requirment is stored as number of timeslot
     private double l_low, l_high; // Check instantDelay  < l and longtermDelay < req
-    private double initialServiceRate, decayFactor; // Initial prediction by user or system on service rate.
+    private double initialServiceRate, decayFactor, conservativeFactor; // Initial prediction by user or system on service rate.
     long migrationInterval;
     private Prescription pendingPres;
     private Examiner examiner;
@@ -27,6 +27,7 @@ public class LatencyGuarantor extends StreamSwitch {
         l_high = config.getDouble("streamswtich.system.l_high", 100);
         initialServiceRate = config.getDouble("streamswitch.system.initialservicerate", 0.2);
         decayFactor = config.getDouble("streamswitch.system.decayfactor", 0.875);
+        conservativeFactor = config.getDouble("streamswitch.system.conservative", 1.0);
         migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l);
         examiner = new Examiner();
         pendingPres = null;
@@ -292,7 +293,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
             private double calculateLongTermDelay(double arrival, double service){
                 // Conservative !
-                service = 0.8 * service;
+                service = conservativeFactor * service;
                 if(arrival < 1e-15)return 0.0;
                 if(service < arrival + 1e-15)return 1e100;
                 return 1.0/(service - arrival);
