@@ -16,6 +16,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private double l_low, l_high; // Check instantDelay  < l and longtermDelay < req
     private double initialServiceRate, decayFactor, conservativeFactor; // Initial prediction by user or system on service rate.
     long migrationInterval;
+    private boolean isStarted;
     private Prescription pendingPres;
     private Examiner examiner;
 
@@ -31,6 +32,7 @@ public class LatencyGuarantor extends StreamSwitch {
         migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l);
         examiner = new Examiner();
         pendingPres = null;
+        isStarted = false;
     }
 
     @Override
@@ -920,8 +922,19 @@ public class LatencyGuarantor extends StreamSwitch {
         }
         LOG.info("Locked OEs: " + oeUnlockTime);
 
-        LOG.info("Diagnose...");
-        if (stateValidity && !isMigrating){
+        //Check is started
+        if(!isStarted){
+            LOG.info("Check started...");
+            for(int id: examiner.state.substreamStates.keySet()){
+                if(examiner.state.substreamStates.get(id).arrived.get(timeIndex) > 0){
+                    isStarted = true;
+                    break;
+                }
+            }
+        }
+        
+        if (stateValidity && !isMigrating && isStarted){
+            LOG.info("Diagnose...");
             //Diagnose
             Prescription pres = diagnose(examiner);
             if (pres.migratingSubstreams != null) {
