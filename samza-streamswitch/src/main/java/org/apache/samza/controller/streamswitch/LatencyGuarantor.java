@@ -926,7 +926,7 @@ public class LatencyGuarantor extends StreamSwitch {
         if(!isStarted){
             LOG.info("Check started...");
             for(int id: examiner.state.substreamStates.keySet()){
-                if(examiner.state.substreamStates.get(id).arrived.get(timeIndex) > 0){
+                if(examiner.state.substreamStates.get(id).arrived.containsKey(timeIndex) && examiner.state.substreamStates.get(id).arrived.get(timeIndex) != null && examiner.state.substreamStates.get(id).arrived.get(timeIndex) > 0){
                     isStarted = true;
                     break;
                 }
