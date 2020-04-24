@@ -16,6 +16,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private double l_low, l_high; // Check instantDelay  < l and longtermDelay < req
     private double initialServiceRate, decayFactor, conservativeFactor; // Initial prediction by user or system on service rate.
     long migrationInterval;
+    private boolean isStarted;
     private Prescription pendingPres;
     private Examiner examiner;
 
@@ -31,6 +32,7 @@ public class LatencyGuarantor extends StreamSwitch {
         migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l);
         examiner = new Examiner();
         pendingPres = null;
+        isStarted = false;
     }
 
     @Override
@@ -342,7 +344,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Updating model snapshot, clear old data...");
                 //substreamArrivalRate.clear();
                 executorArrivalRate.clear();
-                executorInstantaneousDelay.clear();
+                //executorInstantaneousDelay.clear();
                 executorCompleted.clear();
                 Map<String, Double> utils = new HashMap<>();
                 for(String executor: executorMapping.keySet()){
@@ -363,8 +365,9 @@ public class LatencyGuarantor extends StreamSwitch {
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
 
                     //executorServiceRate.put(executor, mu);
-
-                    executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
+                    double oldInstantaneousDelay = executorInstantaneousDelay.getOrDefault(executor, 0.0);
+                    double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);
+                    executorInstantaneousDelay.put(executor, newInstantaneousDelay);
                 }
                 //Debugging
                 LOG.info("Debugging, avg utilization: " + utils);
@@ -920,8 +923,19 @@ public class LatencyGuarantor extends StreamSwitch {
         }
         LOG.info("Locked OEs: " + oeUnlockTime);
 
-        LOG.info("Diagnose...");
-        if (stateValidity && !isMigrating){
+        //Check is started
+        if(!isStarted){
+            LOG.info("Check started...");
+            for(int id: examiner.state.substreamStates.keySet()){
+                if(examiner.state.substreamStates.get(id).arrived.containsKey(timeIndex) && examiner.state.substreamStates.get(id).arrived.get(timeIndex) != null && examiner.state.substreamStates.get(id).arrived.get(timeIndex) > 0){
+                    isStarted = true;
+                    break;
+                }
+            }
+        }
+        
+        if (stateValidity && !isMigrating && isStarted){
+            LOG.info("Diagnose...");
             //Diagnose
             Prescription pres = diagnose(examiner);
             if (pres.migratingSubstreams != null) {
