@@ -344,7 +344,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Updating model snapshot, clear old data...");
                 //substreamArrivalRate.clear();
                 executorArrivalRate.clear();
-                executorInstantaneousDelay.clear();
+                //executorInstantaneousDelay.clear();
                 executorCompleted.clear();
                 Map<String, Double> utils = new HashMap<>();
                 for(String executor: executorMapping.keySet()){
@@ -365,8 +365,9 @@ public class LatencyGuarantor extends StreamSwitch {
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
 
                     //executorServiceRate.put(executor, mu);
-
-                    executorInstantaneousDelay.put(executor, calculateExecutorInstantaneousDelay(executor, timeIndex));
+                    double oldInstantaneousDelay = executorInstantaneousDelay.getOrDefault(executor, 0.0);
+                    double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);
+                    executorInstantaneousDelay.put(executor, newInstantaneousDelay);
                 }
                 //Debugging
                 LOG.info("Debugging, avg utilization: " + utils);
