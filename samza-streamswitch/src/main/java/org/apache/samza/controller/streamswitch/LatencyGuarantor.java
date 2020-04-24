@@ -340,7 +340,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             //Calculate model snapshot from state
-            private void update(long timeIndex, Map<String, List<String>> executorMapping){
+            private void update(long timeIndex, Map<String, Double> serviceRate, Map<String, List<String>> executorMapping){
                 LOG.info("Updating model snapshot, clear old data...");
                 //substreamArrivalRate.clear();
                 executorArrivalRate.clear();
@@ -364,7 +364,15 @@ public class LatencyGuarantor extends StreamSwitch {
                         executorServiceRate.put(executor, mu);
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
 
-                    //executorServiceRate.put(executor, mu);
+                    if(!executorServiceRate.containsKey(executor)){
+                        executorServiceRate.put(executor, initialServiceRate);
+                    }
+                    if(serviceRate.containsKey(executor)) {
+                        double oldServiceRate = executorServiceRate.get(executor);
+                        double newServiceRate = oldServiceRate * decayFactor + serviceRate.get(executor) * (1 - decayFactor);
+                        executorServiceRate.put(executor, newServiceRate);
+                    }
+
                     double oldInstantaneousDelay = executorInstantaneousDelay.getOrDefault(executor, 0.0);
                     double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);
                     executorInstantaneousDelay.put(executor, newInstantaneousDelay);
@@ -429,9 +437,9 @@ public class LatencyGuarantor extends StreamSwitch {
             }else return false;
         }
 
-        private void updateModel(long timeIndex, Map<String, List<String>> executorMapping){
+        private void updateModel(long timeIndex, Map<String, Double> serviceRate, Map<String, List<String>> executorMapping){
             LOG.info("Updating Model");
-            model.update(timeIndex, executorMapping);
+            model.update(timeIndex, serviceRate, executorMapping);
             //Debug & Statistics
             if(true){
                 HashMap<String, Double> longtermDelay = new HashMap<>();
@@ -853,16 +861,7 @@ public class LatencyGuarantor extends StreamSwitch {
         //Memory usage
         //LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
         if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, substreamValid, executorMapping)){
-            for(String id: executorMapping.keySet()){
-                if(!examiner.model.executorServiceRate.containsKey(id)){
-                    examiner.model.executorServiceRate.put(id, initialServiceRate);
-                }
-                if(executorServiceRate.containsKey(id)){
-                    double old = examiner.model.executorServiceRate.get(id);
-                    examiner.model.executorServiceRate.put(id, old * decayFactor + executorServiceRate.get(id) * (1 - decayFactor));
-                }
-            }
-            examiner.updateModel(timeIndex, executorMapping);
+            examiner.updateModel(timeIndex, executorServiceRate, executorMapping);
             return true;
         }
         return false;
