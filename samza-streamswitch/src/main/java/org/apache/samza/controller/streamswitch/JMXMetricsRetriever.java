@@ -250,6 +250,20 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         private boolean isExecutorUtilization(ObjectName name){
             return name.getDomain().equals("org.apache.samza.container.SamzaContainerMetrics") && name.getKeyProperty("name").equals("average-utilization");
         }
+
+        private boolean isProcessCpuUsage(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.metrics.JvmMetrics") && name.getKeyProperty("name").equals("process-cpu-usage");
+        }
+
+        private boolean isSystemCpuUsage(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.metrics.JvmMetrics") && name.getKeyProperty("name").equals("system-cpu-usage");
+        }
+
+        private boolean isExecutorServiceRate(ObjectName name){
+            return name.getDomain().equals("org.apache.samza.container.SamzaContainerMetrics") && name.getKeyProperty("name").equals("service-rate");
+        }
+
+
         /*
             Metrics format:
             <Metrics Type, Object>
@@ -303,10 +317,18 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         partitionProcessed.put(partitionId, ok);
                     }else if(isExecutorUtilization(name)){ // Utilization
                         String ok = mbsc.getAttribute(name, "Value").toString();
-                        metrics.put("ExecutorUtilization", Double.parseDouble(ok));
+                        if(Double.parseDouble(ok) >= 0.0) {
+                            metrics.put("ExecutorUtilization", Double.parseDouble(ok));
+                        }
                     }else if(isExecutorRunning(name)){ //Running
                         String ok = mbsc.getAttribute(name, "Value").toString();
                         metrics.put("ExecutorRunning", Boolean.parseBoolean(ok));
+                    }else if(isProcessCpuUsage(name)){ //Check jvm cpu utilization
+                        String ok = mbsc.getAttribute(name, "Value").toString();
+                        metrics.put("ProcessCpuUsage", Double.parseDouble(ok));
+                    }else if(isExecutorServiceRate(name)){
+                        String ok = mbsc.getAttribute(name, "Value").toString();
+                        metrics.put("ServiceRate", Double.parseDouble(ok));
                     }else{ //Partition WaterMark and CheckpointOffset
                         for(String topic: topics) {
                             if (isWaterMark(name, topic)) { //Watermark
@@ -396,6 +418,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         partitionCheckpoint = new HashMap<>();
         partitionArrived = new HashMap<>();
         executorUtilization = new HashMap<>();
+        executorServiceRate = new HashMap<>();
         executorRunning = new HashMap<>();
         partitionValid = new HashMap<>();
 
@@ -411,7 +434,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
      */
 
     HashMap<String, Long> partitionProcessed, partitionArrived;
-    HashMap<String, Double> executorUtilization;
+    HashMap<String, Double> executorUtilization, executorServiceRate;
     HashMap<String, Boolean> executorRunning;
     HashMap<String, Boolean> partitionValid;
     HashMap<String, HashMap<String, Long>> partitionWatermark, partitionBeginOffset, partitionCheckpoint;
@@ -461,14 +484,18 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         partitionArrived.clear();
         executorUtilization.clear();
         executorRunning.clear();
+        executorServiceRate.clear();
         partitionValid.clear();
         metrics.put("Arrived", partitionArrived);
         metrics.put("Processed", partitionProcessed);
         metrics.put("Utilization", executorUtilization);
         metrics.put("Running", executorRunning);
         metrics.put("Validity", partitionValid); //For validation check
+        metrics.put("ServiceRate", executorServiceRate);
         //HashMap<String, String> debugProcessed = new HashMap<>();
         //HashMap<String, HashMap<String, String>> debugWatermark = new HashMap<>();
+        HashMap<String, Set<String>> retrievedWatermarks = new HashMap<>();
+        HashMap<String, Double> processCpuUsage = new HashMap<>(), systemCpuUsage = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
             Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, topics, entry.getValue());
@@ -515,6 +542,12 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 debugWatermark.put(topic, new HashMap<>());
                             }
                             debugWatermark.get(topic).put(containerId + ent.getKey(), ent.getValue());*/
+                            //To check whether all partitions' watermark is ready.
+                            if(!retrievedWatermarks.containsKey(topic)){
+                                retrievedWatermarks.put(topic, new HashSet<>());
+                            }
+                            retrievedWatermarks.get(topic).add(ent.getKey());
+
                             if (!beginOffset.containsKey(ent.getKey())) {
                                 beginOffset.put(ent.getKey(), Long.parseLong(ent.getValue()));
                             }
@@ -523,7 +556,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                                 pwatermark.put(ent.getKey(), Long.parseLong(ent.getValue()));
                             } else {
                                 long value = Long.parseLong(ent.getValue());
-                                if (value > pwatermark.get(ent.getKey())) {
+                                if (value >= pwatermark.get(ent.getKey())) {
                                     pwatermark.put(ent.getKey(), value);
                                 }
                             }
@@ -558,19 +591,37 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 }
             }
             if(ret.containsKey("ExecutorUtilization")){
-                executorUtilization.put(containerId, (Double)ret.get("ExecutorUtilization"));
+                processCpuUsage.put(containerId, (Double)ret.get("ExecutorUtilization"));
+                //executorUtilization.put(containerId, (Double)ret.get("ExecutorUtilization"));
             }
             if(ret.containsKey("ExecutorRunning")){
                 executorRunning.put(containerId, (Boolean)ret.get("ExecutorRunning"));
+            }
+            /*if(ret.containsKey("SystemCpuUsage")){
+                systemCpuUsage.put(containerId, (Double) ret.get("SystemCpuUsage"));
+            }*/
+            if(ret.containsKey("ProcessCpuUsage")){
+                executorUtilization.put(containerId, ((Double)ret.get("ProcessCpuUsage")) / 3.125);
+            }
+            if(ret.containsKey("ServiceRate")){
+                double t = (Double)ret.get("ServiceRate");
+                if(!Double.isNaN(t)){
+                    executorServiceRate.put(containerId, ((Double)ret.get("ServiceRate")) * 1e3);
+                }
+
             }
         }
         //Why need this? Translate
         if(partitionWatermark.containsKey(topics.get(0))) {
             for (String partitionId : partitionWatermark.get(topics.get(0)).keySet()) {
                 long arrived = 0;
+                boolean allExisted = true;
                 for (String topic : topics) {
                     long watermark = partitionWatermark.get(topic).get(partitionId);
                     long begin = partitionBeginOffset.get(topic).get(partitionId);
+                    if(!retrievedWatermarks.containsKey(topic) || !retrievedWatermarks.get(topic).contains(partitionId)){
+                        partitionValid.put("Partition " + partitionId, false);
+                    }
                     arrived += watermark - begin;
                 }
                 long processed = partitionProcessed.getOrDefault("Partition " + partitionId, 0l);
@@ -580,15 +631,19 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                     if(arrived + 1 < processed)partitionValid.put("Partition " + partitionId, false);
                 }
                 partitionArrived.put("Partition " + partitionId, arrived);
+
             }
         }
-        /*LOG.info("Debugging, watermark: " + debugWatermark);
+
+        /*LOG.info("Debugging, retrieved watermark: " + debugWatermark);
         LOG.info("Debugging, checkpoint: " + partitionCheckpoint);
         LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Debugging, begin: " + partitionBeginOffset);
         LOG.info("Debugging, valid: " + partitionValid);*/
         LOG.info("Retrieved Metrics: " + metrics);
-
+        //Check CPU usage
+        System.out.println("Process CPU Usage: " + processCpuUsage);
+        //System.out.println("System CPU Usage: " + systemCpuUsage);
         //Debugging
         runtime = Runtime.getRuntime();
         sb = new StringBuilder();
