@@ -410,10 +410,11 @@ public class StockMetricsRetriever implements StreamSwitchMetricsRetriever {
         metrics = new HashMap<>();
         containerRMI = new HashMap<>();
         partitionStartPoint = new HashMap<>();
-        int [] startPoint = {};
+        int [] startPoint = {10201, 9868, 7306, 5985, 15513, 9127, 5977, 8288, 16242, 5276, 7119, 6310, 5999, 5969, 6303, 3869, 9238, 5272, 6144, 15046, 5204, 5070, 4525, 6565, 5007, 7763, 7375, 6088, 8979, 6401, 6968, 7026, 5421, 6631, 6615, 7306, 8502, 4771, 7699, 5335, 7367, 6116, 6238, 8638, 5537, 4538, 5390, 10193, 4214, 3957, 3885, 4826, 4222, 4088, 9456, 3757, 4879, 2991, 6674, 5240, 4954, 3638, 3409, 7908};
         for(int i = 0; i < 64; i++){
             partitionStartPoint.put("Partition " + String.valueOf(i), startPoint[i]);
         }
+        LOG.info("Partition startpoint: " + partitionStartPoint);
     }
 
     @Override
