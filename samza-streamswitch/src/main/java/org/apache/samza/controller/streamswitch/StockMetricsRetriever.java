@@ -646,7 +646,7 @@ public class StockMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
         // Remove initial input which before actual running
         for(String partition: partitionArrived.keySet()){
-            long arrived = partitionArrived.get(partition) - partitionStartPoint.get(partition);
+            long arrived = partitionArrived.get(partition) - partitionStartPoint.get(partition) - 1;
             retArrived.put(partition, arrived);
             if(arrived < 0){
                 partitionValid.put(partition, false);
@@ -654,7 +654,7 @@ public class StockMetricsRetriever implements StreamSwitchMetricsRetriever {
         }
 
         for(String partition: partitionProcessed.keySet()){
-            long processed = partitionProcessed.get(partition) - partitionStartPoint.get(partition);
+            long processed = partitionProcessed.get(partition) - partitionStartPoint.get(partition) - 1;
             retProcessed.put(partition, processed);
             if(processed < 0){
                 partitionValid.put(partition, false);
