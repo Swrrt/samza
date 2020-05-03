@@ -19,6 +19,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private boolean isStarted;
     private Prescription pendingPres;
     private Examiner examiner;
+    private String jobid;
 
     public LatencyGuarantor(Config config){
         super(config);
@@ -30,6 +31,7 @@ public class LatencyGuarantor extends StreamSwitch {
         decayFactor = config.getDouble("streamswitch.system.decayfactor", 0.875);
         conservativeFactor = config.getDouble("streamswitch.system.conservative", 1.0);
         migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000l);
+        jobid = config.get("streamswitch.job.id", "0");
         examiner = new Examiner();
         pendingPres = null;
         isStarted = false;
@@ -74,7 +76,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
             private void init(Map<String, List<String>> executorMapping){
                 LOG.info("Initialize time point 0...");
-                System.out.println("New mapping at time: " + 0 + " mapping:" + executorMapping);
+                System.out.println("jobid: " + jobid + " New mapping at time: " + 0 + " mapping:" + executorMapping);
                 for (String executor : executorMapping.keySet()) {
                     for (String substream : executorMapping.get(executor)) {
                         SubstreamState substreamState = new SubstreamState();
@@ -428,8 +430,8 @@ public class LatencyGuarantor extends StreamSwitch {
                 arrived.put(substream, state.substreamStates.get(substream).arrived.get(state.currentTimeIndex));
                 completed.put(substream, state.substreamStates.get(substream).completed.get(state.currentTimeIndex));
             }
-            System.out.println("State, time " + timeIndex  + " , Partition Arrived: " + arrived);
-            System.out.println("State, time " + timeIndex  + " , Partition Completed: " + completed);
+            System.out.println("State, time " + timeIndex + " , jobid: " + jobid + " , Partition Arrived: " + arrived);
+            System.out.println("State, time " + timeIndex + " , jobid: " + jobid + " , Partition Completed: " + completed);
             if(checkValidity(substreamValid)){
                 //state.calculate(timeIndex);
                 //state.drop(timeIndex);
@@ -447,12 +449,12 @@ public class LatencyGuarantor extends StreamSwitch {
                     double delay = model.getLongTermDelay(executorId);
                     longtermDelay.put(executorId, delay);
                 }
-                System.out.println("Model, time " + timeIndex  + " , Arrival Rate: " + model.executorArrivalRate);
-                System.out.println("Model, time " + timeIndex  + " , Service Rate: " + model.executorServiceRate);
-                System.out.println("Model, time " + timeIndex  + " , Instantaneous Delay: " + model.executorInstantaneousDelay);
-                System.out.println("Model, time " + timeIndex  + " , executors completed: " + model.executorCompleted);
-                System.out.println("Model, time " + timeIndex  + " , Longterm Delay: " + longtermDelay);
-                System.out.println("Model, time " + timeIndex  + " , Partition Arrival Rate: " + model.substreamArrivalRate);
+                System.out.println("Model, time " + timeIndex + " , jobid: " + jobid + " , Arrival Rate: " + model.executorArrivalRate);
+                System.out.println("Model, time " + timeIndex + " , jobid: " + jobid + " , Service Rate: " + model.executorServiceRate);
+                System.out.println("Model, time " + timeIndex + " , jobid: " + jobid + " , Instantaneous Delay: " + model.executorInstantaneousDelay);
+                System.out.println("Model, time " + timeIndex + " , jobid: " + jobid + " , executors completed: " + model.executorCompleted);
+                System.out.println("Model, time " + timeIndex + " , jobid: " + jobid + " , Longterm Delay: " + longtermDelay);
+                System.out.println("Model, time " + timeIndex + " , jobid: " + jobid + " , Partition Arrival Rate: " + model.substreamArrivalRate);
             }
         }
         private Map<String, Double> getInstantDelay(){
@@ -829,7 +831,7 @@ public class LatencyGuarantor extends StreamSwitch {
         //Severe
         else{
             LOG.info("Current healthiness is Severe");
-            System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
+            System.out.println("jobid: " + jobid + " Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
             //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
@@ -881,12 +883,12 @@ public class LatencyGuarantor extends StreamSwitch {
         Map<String, List<String>> newAssignment = pres.generateNewSubstreamAssignment(executorMapping);
         LOG.info("Prescription : src: " + pres.source + " , tgt: " + pres.target + " , migrating: " + pres.migratingSubstreams);
         LOG.info("New mapping: " + newAssignment);
-        System.out.println("New mapping at time: " + examiner.state.currentTimeIndex + " mapping: " + newAssignment);
+        System.out.println("jobid: " + jobid + " New mapping at time: " + examiner.state.currentTimeIndex + " mapping: " + newAssignment);
         //Scale out
         if (!executorMapping.containsKey(pres.target)) {
             LOG.info("Scale out");
             //For drawing figure
-            System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.source + " to executor " + pres.target);
+            System.out.println("jobid: " + jobid + " Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex +  " from executor " + pres.source + " to executor " + pres.target);
 
             listener.scale(newAssignment.size(), newAssignment);
         }
@@ -894,7 +896,7 @@ public class LatencyGuarantor extends StreamSwitch {
         else if(executorMapping.get(pres.source).size() == pres.migratingSubstreams.size()) {
             LOG.info("Scale in");
             //For drawing figure
-            System.out.println("Migration! Scale in prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.source + " to executor " + pres.target);
+            System.out.println("jobid: " + jobid + " Migration! Scale in prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.source + " to executor " + pres.target);
 
             listener.scale(newAssignment.size(), newAssignment);
         }
@@ -902,7 +904,7 @@ public class LatencyGuarantor extends StreamSwitch {
         else {
             LOG.info("Load balance");
             //For drawing figure
-            System.out.println("Migration! Load balance prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.source + " to executor " + pres.target);
+            System.out.println("jobid: " + jobid + " Migration! Load balance prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.source + " to executor " + pres.target);
 
             listener.remap(newAssignment);
         }
@@ -977,7 +979,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 oeUnlockTime.put(pendingPres.source, unlockTime);
                 oeUnlockTime.put(pendingPres.target, unlockTime);
                 isMigrating = false;
-                System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
+                System.out.println("jobid: " + jobid + " Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
 
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
