@@ -843,7 +843,7 @@ public class LatencyGuarantor extends StreamSwitch {
             LOG.info("Lambda = k * mu = 0, do nothing");
             return pres;
         }
-        double drsDelay = diagnoser.calculateDRSDelay(numberOfOE, totalArrivalRate, totalServiceRate / numberOfOE);
+        double drsDelay = diagnoser.calculateDRSDelay(numberOfOE, totalArrivalRate, 0.8 * totalServiceRate / numberOfOE);
         LOG.info("Debugging, drsDelay=" + drsDelay);
         LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
 
@@ -852,7 +852,7 @@ public class LatencyGuarantor extends StreamSwitch {
             Pair<Prescription, Map<String, Double>> result = diagnoser.scaleOut(unlockedOEs);
             return result.getKey();
         }else if(numberOfOE > 1) {
-            double estimateDRSDelay = diagnoser.calculateDRSDelay(numberOfOE - 1, totalArrivalRate, totalServiceRate / numberOfOE);
+            double estimateDRSDelay = diagnoser.calculateDRSDelay(numberOfOE - 1, totalArrivalRate, 0.8 * totalServiceRate / numberOfOE);
             if (estimateDRSDelay < latencyReq) { //Scale-in
                 LOG.info("DRS delay exceed requirment, try scale in!");
                 Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
