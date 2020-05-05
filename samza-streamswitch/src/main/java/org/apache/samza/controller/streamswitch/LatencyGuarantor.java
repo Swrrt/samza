@@ -861,7 +861,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 return result.getKey();
             }
         }
-        //Stream switch logic to load-balance
+        /*//Stream switch logic to load-balance
         LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
         int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
         if(healthiness == Diagnoser.SEVERE) {
@@ -874,8 +874,8 @@ public class LatencyGuarantor extends StreamSwitch {
         }else{
             LOG.info("Current healthiness is Good, do nothing");
             return pres;
-        }
-        //return pres;
+        }*/
+        return pres;
 
         //Prescription pres = new Prescription(null, null, null);
 
