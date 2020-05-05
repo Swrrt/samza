@@ -539,7 +539,6 @@ public class LatencyGuarantor extends StreamSwitch {
                 else return MODERATE;
             }
 
-
             //Debug
             private int countSevereExecutors(Map<String, Double> instantDelay, Map<String, Double> longtermDelay, Set<String> oes){
                 int numberOfSevere = 0;
@@ -551,38 +550,6 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                 }
                 return numberOfSevere;
-            }
-
-            // DRS model
-            private double calculateDRSDelay(int k, double lambda, double avgmu){
-                //TODO: What about both lambda and (k * avgmu) equal 0?
-                if(k * avgmu <= lambda)return 1E100;
-
-                double rho = lambda/(k * avgmu);
-
-                // Formula (3) calculate pi
-                double sum = 0.0;
-                for(int l = 0; l < k; l++){
-                    // Higher accuracy for (k * rho)^l / (l!)
-                    double division = 1.0;
-                    for(int temp = 1; temp <= l; temp++){
-                        division *= (k * rho) / temp;
-                    }
-                    sum += division;
-                }
-                // division = (k * rho)^k / (k!)
-                double division = 1.0;
-                for(int temp = 1; temp <= k; temp ++){
-                    division *= (k * rho) / temp;
-                }
-                double pi0 = 1.0 / (sum + division / (1.0 - rho));
-
-                // Formula (2)
-                // Re-use division
-                double EQ = pi0 * division / ((1.0 - rho) * (1.0 - rho) * (avgmu * k));
-                // Formula (1)
-                double ET = EQ + 1.0/avgmu;
-                return ET;
             }
 
             // Find the subset which minimizes delay by greedy:
@@ -830,58 +797,14 @@ public class LatencyGuarantor extends StreamSwitch {
         HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
         unlockedOEs.removeAll(oeUnlockTime.keySet());
 
-        double totalArrivalRate = 0.0, totalServiceRate = 0.0;
-        int numberOfOE = executorMapping.keySet().size();
-        for(String oeid: examiner.model.executorArrivalRate.keySet()){
-            totalArrivalRate += examiner.model.executorArrivalRate.get(oeid);
-            totalServiceRate += examiner.model.executorServiceRate.get(oeid);
-        }
-        Prescription pres = new Prescription(null, null, null);
-        LOG.info("Debugging, k=" + numberOfOE + " lambda=" + totalArrivalRate + " avgmu=" + (totalServiceRate / numberOfOE));
-        //lambda = k * mu = 0 case
-        if(totalServiceRate < 1e-12 && totalArrivalRate < 1e-12){
-            LOG.info("Lambda = k * mu = 0, do nothing");
-            return pres;
-        }
-        double drsDelay = diagnoser.calculateDRSDelay(numberOfOE, totalArrivalRate, totalServiceRate / numberOfOE);
-        LOG.info("Debugging, drsDelay=" + drsDelay);
-        LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
-
-        if(drsDelay > latencyReq){  //Scale-out
-            LOG.info("DRS delay exceed requirment, try scale out!");
-            Pair<Prescription, Map<String, Double>> result = diagnoser.scaleOut(unlockedOEs);
-            return result.getKey();
-        }else if(numberOfOE > 1) {
-            double estimateDRSDelay = diagnoser.calculateDRSDelay(numberOfOE - 1, totalArrivalRate, totalServiceRate / numberOfOE);
-            if (estimateDRSDelay < latencyReq) { //Scale-in
-                LOG.info("DRS delay exceed requirment, try scale in!");
-                Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
-                return result.getKey();
-            }
-        }
-        //Stream switch logic to load-balance
-        LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
         int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
-        if(healthiness == Diagnoser.SEVERE) {
-            LOG.info("Current healthiness is Severe, try load-balance");
-            Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
-            return result.getKey();
-        }else if(healthiness == Diagnoser.MODERATE){
-            LOG.info("Current healthiness is Moderate, do nothing");
-            return pres;
-        }else{
-            LOG.info("Current healthiness is Good, do nothing");
-            return pres;
-        }
-        //return pres;
-
-        //Prescription pres = new Prescription(null, null, null);
-
+        Prescription pres = new Prescription(null, null, null);
+        LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
         /*if(isMigrating){
             LOG.info("Migration does not complete, cannot diagnose");
             return pres;
         }*/
-/*
+
         //Moderate
         if(healthiness == Diagnoser.MODERATE){
             LOG.info("Current healthiness is Moderate, do nothing");
@@ -921,7 +844,7 @@ public class LatencyGuarantor extends StreamSwitch {
             LOG.info("Cannot load-balance, need to scale out");
             result = diagnoser.scaleOut(unlockedOEs);
             return result.getKey();
-        }*/
+        }
     }
 
     //Return state validity
