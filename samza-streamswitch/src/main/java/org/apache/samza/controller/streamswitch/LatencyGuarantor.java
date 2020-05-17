@@ -43,6 +43,7 @@ public class LatencyGuarantor extends StreamSwitch {
     class Examiner{
         class State {
             private Map<Long, Map<Integer, List<Integer>>> mappings;
+            private Map<Integer, Double> executorUtilization;
             class SubstreamState{
                 private Map<Long, Long> arrived, completed; //Instead of actual time, use the n-th time point as key
                 private long lastValidIndex;    //Last valid state time point
@@ -62,6 +63,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 currentTimeIndex = 0;
                 lastValidTimeIndex = 0;
                 mappings = new HashMap<>();
+                executorUtilization = new HashMap<>();
                 substreamStates = new HashMap<>();
             }
 
@@ -111,6 +113,9 @@ public class LatencyGuarantor extends StreamSwitch {
                 return completed;
             }
 
+            private double getExecutorUtilization(Integer executorId){
+                return executorUtilization.getOrDefault(executorId, 0.0);
+            }
 
             public long getSubstreamLatency(Integer substream, long timeIndex){
                 long latency = 0;
@@ -253,6 +258,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
             private void insert(long timeIndex, Map<String, Long> substreamArrived,
                                Map<String, Long> substreamProcessed,
+                                Map<String, Double> utilization,
                                Map<String, List<String>> executorMapping) { //Normal update
                 LOG.info("Debugging, metrics retrieved data, time: " + timeIndex + " substreamArrived: "+ substreamArrived + " substreamProcessed: "+ substreamProcessed + " assignment: " + executorMapping);
 
@@ -275,6 +281,10 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
                 for(String substream: substreamProcessed.keySet()){
                     substreamStates.get(substreamIdFromStringToInt(substream)).completed.put(currentTimeIndex, substreamProcessed.get(substream));
+                }
+
+                for(String executor: utilization.keySet()){
+                    executorUtilization.put(executorIdFromStringToInt(executor), utilization.get(executor));
                 }
 
             }
@@ -314,6 +324,28 @@ public class LatencyGuarantor extends StreamSwitch {
                 long totalArrived = state.getSubstreamArrived(state.substreamIdFromStringToInt(substream), n1) - state.getSubstreamArrived(state.substreamIdFromStringToInt(substream), n0);
                 if(time > 1e-9)return totalArrived / ((double)time);
                 return 0.0;
+            }
+
+            // Calculate window service rate of n - beta ~ n (exclude n - beta)
+            private double calculateExecutorServiceRate(String executorId, double util, long n){
+                //return initialServiceRate;
+                //Because Samza's utilization sometimes goes to 0.0, to avoid service rate become NaN and scale in.
+                double lastServiceRate = executorServiceRate.getOrDefault(executorId, 0.0);
+                //Only update service rate when util > 10%
+                //if(util < 0.1){
+                //    return lastServiceRate;
+                //}
+                //Put here to avoid scale-in at the beginning.
+                if(lastServiceRate == 0.0){
+                    lastServiceRate = initialServiceRate;
+                }
+                long completed = 0;
+                for(int substream: state.getMapping(n).get(state.executorIdFromStringToInt(executorId))){
+                    completed += state.getSubstreamCompleted(substream, n) - state.getSubstreamCompleted(substream, n - 1);
+                }
+                double instantServiceRate = (completed / ((double)state.getTimepoint(n) - state.getTimepoint(n - 1))) / util;
+                //double decayFactor = 0.875;
+                return decayFactor * lastServiceRate + (1 - decayFactor) * instantServiceRate;
             }
 
             //Window average delay
@@ -356,22 +388,23 @@ public class LatencyGuarantor extends StreamSwitch {
                         arrivalRate += t;
                     }
                     executorArrivalRate.put(executor, arrivalRate);
-                    //double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
-                    //utils.put(executor, util);
-                    //double mu = calculateExecutorServiceRate(executor, util, timeIndex);
+                    double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
+                    utils.put(executor, util);
+                    double mu = calculateExecutorServiceRate(executor, util, timeIndex);
+                    executorServiceRate.put(executor, mu);
                     /*if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
                         executorServiceRate.put(executor, mu);
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
 
-                    if(!executorServiceRate.containsKey(executor)){
+                    /*if(!executorServiceRate.containsKey(executor)){
                         executorServiceRate.put(executor, initialServiceRate);
                     }
                     if(serviceRate.containsKey(executor)) {
                         double oldServiceRate = executorServiceRate.get(executor);
                         double newServiceRate = oldServiceRate * decayFactor + serviceRate.get(executor) * (1 - decayFactor);
                         executorServiceRate.put(executor, newServiceRate);
-                    }
+                    }*/
 
                     double oldInstantaneousDelay = executorInstantaneousDelay.getOrDefault(executor, 0.0);
                     double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);
@@ -417,9 +450,9 @@ public class LatencyGuarantor extends StreamSwitch {
             return true;
         }
 
-        private boolean updateState(long timeIndex, Map<String, Long> substreamArrived, Map<String, Long> substreamProcessed, Map<String, Boolean> substreamValid, Map<String, List<String>> executorMapping){
+        private boolean updateState(long timeIndex, Map<String, Long> substreamArrived, Map<String, Long> substreamProcessed, Map<String, Double> executorUtilization, Map<String, Boolean> substreamValid, Map<String, List<String>> executorMapping){
             LOG.info("Updating state...");
-            state.insert(timeIndex, substreamArrived, substreamProcessed, executorMapping);
+            state.insert(timeIndex, substreamArrived, substreamProcessed, executorUtilization, executorMapping);
             state.calibrate(substreamValid);
             state.drop(timeIndex, substreamValid);
             //Debug & Statistics
@@ -854,13 +887,15 @@ public class LatencyGuarantor extends StreamSwitch {
                 (HashMap<String, Long>) (metrics.get("Arrived"));
         Map<String, Long> substreamProcessed =
                 (HashMap<String, Long>) (metrics.get("Processed"));
+        Map<String, Double> executorUtilization =
+                (HashMap<String, Double>) (metrics.get("Utilization"));
         Map<String, Boolean> substreamValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
         Map<String, Double> executorServiceRate =
                 (HashMap<String, Double>) (metrics.get("ServiceRate"));
         //Memory usage
         //LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
-        if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, substreamValid, executorMapping)){
+        if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, executorUtilization, substreamValid, executorMapping)){
             examiner.updateModel(timeIndex, executorServiceRate, executorMapping);
             return true;
         }
