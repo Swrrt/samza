@@ -794,6 +794,13 @@ class SamzaContainer(
 
     try {
       info("Starting container.")
+      println("Starting run loop. " + System.currentTimeMillis())
+      //Add manual delay here
+      //val delayStart = System.currentTimeMillis()
+      //val manualDelay = 5000//config.getInt("task.manual_restore_delay", 0)
+      ///while(System.currentTimeMillis() < delayStart + manualDelay){
+      //}
+      
       metrics.isRunning.set(false);
 
       if (containerListener != null) {
@@ -852,6 +859,7 @@ class SamzaContainer(
 
     try {
       info("Shutting down SamzaContainer.")
+      println("Shutting down container. " + System.currentTimeMillis()) 
       removeShutdownHook
       if (jmxServer != null) {
         jmxServer.stop
