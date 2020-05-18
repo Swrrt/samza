@@ -388,23 +388,23 @@ public class LatencyGuarantor extends StreamSwitch {
                         arrivalRate += t;
                     }
                     executorArrivalRate.put(executor, arrivalRate);
-                    double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
+                    /*double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
                     utils.put(executor, util);
                     double mu = calculateExecutorServiceRate(executor, util, timeIndex);
-                    executorServiceRate.put(executor, mu);
+                    executorServiceRate.put(executor, mu);*/
                     /*if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
                         executorServiceRate.put(executor, mu);
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
 
-                    /*if(!executorServiceRate.containsKey(executor)){
+                    if(!executorServiceRate.containsKey(executor)){
                         executorServiceRate.put(executor, initialServiceRate);
                     }
                     if(serviceRate.containsKey(executor)) {
                         double oldServiceRate = executorServiceRate.get(executor);
                         double newServiceRate = oldServiceRate * decayFactor + serviceRate.get(executor) * (1 - decayFactor);
                         executorServiceRate.put(executor, newServiceRate);
-                    }*/
+                    }
 
                     double oldInstantaneousDelay = executorInstantaneousDelay.getOrDefault(executor, 0.0);
                     double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);

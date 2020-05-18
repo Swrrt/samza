@@ -795,6 +795,9 @@ class SamzaContainer(
     try {
       info("Starting container.")
       println("Starting run loop. " + System.currentTimeMillis())
+
+      println("container start at %s".format(java.net.InetAddress.getLocalHost().getHostName()))
+
       //Add manual delay here
       //val delayStart = System.currentTimeMillis()
       //val manualDelay = 5000//config.getInt("task.manual_restore_delay", 0)
