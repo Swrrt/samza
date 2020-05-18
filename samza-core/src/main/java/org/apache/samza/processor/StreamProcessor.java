@@ -34,6 +34,7 @@ import java.util.concurrent.TimeoutException;
 import org.apache.samza.annotation.InterfaceStability;
 import org.apache.samza.config.Config;
 import org.apache.samza.config.JobCoordinatorConfig;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.config.TaskConfigJava;
 import org.apache.samza.container.SamzaContainer;
 import org.apache.samza.container.SamzaContainerListener;
@@ -177,7 +178,7 @@ public class StreamProcessor {
    */
   @Deprecated
   public StreamProcessor(Config config, Map<String, MetricsReporter> customMetricsReporters, TaskFactory taskFactory,
-      ProcessorLifecycleListener processorListener) {
+                         ProcessorLifecycleListener processorListener) {
     this(config, customMetricsReporters, taskFactory, processorListener, null);
   }
 
@@ -201,9 +202,9 @@ public class StreamProcessor {
    */
   @Deprecated
   public StreamProcessor(Config config, Map<String, MetricsReporter> customMetricsReporters, TaskFactory taskFactory,
-      ProcessorLifecycleListener processorListener, JobCoordinator jobCoordinator) {
+                         ProcessorLifecycleListener processorListener, JobCoordinator jobCoordinator) {
     this(config, customMetricsReporters, taskFactory, Optional.empty(), Optional.empty(), sp -> processorListener,
-        jobCoordinator);
+            jobCoordinator);
   }
 
   /**
@@ -218,11 +219,19 @@ public class StreamProcessor {
    * @param jobCoordinator the instance of {@link JobCoordinator}
    */
   public StreamProcessor(Config config, Map<String, MetricsReporter> customMetricsReporters, TaskFactory taskFactory,
-      Optional<ApplicationContainerContextFactory<ApplicationContainerContext>> applicationDefinedContainerContextFactoryOptional,
-      Optional<ApplicationTaskContextFactory<ApplicationTaskContext>> applicationDefinedTaskContextFactoryOptional,
-      StreamProcessorLifecycleListenerFactory listenerFactory, JobCoordinator jobCoordinator) {
+                         Optional<ApplicationContainerContextFactory<ApplicationContainerContext>> applicationDefinedContainerContextFactoryOptional,
+                         Optional<ApplicationTaskContextFactory<ApplicationTaskContext>> applicationDefinedTaskContextFactoryOptional,
+                         StreamProcessorLifecycleListenerFactory listenerFactory, JobCoordinator jobCoordinator) {
     Preconditions.checkNotNull(listenerFactory, "StreamProcessorListenerFactory cannot be null.");
-    this.config = config;
+    int randV = (new Random()).nextInt(config.getInt("task.good.ratio",1) + config.getInt("task.bad.ratio", 0));
+    if(randV < config.getInt("task.good.ratio",1)) {
+      this.delayType = 0;
+    }else{
+      this.delayType = 1;
+    }
+    this.config = new MapConfig(config);
+    this.config.put("container.type", getDelayType(delayType));
+
     this.customMetricsReporter = customMetricsReporters;
     this.taskFactory = taskFactory;
     this.applicationDefinedContainerContextFactoryOptional = applicationDefinedContainerContextFactoryOptional;
@@ -237,12 +246,7 @@ public class StreamProcessor {
     this.processorId = this.jobCoordinator.getProcessorId();
     this.processorListener = listenerFactory.createInstance(this);
 
-    int randV = (new Random()).nextInt(config.getInt("task.good.ratio",1) + config.getInt("task.bad.ratio", 0));
-    if(randV < config.getInt("task.good.ratio",1)) {
-      this.delayType = 0;
-    }else{
-      this.delayType = 1;
-    }
+
   }
 
   /**
@@ -316,7 +320,6 @@ public class StreamProcessor {
     if(delayType == 0)return config.getLong("task.good.delay", 1000l);
     else return config.getLong("task.bad.delay", 1000l);
   }
-
   private String getDelayType(int delayType){
     if(delayType == 0 )return "Good";
     return "Bad";
