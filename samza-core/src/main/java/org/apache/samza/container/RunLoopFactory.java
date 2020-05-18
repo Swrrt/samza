@@ -113,4 +113,79 @@ public class RunLoopFactory {
     }
   }
 
+  public static Runnable createRunLoop(scala.collection.immutable.Map<TaskName, TaskInstance> taskInstances,
+                                       SystemConsumers consumerMultiplexer,
+                                       ExecutorService threadPool,
+                                       long maxThrottlingDelayMs,
+                                       SamzaContainerMetrics containerMetrics,
+                                       TaskConfig config,
+                                       HighResolutionClock clock,
+                                       long appDelay) {
+
+    long taskWindowMs = config.getWindowMs();
+
+    log.info("Got window milliseconds: {}.", taskWindowMs);
+
+    long taskCommitMs = config.getCommitMs();
+
+    log.info("Got commit milliseconds: {}.", taskCommitMs);
+
+    int asyncTaskCount = taskInstances.values().count(new AbstractFunction1<TaskInstance, Object>() {
+      @Override
+      public Boolean apply(TaskInstance t) {
+        return t.isAsyncTask();
+      }
+    });
+
+    // asyncTaskCount should be either 0 or the number of all taskInstances
+    if (asyncTaskCount > 0 && asyncTaskCount < taskInstances.size()) {
+      throw new SamzaException("Mixing StreamTask and AsyncStreamTask is not supported");
+    }
+
+    if (asyncTaskCount == 0) {
+      log.info("Run loop in single thread mode.");
+
+      return new DelayRunLoop(
+              taskInstances,
+              consumerMultiplexer,
+              containerMetrics,
+              maxThrottlingDelayMs,
+              taskWindowMs,
+              taskCommitMs,
+              toScalaFunction(() -> clock.nanoTime()),
+              appDelay);
+    } else {
+      Integer taskMaxConcurrency = config.getMaxConcurrency();
+
+      log.info("Got taskMaxConcurrency: {}.", taskMaxConcurrency);
+
+      boolean isAsyncCommitEnabled = config.getAsyncCommit();
+
+      log.info("Got asyncCommitEnabled: {}.", isAsyncCommitEnabled);
+
+      Long callbackTimeout = config.getCallbackTimeoutMs();
+
+      log.info("Got callbackTimeout: {}.", callbackTimeout);
+
+      Long maxIdleMs = config.getMaxIdleMs();
+
+      log.info("Got maxIdleMs: {}.", maxIdleMs);
+
+      log.info("Run loop in asynchronous mode.");
+
+      return new AsyncRunLoop(
+              JavaConverters.mapAsJavaMapConverter(taskInstances).asJava(),
+              threadPool,
+              consumerMultiplexer,
+              taskMaxConcurrency,
+              taskWindowMs,
+              taskCommitMs,
+              callbackTimeout,
+              maxThrottlingDelayMs,
+              maxIdleMs,
+              containerMetrics,
+              clock,
+              isAsyncCommitEnabled);
+    }
+  }
 }

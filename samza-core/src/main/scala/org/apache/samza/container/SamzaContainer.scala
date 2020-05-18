@@ -737,6 +737,626 @@ object SamzaContainer extends Logging {
       applicationContainerContextOption = applicationContainerContextOption)
   }
 
+  def apply(
+             containerId: String,
+             jobModel: JobModel,
+             customReporters: Map[String, MetricsReporter] = Map[String, MetricsReporter](),
+             taskFactory: TaskFactory[_],
+             jobContext: JobContext,
+             applicationContainerContextFactoryOption: Option[ApplicationContainerContextFactory[ApplicationContainerContext]],
+             applicationTaskContextFactoryOption: Option[ApplicationTaskContextFactory[ApplicationTaskContext]],
+             appDelay: Long
+           ) = {
+    val config = jobContext.getConfig
+    val containerModel = jobModel.getContainers.get(containerId)
+    val containerName = "samza-container-%s" format containerId
+    val maxChangeLogStreamPartitions = jobModel.maxChangeLogStreamPartitions
+
+    val containerPID = ManagementFactory.getRuntimeMXBean().getName()
+
+    info("Setting up Samza container: %s" format containerName)
+
+    startupLog("Samza container PID: %s" format containerPID)
+    println("Container PID: %s" format containerPID)
+    startupLog("Using configuration: %s" format config)
+    startupLog("Using container model: %s" format containerModel)
+
+    val registry = new MetricsRegistryMap(containerName)
+    val samzaContainerMetrics = new SamzaContainerMetrics(containerName, registry)
+    val systemProducersMetrics = new SystemProducersMetrics(registry)
+    val systemConsumersMetrics = new SystemConsumersMetrics(registry)
+    val offsetManagerMetrics = new OffsetManagerMetrics(registry)
+    val clock = if (config.getMetricsTimerEnabled) {
+      new HighResolutionClock {
+        override def nanoTime(): Long = System.nanoTime()
+      }
+    } else {
+      new HighResolutionClock {
+        override def nanoTime(): Long = 0L
+      }
+    }
+
+    val inputSystemStreamPartitions = containerModel
+      .getTasks
+      .values
+      .asScala
+      .flatMap(_.getSystemStreamPartitions.asScala)
+      .toSet
+
+    val inputSystemStreams = inputSystemStreamPartitions
+      .map(_.getSystemStream)
+      .toSet
+
+    val inputSystems = inputSystemStreams
+      .map(_.getSystem)
+      .toSet
+
+    val systemNames = config.getSystemNames
+
+    info("Got system names: %s" format systemNames)
+
+    val serdeStreams = systemNames.foldLeft(Set[SystemStream]())(_ ++ config.getSerdeStreams(_))
+
+    info("Got serde streams: %s" format serdeStreams)
+
+    val systemFactories = systemNames.map(systemName => {
+      val systemFactoryClassName = config
+        .getSystemFactory(systemName)
+        .getOrElse(throw new SamzaException("A stream uses system %s, which is missing from the configuration." format systemName))
+      (systemName, Util.getObj(systemFactoryClassName, classOf[SystemFactory]))
+    }).toMap
+    info("Got system factories: %s" format systemFactories.keys)
+
+    val systemAdmins = new SystemAdmins(config)
+    info("Got system admins: %s" format systemAdmins.getSystemNames)
+
+    val streamMetadataCache = new StreamMetadataCache(systemAdmins)
+    val inputStreamMetadata = streamMetadataCache.getStreamMetadata(inputSystemStreams)
+
+    info("Got input stream metadata: %s" format inputStreamMetadata)
+
+    val consumers = inputSystems
+      .map(systemName => {
+        val systemFactory = systemFactories(systemName)
+
+        try {
+          (systemName, systemFactory.getConsumer(systemName, config, samzaContainerMetrics.registry))
+        } catch {
+          case e: Exception =>
+            error("Failed to create a consumer for %s, so skipping." format systemName, e)
+            (systemName, null)
+        }
+      })
+      .filter(_._2 != null)
+      .toMap
+
+    info("Got system consumers: %s" format consumers.keys)
+
+    val producers = systemFactories
+      .map {
+        case (systemName, systemFactory) =>
+          try {
+            (systemName, systemFactory.getProducer(systemName, config, samzaContainerMetrics.registry))
+          } catch {
+            case e: Exception =>
+              error("Failed to create a producer for %s, so skipping." format systemName, e)
+              (systemName, null)
+          }
+      }
+      .filter(_._2 != null)
+
+    info("Got system producers: %s" format producers.keys)
+
+    val serdesFromFactories = config.getSerdeNames.map(serdeName => {
+      val serdeClassName = config
+        .getSerdeClass(serdeName)
+        .getOrElse(SerializerConfig.getSerdeFactoryName(serdeName))
+
+      val serde = Util.getObj(serdeClassName, classOf[SerdeFactory[Object]])
+        .getSerde(serdeName, config)
+
+      (serdeName, serde)
+    }).toMap
+    info("Got serdes from factories: %s" format serdesFromFactories.keys)
+
+    val serializableSerde = new SerializableSerde[Serde[Object]]()
+    val serdesFromSerializedInstances = config.subset(SerializerConfig.SERIALIZER_PREFIX format "").asScala
+      .filter { case (key, value) => key.endsWith(SerializerConfig.SERIALIZED_INSTANCE_SUFFIX) }
+      .flatMap { case (key, value) =>
+        val serdeName = key.replace(SerializerConfig.SERIALIZED_INSTANCE_SUFFIX, "")
+        debug(s"Trying to deserialize serde instance for $serdeName")
+        try {
+          val bytes = Base64.getDecoder.decode(value)
+          val serdeInstance = serializableSerde.fromBytes(bytes)
+          debug(s"Returning serialized instance for $serdeName")
+          Some((serdeName, serdeInstance))
+        } catch {
+          case e: Exception =>
+            warn(s"Ignoring invalid serialized instance for $serdeName: $value", e)
+            None
+        }
+      }
+    info("Got serdes from serialized instances: %s" format serdesFromSerializedInstances.keys)
+
+    val serdes = serdesFromFactories ++ serdesFromSerializedInstances
+
+    /*
+     * A Helper function to build a Map[String, Serde] (systemName -> Serde) for systems defined
+     * in the config. This is useful to build both key and message serde maps.
+     */
+    val buildSystemSerdeMap = (getSerdeName: (String) => Option[String]) => {
+      systemNames
+        .filter(systemName => getSerdeName(systemName).isDefined)
+        .flatMap(systemName => {
+          val serdeName = getSerdeName(systemName).get
+          val serde = serdes.getOrElse(serdeName,
+            throw new SamzaException("buildSystemSerdeMap: No class defined for serde: %s." format serdeName))
+
+          // this shouldn't happen since system level serdes can't be set programmatically using the high level
+          // API, but adding this for safety.
+          Option(serde)
+            .filter(!_.isInstanceOf[NoOpSerde[Any]])
+            .map(serde => (systemName, serde))
+        }).toMap
+    }
+
+    /*
+     * A Helper function to build a Map[SystemStream, Serde] for streams defined in the config.
+     * This is useful to build both key and message serde maps.
+     */
+    val buildSystemStreamSerdeMap = (getSerdeName: (SystemStream) => Option[String]) => {
+      (serdeStreams ++ inputSystemStreamPartitions)
+        .filter(systemStream => getSerdeName(systemStream).isDefined)
+        .flatMap(systemStream => {
+          val serdeName = getSerdeName(systemStream).get
+          val serde = serdes.getOrElse(serdeName,
+            throw new SamzaException("buildSystemStreamSerdeMap: No serde found for name: %s." format serdeName))
+
+          // respect explicitly set no-op serdes in high level API
+          Option(serde)
+            .filter(!_.isInstanceOf[NoOpSerde[Any]])
+            .map(serde => (systemStream, serde))
+        }).toMap
+    }
+
+    val systemKeySerdes = buildSystemSerdeMap(systemName => config.getSystemKeySerde(systemName))
+
+    debug("Got system key serdes: %s" format systemKeySerdes)
+
+    val systemMessageSerdes = buildSystemSerdeMap(systemName => config.getSystemMsgSerde(systemName))
+
+    debug("Got system message serdes: %s" format systemMessageSerdes)
+
+    val systemStreamKeySerdes = buildSystemStreamSerdeMap(systemStream => config.getStreamKeySerde(systemStream))
+
+    debug("Got system stream key serdes: %s" format systemStreamKeySerdes)
+
+    val systemStreamMessageSerdes = buildSystemStreamSerdeMap(systemStream => config.getStreamMsgSerde(systemStream))
+
+    debug("Got system stream message serdes: %s" format systemStreamMessageSerdes)
+
+    val changeLogSystemStreams = config
+      .getStoreNames
+      .filter(config.getChangelogStream(_).isDefined)
+      .map(name => (name, config.getChangelogStream(name).get)).toMap
+      .mapValues(StreamUtil.getSystemStreamFromNames(_))
+
+    info("Got change log system streams: %s" format changeLogSystemStreams)
+
+    /*
+     * This keeps track of the changelog SSPs that are associated with the whole container. This is used so that we can
+     * prefetch the metadata about the all of the changelog SSPs associated with the container whenever we need the
+     * metadata about some of the changelog SSPs.
+     * An example use case is when Samza writes offset files for stores ({@link TaskStorageManager}). Each task is
+     * responsible for its own offset file, but if we can do prefetching, then most tasks will already have cached
+     * metadata by the time they need the offset metadata.
+     * Note: By using all changelog streams to build the sspsToPrefetch, any fetches done for persisted stores will
+     * include the ssps for non-persisted stores, so this is slightly suboptimal. However, this does not increase the
+     * actual number of calls to the {@link SystemAdmin}, and we can decouple this logic from the per-task objects (e.g.
+     * {@link TaskStorageManager}).
+     */
+    val changelogSSPMetadataCache = new SSPMetadataCache(systemAdmins,
+      Duration.ofSeconds(5),
+      SystemClock.instance,
+      getChangelogSSPsForContainer(containerModel, changeLogSystemStreams).asJava)
+
+    val intermediateStreams = config
+      .getStreamIds
+      .filter(config.getIsIntermediateStream(_))
+      .toList
+
+    info("Got intermediate streams: %s" format intermediateStreams)
+
+    val sideInputStoresToSystemStreams = config.getStoreNames
+      .map { storeName => (storeName, config.getSideInputs(storeName)) }
+      .filter { case (storeName, sideInputs) => sideInputs.nonEmpty }
+      .map { case (storeName, sideInputs) => (storeName, sideInputs.map(StreamUtil.getSystemStreamFromNameOrId(config, _))) }
+      .toMap
+
+    info("Got side input store system streams: %s" format sideInputStoresToSystemStreams)
+
+    val controlMessageKeySerdes = intermediateStreams
+      .flatMap(streamId => {
+        val systemStream = config.streamIdToSystemStream(streamId)
+        systemStreamKeySerdes.get(systemStream)
+          .orElse(systemKeySerdes.get(systemStream.getSystem))
+          .map(serde => (systemStream, new StringSerde("UTF-8")))
+      }).toMap
+
+    val intermediateStreamMessageSerdes = intermediateStreams
+      .flatMap(streamId => {
+        val systemStream = config.streamIdToSystemStream(streamId)
+        systemStreamMessageSerdes.get(systemStream)
+          .orElse(systemMessageSerdes.get(systemStream.getSystem))
+          .map(serde => (systemStream, new IntermediateMessageSerde(serde)))
+      }).toMap
+
+    val serdeManager = new SerdeManager(
+      serdes = serdes,
+      systemKeySerdes = systemKeySerdes,
+      systemMessageSerdes = systemMessageSerdes,
+      systemStreamKeySerdes = systemStreamKeySerdes,
+      systemStreamMessageSerdes = systemStreamMessageSerdes,
+      changeLogSystemStreams = changeLogSystemStreams.values.toSet,
+      controlMessageKeySerdes = controlMessageKeySerdes,
+      intermediateMessageSerdes = intermediateStreamMessageSerdes)
+
+    info("Setting up JVM metrics.")
+
+    val jvm = new JvmMetrics(samzaContainerMetrics.registry)
+
+    info("Setting up message chooser.")
+
+    val chooserFactoryClassName = config.getMessageChooserClass.getOrElse(classOf[RoundRobinChooserFactory].getName)
+
+    val chooserFactory = Util.getObj(chooserFactoryClassName, classOf[MessageChooserFactory])
+
+    val chooser = DefaultChooser(inputStreamMetadata, chooserFactory, config, samzaContainerMetrics.registry, systemAdmins)
+
+    info("Setting up metrics reporters.")
+
+    val reporters = MetricsReporterLoader.getMetricsReporters(config, containerName).asScala.toMap ++ customReporters
+
+    info("Got metrics reporters: %s" format reporters.keys)
+
+    val securityManager = config.getSecurityManagerFactory match {
+      case Some(securityManagerFactoryClassName) =>
+        Util
+          .getObj(securityManagerFactoryClassName, classOf[SecurityManagerFactory])
+          .getSecurityManager(config)
+      case _ => null
+    }
+    info("Got security manager: %s" format securityManager)
+
+    val checkpointManager = config.getCheckpointManagerFactory()
+      .filterNot(_.isEmpty)
+      .map(Util.getObj(_, classOf[CheckpointManagerFactory])
+        .getCheckpointManager(config, samzaContainerMetrics.registry))
+      .orNull
+    info("Got checkpoint manager: %s" format checkpointManager)
+
+    // create a map of consumers with callbacks to pass to the OffsetManager
+    val checkpointListeners = consumers.filter(_._2.isInstanceOf[CheckpointListener])
+      .map { case (system, consumer) => (system, consumer.asInstanceOf[CheckpointListener])}
+    info("Got checkpointListeners : %s" format checkpointListeners)
+
+    val offsetManager = OffsetManager(inputStreamMetadata, config, checkpointManager, systemAdmins, checkpointListeners, offsetManagerMetrics)
+    info("Got offset manager: %s" format offsetManager)
+
+    val dropDeserializationError = config.getDropDeserialization match {
+      case Some(dropError) => dropError.toBoolean
+      case _ => false
+    }
+
+    val dropSerializationError = config.getDropSerialization match {
+      case Some(dropError) => dropError.toBoolean
+      case _ => false
+    }
+
+    val pollIntervalMs = config
+      .getPollIntervalMs
+      .getOrElse(SystemConsumers.DEFAULT_POLL_INTERVAL_MS.toString)
+      .toInt
+
+    val consumerMultiplexer = new SystemConsumers(
+      chooser = chooser,
+      consumers = consumers,
+      serdeManager = serdeManager,
+      metrics = systemConsumersMetrics,
+      dropDeserializationError = dropDeserializationError,
+      pollIntervalMs = pollIntervalMs,
+      clock = () => clock.nanoTime())
+
+    val producerMultiplexer = new SystemProducers(
+      producers = producers,
+      serdeManager = serdeManager,
+      metrics = systemProducersMetrics,
+      dropSerializationError = dropSerializationError)
+
+    val storageEngineFactories = config
+      .getStoreNames
+      .map(storeName => {
+        val storageFactoryClassName = config
+          .getStorageFactoryClassName(storeName)
+          .getOrElse(throw new SamzaException("Missing storage factory for %s." format storeName))
+        (storeName, Util.getObj(storageFactoryClassName, classOf[StorageEngineFactory[Object, Object]]))
+      }).toMap
+
+    info("Got storage engines: %s" format storageEngineFactories.keys)
+
+    val singleThreadMode = config.getSingleThreadMode
+    info("Got single thread mode: " + singleThreadMode)
+
+    val threadPoolSize = config.getThreadPoolSize
+    info("Got thread pool size: " + threadPoolSize)
+
+
+    val taskThreadPool = if (!singleThreadMode && threadPoolSize > 0) {
+      Executors.newFixedThreadPool(threadPoolSize,
+        new ThreadFactoryBuilder().setNameFormat("Samza Container Thread-%d").build())
+    } else {
+      null
+    }
+
+
+    val finalTaskFactory = TaskFactoryUtil.finalizeTaskFactory(
+      taskFactory,
+      singleThreadMode,
+      taskThreadPool)
+
+    // Wire up all task-instance-level (unshared) objects.
+    val taskNames = containerModel
+      .getTasks
+      .values
+      .asScala
+      .map(_.getTaskName)
+      .toSet
+
+    val containerContext = new ContainerContextImpl(containerModel, samzaContainerMetrics.registry)
+    val applicationContainerContextOption = applicationContainerContextFactoryOption
+      .map(_.create(jobContext, containerContext))
+
+    val storeWatchPaths = new util.HashSet[Path]()
+
+    val timerExecutor = Executors.newSingleThreadScheduledExecutor
+
+    val taskInstances: Map[TaskName, TaskInstance] = containerModel.getTasks.values.asScala.map(taskModel => {
+      debug("Setting up task instance: %s" format taskModel)
+
+      val taskName = taskModel.getTaskName
+
+      val task = finalTaskFactory match {
+        case tf: AsyncStreamTaskFactory => tf.asInstanceOf[AsyncStreamTaskFactory].createInstance()
+        case tf: StreamTaskFactory => tf.asInstanceOf[StreamTaskFactory].createInstance()
+      }
+
+      val taskInstanceMetrics = new TaskInstanceMetrics("TaskName-%s" format taskName)
+
+      val collector = new TaskInstanceCollector(producerMultiplexer, taskInstanceMetrics)
+
+      val storeConsumers = changeLogSystemStreams
+        .map {
+          case (storeName, changeLogSystemStream) =>
+            val systemConsumer = systemFactories
+              .getOrElse(changeLogSystemStream.getSystem,
+                throw new SamzaException("Changelog system %s for store %s does not " +
+                  "exist in the config." format (changeLogSystemStream, storeName)))
+              .getConsumer(changeLogSystemStream.getSystem, config, taskInstanceMetrics.registry)
+            samzaContainerMetrics.addStoreRestorationGauge(taskName, storeName)
+            (storeName, systemConsumer)
+        }
+
+      info("Got store consumers: %s" format storeConsumers)
+
+      val defaultStoreBaseDir = new File(System.getProperty("user.dir"), "state")
+      info("Got default storage engine base directory: %s" format defaultStoreBaseDir)
+
+      val nonLoggedStorageBaseDir = getNonLoggedStorageBaseDir(config, defaultStoreBaseDir)
+      info("Got base directory for non logged data stores: %s" format nonLoggedStorageBaseDir)
+
+      val loggedStorageBaseDir = getLoggedStorageBaseDir(config, defaultStoreBaseDir)
+      info("Got base directory for logged data stores: %s" format loggedStorageBaseDir)
+
+      val taskStores = storageEngineFactories
+        .map {
+          case (storeName, storageEngineFactory) =>
+            val changeLogSystemStreamPartition = if (changeLogSystemStreams.contains(storeName)) {
+              new SystemStreamPartition(changeLogSystemStreams(storeName), taskModel.getChangelogPartition)
+            } else {
+              null
+            }
+
+            val keySerde = config.getStorageKeySerde(storeName) match {
+              case Some(keySerde) => serdes.getOrElse(keySerde,
+                throw new SamzaException("StorageKeySerde: No class defined for serde: %s." format keySerde))
+              case _ => null
+            }
+
+            val msgSerde = config.getStorageMsgSerde(storeName) match {
+              case Some(msgSerde) => serdes.getOrElse(msgSerde,
+                throw new SamzaException("StorageMsgSerde: No class defined for serde: %s." format msgSerde))
+              case _ => null
+            }
+
+            // We use the logged storage base directory for change logged and side input stores since side input stores
+            // dont have changelog configured.
+            val storeDir = if (changeLogSystemStreamPartition != null || sideInputStoresToSystemStreams.contains(storeName)) {
+              TaskStorageManager.getStorePartitionDir(loggedStorageBaseDir, storeName, taskName)
+            } else {
+              TaskStorageManager.getStorePartitionDir(nonLoggedStorageBaseDir, storeName, taskName)
+            }
+
+            storeWatchPaths.add(storeDir.toPath)
+
+            val storageEngine = storageEngineFactory.getStorageEngine(
+              storeName,
+              storeDir,
+              keySerde,
+              msgSerde,
+              collector,
+              taskInstanceMetrics.registry,
+              changeLogSystemStreamPartition,
+              jobContext,
+              containerContext)
+            (storeName, storageEngine)
+        }
+
+      info("Got task stores: %s" format taskStores)
+
+      val taskSSPs = taskModel.getSystemStreamPartitions.asScala.toSet
+      info("Got task SSPs: %s" format taskSSPs)
+
+      val (sideInputStores, nonSideInputStores) =
+        taskStores.partition { case (storeName, _) => sideInputStoresToSystemStreams.contains(storeName)}
+
+      val sideInputStoresToSSPs = sideInputStoresToSystemStreams.mapValues(sideInputSystemStreams =>
+        taskSSPs.filter(ssp => sideInputSystemStreams.contains(ssp.getSystemStream)).asJava)
+
+      val taskSideInputSSPs = sideInputStoresToSSPs.values.flatMap(_.asScala).toSet
+
+      info ("Got task side input SSPs: %s" format taskSideInputSSPs)
+
+      val sideInputStoresToProcessor = sideInputStores.keys.map(storeName => {
+        // serialized instances takes precedence over the factory configuration.
+        config.getSideInputsProcessorSerializedInstance(storeName).map(serializedInstance =>
+          (storeName, SerdeUtils.deserialize("Side Inputs Processor", serializedInstance)))
+          .orElse(config.getSideInputsProcessorFactory(storeName).map(factoryClassName =>
+            (storeName, Util.getObj(factoryClassName, classOf[SideInputsProcessorFactory])
+              .getSideInputsProcessor(config, taskInstanceMetrics.registry))))
+          .get
+      }).toMap
+
+      val storageManager = new TaskStorageManager(
+        taskName = taskName,
+        taskStores = nonSideInputStores,
+        storeConsumers = storeConsumers,
+        changeLogSystemStreams = changeLogSystemStreams,
+        maxChangeLogStreamPartitions,
+        streamMetadataCache = streamMetadataCache,
+        sspMetadataCache = changelogSSPMetadataCache,
+        nonLoggedStoreBaseDir = nonLoggedStorageBaseDir,
+        loggedStoreBaseDir = loggedStorageBaseDir,
+        partition = taskModel.getChangelogPartition,
+        systemAdmins = systemAdmins,
+        new StorageConfig(config).getChangeLogDeleteRetentionsInMs,
+        new SystemClock)
+
+      var sideInputStorageManager: TaskSideInputStorageManager = null
+      if (sideInputStores.nonEmpty) {
+        sideInputStorageManager = new TaskSideInputStorageManager(
+          taskName,
+          streamMetadataCache,
+          loggedStorageBaseDir.getPath,
+          sideInputStores.asJava,
+          sideInputStoresToProcessor.asJava,
+          sideInputStoresToSSPs.asJava,
+          systemAdmins,
+          config,
+          new SystemClock)
+      }
+
+      val tableManager = new TableManager(config, serdes.asJava)
+
+      info("Got table manager")
+
+      def createTaskInstance(task: Any): TaskInstance = new TaskInstance(
+        task = task,
+        taskModel = taskModel,
+        metrics = taskInstanceMetrics,
+        systemAdmins = systemAdmins,
+        consumerMultiplexer = consumerMultiplexer,
+        collector = collector,
+        offsetManager = offsetManager,
+        storageManager = storageManager,
+        tableManager = tableManager,
+        reporters = reporters,
+        systemStreamPartitions = taskSSPs,
+        exceptionHandler = TaskInstanceExceptionHandler(taskInstanceMetrics, config),
+        jobModel = jobModel,
+        streamMetadataCache = streamMetadataCache,
+        timerExecutor = timerExecutor,
+        sideInputSSPs = taskSideInputSSPs,
+        sideInputStorageManager = sideInputStorageManager,
+        jobContext = jobContext,
+        containerContext = containerContext,
+        applicationContainerContextOption = applicationContainerContextOption,
+        applicationTaskContextFactoryOption = applicationTaskContextFactoryOption)
+
+      val taskInstance = createTaskInstance(task)
+
+      (taskName, taskInstance)
+    }).toMap
+
+    val maxThrottlingDelayMs = config.getLong("container.disk.quota.delay.max.ms", TimeUnit.SECONDS.toMillis(1))
+
+    val runLoop = RunLoopFactory.createRunLoop(
+      taskInstances,
+      consumerMultiplexer,
+      taskThreadPool,
+      maxThrottlingDelayMs,
+      samzaContainerMetrics,
+      config,
+      clock,
+      appDelay
+    )
+
+    val memoryStatisticsMonitor : SystemStatisticsMonitor = new StatisticsMonitorImpl()
+    memoryStatisticsMonitor.registerListener(new SystemStatisticsMonitor.Listener {
+      override def onUpdate(sample: SystemMemoryStatistics): Unit = {
+        val physicalMemoryBytes : Long = sample.getPhysicalMemoryBytes
+        val physicalMemoryMb : Double = physicalMemoryBytes / (1024.0 * 1024.0)
+        logger.debug("Container physical memory utilization (mb): " + physicalMemoryMb)
+        samzaContainerMetrics.physicalMemoryMb.set(physicalMemoryMb)
+      }
+    })
+
+    val diskQuotaBytes = config.getLong("container.disk.quota.bytes", Long.MaxValue)
+    samzaContainerMetrics.diskQuotaBytes.set(diskQuotaBytes)
+
+    val diskQuotaPolicyFactoryString = config.get("container.disk.quota.policy.factory",
+      classOf[NoThrottlingDiskQuotaPolicyFactory].getName)
+    val diskQuotaPolicyFactory = Util.getObj(diskQuotaPolicyFactoryString, classOf[DiskQuotaPolicyFactory])
+    val diskQuotaPolicy = diskQuotaPolicyFactory.create(config)
+
+    var diskSpaceMonitor: DiskSpaceMonitor = null
+    val diskPollMillis = config.getInt(DISK_POLL_INTERVAL_KEY, 0)
+    if (diskPollMillis != 0) {
+      diskSpaceMonitor = new PollingScanDiskSpaceMonitor(storeWatchPaths, diskPollMillis)
+      diskSpaceMonitor.registerListener(new Listener {
+        override def onUpdate(diskUsageBytes: Long): Unit = {
+          val newWorkRate = diskQuotaPolicy.apply(1.0 - (diskUsageBytes.toDouble / diskQuotaBytes))
+          runLoop.asInstanceOf[Throttleable].setWorkFactor(newWorkRate)
+          samzaContainerMetrics.executorWorkFactor.set(runLoop.asInstanceOf[Throttleable].getWorkFactor)
+          samzaContainerMetrics.diskUsageBytes.set(diskUsageBytes)
+        }
+      })
+
+      info("Initialized disk space monitor watch paths to: %s" format storeWatchPaths)
+    } else {
+      info(s"Disk quotas disabled because polling interval is not set ($DISK_POLL_INTERVAL_KEY)")
+    }
+    info("Samza container setup complete.")
+
+    new SamzaContainer(
+      config = config,
+      taskInstances = taskInstances,
+      runLoop = runLoop,
+      systemAdmins = systemAdmins,
+      consumerMultiplexer = consumerMultiplexer,
+      producerMultiplexer = producerMultiplexer,
+      offsetManager = offsetManager,
+      securityManager = securityManager,
+      metrics = samzaContainerMetrics,
+      reporters = reporters,
+      jvm = jvm,
+      diskSpaceMonitor = diskSpaceMonitor,
+      hostStatisticsMonitor = memoryStatisticsMonitor,
+      taskThreadPool = taskThreadPool,
+      timerExecutor = timerExecutor,
+      containerContext = containerContext,
+      applicationContainerContextOption = applicationContainerContextOption)
+  }
+
   /**
     * Builds the set of SSPs for all changelogs on this container.
     */

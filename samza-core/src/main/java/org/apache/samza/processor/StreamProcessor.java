@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -121,6 +122,8 @@ public class StreamProcessor {
   private final String processorId;
   private final ExecutorService containerExcecutorService;
   private final Object lock = new Object();
+
+  private final int delayType;
 
   private volatile Throwable containerException = null;
 
@@ -233,6 +236,7 @@ public class StreamProcessor {
     // TODO: remove the dependency on jobCoordinator for processorId after fixing SAMZA-1835
     this.processorId = this.jobCoordinator.getProcessorId();
     this.processorListener = listenerFactory.createInstance(this);
+    this.delayType = (new Random()).nextInt(2);
   }
 
   /**
@@ -302,6 +306,11 @@ public class StreamProcessor {
     }
   }
 
+  private long decidedDelay(int delayType){
+    if(delayType == 0)return config.getLong("task.good.delay", 1000l);
+    else return config.getLong("task.bad.delay", 1000l);
+  }
+
   @VisibleForTesting
   JobCoordinator getCurrentJobCoordinator() {
     return jobCoordinator;
@@ -317,7 +326,7 @@ public class StreamProcessor {
     return SamzaContainer.apply(processorId, jobModel, ScalaJavaUtil.toScalaMap(this.customMetricsReporter),
         this.taskFactory, JobContextImpl.fromConfigWithDefaults(this.config),
         Option.apply(this.applicationDefinedContainerContextFactoryOptional.orElse(null)),
-        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)));
+        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)), decidedDelay(delayType));
   }
 
   private JobCoordinator createJobCoordinator() {
