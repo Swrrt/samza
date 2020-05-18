@@ -1340,7 +1340,8 @@ object SamzaContainer extends Logging {
 
 
     //Add type
-    config.put("container.type", containerType)
+
+//    config.put("container.type", containerType)
 
     new SamzaContainer(
       config = config,
