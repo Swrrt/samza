@@ -737,7 +737,7 @@ object SamzaContainer extends Logging {
       applicationContainerContextOption = applicationContainerContextOption)
   }
 
-  def apply(
+  def applyWithDelay  (
              containerId: String,
              jobModel: JobModel,
              customReporters: Map[String, MetricsReporter] = Map[String, MetricsReporter](),
