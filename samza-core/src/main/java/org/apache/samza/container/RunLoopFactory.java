@@ -77,7 +77,8 @@ public class RunLoopFactory {
         maxThrottlingDelayMs,
         taskWindowMs,
         taskCommitMs,
-        toScalaFunction(() -> clock.nanoTime()));
+        toScalaFunction(() -> clock.nanoTime()),
+      0);
     } else {
       Integer taskMaxConcurrency = config.getMaxConcurrency();
 
@@ -145,7 +146,7 @@ public class RunLoopFactory {
     if (asyncTaskCount == 0) {
       log.info("Run loop in single thread mode.");
 
-      return new DelayRunLoop(
+      return new RunLoop(
               taskInstances,
               consumerMultiplexer,
               containerMetrics,

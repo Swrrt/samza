@@ -44,7 +44,9 @@ class RunLoop (
                 val maxThrottlingDelayMs: Long,
                 val windowMs: Long = -1,
                 val commitMs: Long = 60000,
-                val clock: () => Long = { System.nanoTime }) extends Runnable with Throttleable with TimerUtil with Logging {
+                val clock: () => Long = { System.nanoTime },
+                val delay: Long = 0
+              ) extends Runnable with Throttleable with TimerUtil with Logging {
 
   private val metricsMsOffset = 1000000L
   private val executor = new ThrottlingExecutor(maxThrottlingDelayMs)
@@ -189,6 +191,11 @@ class RunLoop (
         if (startTime == 0) {
           startTime = System.currentTimeMillis()
           println("start time: " + startTime)
+        }
+
+        //Add manual delay here
+        val cTime = System.nanoTime()
+        while(System.nanoTime() - cTime < delay){
         }
 
         val ssp = envelope.getSystemStreamPartition
