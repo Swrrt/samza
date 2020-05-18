@@ -1561,7 +1561,7 @@ class SamzaContainer(
     runLoop match {
       case runLoop: RunLoop => runLoop.shutdown
       case asyncRunLoop: AsyncRunLoop => asyncRunLoop.shutdown()
-      case delayRunLoop: DelayRunLoop => delayRunLoop.shutdown()
+      case delayRunLoop: DelayRunLoop => delayRunLoop.shutdown
     }
   }
 
