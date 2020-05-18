@@ -745,7 +745,8 @@ object SamzaContainer extends Logging {
              jobContext: JobContext,
              applicationContainerContextFactoryOption: Option[ApplicationContainerContextFactory[ApplicationContainerContext]],
              applicationTaskContextFactoryOption: Option[ApplicationTaskContextFactory[ApplicationTaskContext]],
-             appDelay: Long
+             appDelay: Long,
+             containerType: String
            ) = {
     val config = jobContext.getConfig
     val containerModel = jobModel.getContainers.get(containerId)
@@ -1337,6 +1338,10 @@ object SamzaContainer extends Logging {
     }
     info("Samza container setup complete.")
 
+
+    //Add type
+    config.put("container.type", containerType)
+
     new SamzaContainer(
       config = config,
       taskInstances = taskInstances,
@@ -1416,7 +1421,8 @@ class SamzaContainer(
       info("Starting container.")
       println("Starting run loop. " + System.currentTimeMillis())
 
-      println("container start at %s".format(java.net.InetAddress.getLocalHost().getHostName()))
+      //println("container start at %s".format(java.net.InetAddress.getLocalHost().getHostName()))
+      println("container start at %s".format(config.get("container.type")))
 
       //Add manual delay here
       //val delayStart = System.currentTimeMillis()
