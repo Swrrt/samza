@@ -316,6 +316,10 @@ public class StreamProcessor {
     if(delayType == 0)return config.getLong("task.good.delay", 1000l);
     else return config.getLong("task.bad.delay", 1000l);
   }
+  private String getDelayType(int delayType){
+    if(delayType == 0 )return "Good";
+    return "Bad";
+  }
 
   @VisibleForTesting
   JobCoordinator getCurrentJobCoordinator() {
@@ -332,7 +336,7 @@ public class StreamProcessor {
     return SamzaContainer.applyWithDelay(processorId, jobModel, ScalaJavaUtil.toScalaMap(this.customMetricsReporter),
         this.taskFactory, JobContextImpl.fromConfigWithDefaults(this.config),
         Option.apply(this.applicationDefinedContainerContextFactoryOptional.orElse(null)),
-        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)), decidedDelay(delayType));
+        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)), decidedDelay(delayType), getDelayType(delayType));
   }
 
   private JobCoordinator createJobCoordinator() {
