@@ -332,7 +332,9 @@ public class StreamProcessor {
     return SamzaContainer.applyWithDelay(processorId, jobModel, ScalaJavaUtil.toScalaMap(this.customMetricsReporter),
         this.taskFactory, JobContextImpl.fromConfigWithDefaults(this.config),
         Option.apply(this.applicationDefinedContainerContextFactoryOptional.orElse(null)),
-        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)), decidedDelay(delayType));
+        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)),
+        decidedDelay(delayType),
+        "unknown");
   }
 
   private JobCoordinator createJobCoordinator() {
