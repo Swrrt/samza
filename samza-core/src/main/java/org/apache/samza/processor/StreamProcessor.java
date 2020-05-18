@@ -22,6 +22,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
@@ -229,9 +231,10 @@ public class StreamProcessor {
     }else{
       this.delayType = 1;
     }
-    this.config = new MapConfig(config);
-    this.config.put("container.type", getDelayType(delayType));
-
+    Map<String, String> mergedConfig = new HashMap<>(config);
+    mergedConfig.put("container.type", getDelayType(delayType));
+    this.config = Util.rewriteConfig(new MapConfig(mergedConfig));
+    
     this.customMetricsReporter = customMetricsReporters;
     this.taskFactory = taskFactory;
     this.applicationDefinedContainerContextFactoryOptional = applicationDefinedContainerContextFactoryOptional;
