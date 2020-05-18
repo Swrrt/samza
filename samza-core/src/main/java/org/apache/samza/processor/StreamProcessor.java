@@ -236,7 +236,13 @@ public class StreamProcessor {
     // TODO: remove the dependency on jobCoordinator for processorId after fixing SAMZA-1835
     this.processorId = this.jobCoordinator.getProcessorId();
     this.processorListener = listenerFactory.createInstance(this);
-    this.delayType = (new Random()).nextInt(2);
+
+    int randV = (new Random()).nextInt(config.getInt("task.good.ratio",1) + config.getInt("task.bad.ratio", 0));
+    if(randV < config.getInt("task.good.ratio",1)) {
+      this.delayType = 0;
+    }else{
+      this.delayType = 1;
+    }
   }
 
   /**
