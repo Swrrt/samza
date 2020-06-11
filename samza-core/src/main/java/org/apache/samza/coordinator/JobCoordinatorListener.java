@@ -18,7 +18,11 @@
  */
 package org.apache.samza.coordinator;
 
+import org.apache.samza.container.TaskName;
 import org.apache.samza.job.model.JobModel;
+
+import java.util.List;
+import java.util.Set;
 
 /**
  * Listener interface that can be registered with a {@link org.apache.samza.coordinator.JobCoordinator} instance in order
@@ -59,4 +63,10 @@ public interface JobCoordinatorListener {
    * @param t Throwable that was the cause of the JobCoordinator failure
    */
   void onCoordinatorFailure(Throwable t);
+
+  default void onRemovePartitions(Set<TaskName> partitions){
+  }
+  default void onInsertPartitions(Set<TaskName> partitions){
+  }
+
 }

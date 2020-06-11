@@ -916,6 +916,67 @@ class SamzaContainer(
     }
   }
 
+
+  /* Things we added */
+
+  // Source container's method:
+  // 1) pause runloop
+  // 2) remove
+  // 3) unpause runloop
+  // TODO: need to pause runloop first!
+  def removePartitions(taskNames: List[TaskName]) = {
+    pauseRunloop()
+    taskNames.foreach(taskName => {
+      val taskInstance = taskInstances.get(taskName).get
+      // Commit task
+      if (isAutoCommitEnabled) {
+        taskInstance.commit
+      }
+      //shutdownConsumer
+      taskInstance.systemStreamPartitions.foreach(partition => {
+        consumerMultiplexer.unregister(partition)
+        //TODO: metrics.registry.unregister
+      })
+
+      //shutdownTask
+      taskInstance.shutdownTask
+
+      //shutdownTableManager
+      taskInstance.shutdownTableManager
+
+      //shutdownStores
+      taskInstance.shutdownStores
+    })
+
+    //shutdownOffsetManager
+    offsetManager.removeTasks(taskNames)
+
+    //shutdownMetrics
+    //TODO: unregister metrics or restart metrics
+    //reporters.get("JmxReporter").get
+
+    //shutdownSecurityManger
+
+    //shutdownAdmins
+
+    unpauseRunloop()
+
+  }
+  //Asynchronous pause
+  private def pauseRunloop() = {
+    runLoop match {
+      case runLoop: RunLoop => runLoop.pause
+    }
+  }
+  private def unpauseRunloop() = {
+    runLoop match {
+      case runLoop: RunLoop => runLoop.unpause
+    }
+  }
+
+  /* ends here */
+
+
   def startDiskSpaceMonitor: Unit = {
     if (diskSpaceMonitor != null) {
       info("Starting disk space monitor")

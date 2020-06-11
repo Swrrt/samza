@@ -383,19 +383,23 @@ public class FollowerJobCoordinator implements JobCoordinator {
                             processorId, newJobModel);
                     barrier.join(jobModelVersion, processorId);
                     stop();
-
-
                 }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                         && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
                     LOG.info("New JobModel does not change this container, do nothing");
                     isContainerModelEffected = false;
                     barrier.join(jobModelVersion, processorId);
                 } else {
-                    // stop current work
-                    if (coordinatorListener != null) {
-                        coordinatorListener.onJobModelExpired();
+                    //Check if it is source
+                    if(coordinatorListener != null && newJobModel.getContainers().get(processorId).getTasks().size() < oldJobModel.getContainers().get(processorId).getTasks().size()){
+                        LOG.info("This is source, trigger remove partitions");
+                        coordinatorListener.onRemovePartitions(newJobModel.getContainers().get(processorId).getTasks().keySet());
+                        LOG.info("Remove partition complete");
                     }
-                    isContainerModelEffected = true;
+                    // stop current work
+                    else if (coordinatorListener != null) {
+                        coordinatorListener.onJobModelExpired();
+                        isContainerModelEffected = true;
+                    }
                     // update ZK and wait for all the processors to get this new version
                     barrier.join(jobModelVersion, processorId);
                 }

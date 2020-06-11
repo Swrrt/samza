@@ -19,6 +19,8 @@
 
 package org.apache.samza.container
 
+import java.util.concurrent.locks.{Lock, ReentrantLock}
+
 import org.apache.samza.task.CoordinatorRequests
 import org.apache.samza.system.{IncomingMessageEnvelope, SystemConsumers, SystemStreamPartition}
 import org.apache.samza.task.ReadableCoordinator
@@ -50,6 +52,11 @@ class RunLoop (
   private var lastCommitNs = clock()
   private var activeNs = 0L
   @volatile private var shutdownNow = false
+
+  //StreamSwitch
+  @volatile private var pauseNow = false
+  @volatile var pauseLock = new ReentrantLock()
+
   private val coordinatorRequests: CoordinatorRequests = new CoordinatorRequests(taskInstances.keySet.asJava)
 
   // Messages come from the chooser with no connection to the TaskInstance they're bound for.
@@ -72,36 +79,55 @@ class RunLoop (
    * Starts the run loop. Blocks until either the tasks request shutdown, or an
    * unhandled exception is thrown.
    */
+  //TODO: Add a pause signal here
   def run {
     while (!shutdownNow) {
-      val loopStartTime = clock()
-
-      trace("Attempting to choose a message to process.")
-
-      // Exclude choose time from activeNs. Although it includes deserialization time,
-      // it most closely captures idle time.
-      val envelope = updateTimer(metrics.chooseNs) {
-        consumerMultiplexer.choose()
+      if(pauseNow) {
+        //Need a timeout here avoid busy waiting
+        Thread.sleep(50)
       }
+      else {
+        pauseLock.lock()
+        val loopStartTime = clock()
 
-      executor.execute(new Runnable() {
-        override def run(): Unit = process(envelope)
-      })
+        trace("Attempting to choose a message to process.")
 
-      window
-      commit
-      val totalNs = clock() - loopStartTime
+        // Exclude choose time from activeNs. Although it includes deserialization time,
+        // it most closely captures idle time.
+        val envelope = updateTimer(metrics.chooseNs) {
+          consumerMultiplexer.choose()
+        }
 
-      if (totalNs != 0) {
-        metrics.utilization.set(activeNs.toFloat / totalNs)
+        executor.execute(new Runnable() {
+          override def run(): Unit = process(envelope)
+        })
+
+        window
+        commit
+        val totalNs = clock() - loopStartTime
+
+        if (totalNs != 0) {
+          metrics.utilization.set(activeNs.toFloat / totalNs)
+        }
+        activeNs = 0L
+        pauseLock.unlock()
       }
-      activeNs = 0L
     }
   }
 
   def setWorkFactor(workFactor: Double): Unit = executor.setWorkFactor(workFactor)
 
   def getWorkFactor: Double = executor.getWorkFactor
+
+  //StreamSwitch
+  def pause: Unit = {
+    pauseNow = true
+    pauseLock.lock()
+  }
+  def unpause: Unit = {
+    pauseLock.unlock()
+    pauseNow = false
+  }
 
   def shutdown: Unit = {
     shutdownNow = true
