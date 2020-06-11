@@ -390,7 +390,9 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     barrier.join(jobModelVersion, processorId);
                 } else {
                     //Check if it is source
-                    if(coordinatorListener != null && newJobModel.getContainers().get(processorId).getTasks().size() < oldJobModel.getContainers().get(processorId).getTasks().size()){
+                    if(coordinatorListener != null
+                            && oldJobModel.getContainers().containsKey(processorId)
+                            && newJobModel.getContainers().get(processorId).getTasks().size() < oldJobModel.getContainers().get(processorId).getTasks().size()){
                         LOG.info("This is source, trigger remove partitions");
                         coordinatorListener.onRemovePartitions(newJobModel.getContainers().get(processorId).getTasks().keySet());
                         LOG.info("Remove partition complete");
