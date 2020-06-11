@@ -33,3 +33,4 @@ samza-shell/src/main/visualizer/plan.json
 **/hs_err_pid*.log
 .vscode/
 ._.DS_Store
+samza-core/src/main/scala/org/apache/samza/container/._RunLoop.scala
