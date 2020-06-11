@@ -100,8 +100,6 @@ class RunLoop (
       }
       else {
         pauseLock.lock()
-        val loopStartTime = clock()
-
         trace("Attempting to choose a message to process.")
 
         // Exclude choose time from activeNs. Although it includes deserialization time,
@@ -130,8 +128,7 @@ class RunLoop (
         }
         window
         commit
-        val totalNs = clock() - loopStartTime
-
+        
         processTime += usefulTime
         timeInterval += totalNs
         if (currentNs - start >= 1000000000) { // totalNs is not 0 if timer metrics are enabled
