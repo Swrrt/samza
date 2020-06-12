@@ -230,11 +230,14 @@ class SystemConsumers (
   def choose (updateChooser: Boolean = true): IncomingMessageEnvelope = {
     //Stream Switch
     var envelopeFromChooser = chooser.choose
-    info(envelopeFromChooser)
+    var skippedMessages = 0
     while(envelopeFromChooser == null || !unprocessedMessagesBySSP.containsKey(envelopeFromChooser.getSystemStreamPartition)){
+      skippedMessages += 1
       envelopeFromChooser = chooser.choose
     }
-
+    if(skippedMessages > 5){
+      info("Skipped messages: " + skippedMessages)
+    }
     updateTimer(metrics.deserializationNs) {
       if (envelopeFromChooser == null) {
         trace("Chooser returned null.")
