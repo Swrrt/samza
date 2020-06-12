@@ -54,8 +54,7 @@ class RunLoop (
   @volatile private var shutdownNow = false
 
   //StreamSwitch
-  @volatile private var pauseNow = false
-  @volatile var pauseLock = new ReentrantLock()
+  @volatile var pauseLock = new ReentrantLock(true)
 
   private val coordinatorRequests: CoordinatorRequests = new CoordinatorRequests(taskInstances.keySet.asJava)
 
@@ -82,12 +81,8 @@ class RunLoop (
   //TODO: Add a pause signal here
   def run {
     while (!shutdownNow) {
-      if(pauseNow) {
-        //Need a timeout here avoid busy waiting
-        Thread.sleep(50)
-      }
-      else {
-        pauseLock.lock()
+      pauseLock.lock()
+      try {
         val loopStartTime = clock()
 
         trace("Attempting to choose a message to process.")
@@ -110,6 +105,7 @@ class RunLoop (
           metrics.utilization.set(activeNs.toFloat / totalNs)
         }
         activeNs = 0L
+      }finally {
         pauseLock.unlock()
       }
     }
@@ -121,12 +117,10 @@ class RunLoop (
 
   //StreamSwitch
   def pause: Unit = {
-    pauseNow = true
     pauseLock.lock()
   }
   def unpause: Unit = {
     pauseLock.unlock()
-    pauseNow = false
   }
 
   def shutdown: Unit = {

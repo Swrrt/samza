@@ -924,41 +924,50 @@ class SamzaContainer(
   // 2) remove
   // 3) unpause runloop
   // TODO: need to pause runloop first!
-  def removePartitions(taskNames: List[TaskName]) = {
+  def removePartitions(taskNames: java.util.List[TaskName]) : Unit ={
+    info("Remove partitions " + taskNames)
     pauseRunloop()
-    taskNames.foreach(taskName => {
-      val taskInstance = taskInstances.get(taskName).get
-      // Commit task
-      taskInstance.commit
-      //shutdownConsumer
-      taskInstance.systemStreamPartitions.foreach(partition => {
-        consumerMultiplexer.unregister(partition)
-        //TODO: metrics.registry.unregister
+    try {
+      info("Start removing...")
+      taskNames.asScala.foreach(taskName => {
+        val taskInstance = taskInstances.get(taskName).get
+        // Commit task
+        info("Committing task:" + taskNames)
+        taskInstance.commit
+        //shutdownConsumer
+        info("Unregistering consumers")
+        taskInstance.systemStreamPartitions.foreach(partition => {
+          consumerMultiplexer.unregister(partition)
+          //TODO: metrics.registry.unregister
+        })
+
+        //shutdownTask
+        info("Shutdown task")
+        taskInstance.shutdownTask
+
+        //shutdownTableManager
+        info("Shutdown Table Manager")
+        taskInstance.shutdownTableManager
+
+        //shutdownStores
+        info("Shutdown stores")
+        taskInstance.shutdownStores
       })
 
-      //shutdownTask
-      taskInstance.shutdownTask
+      //shutdownOffsetManager
+      info("Remove tasks from offsetManager")
+      offsetManager.removeTasks(taskNames)
 
-      //shutdownTableManager
-      taskInstance.shutdownTableManager
+      //shutdownMetrics
+      //TODO: unregister metrics or restart metrics
+      //reporters.get("JmxReporter").get
 
-      //shutdownStores
-      taskInstance.shutdownStores
-    })
+      //shutdownSecurityManger
 
-    //shutdownOffsetManager
-    offsetManager.removeTasks(taskNames)
-
-    //shutdownMetrics
-    //TODO: unregister metrics or restart metrics
-    //reporters.get("JmxReporter").get
-
-    //shutdownSecurityManger
-
-    //shutdownAdmins
-
-    unpauseRunloop()
-
+      //shutdownAdmins
+    }finally {
+      unpauseRunloop()
+    }
   }
   //Asynchronous pause
   private def pauseRunloop() = {
