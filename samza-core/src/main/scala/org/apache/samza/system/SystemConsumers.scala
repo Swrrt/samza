@@ -230,7 +230,11 @@ class SystemConsumers (
   def choose (updateChooser: Boolean = true): IncomingMessageEnvelope = {
     val chooseStart = clock()
 
-    val envelopeFromChooser = chooser.choose
+    //Stream Switch
+    var envelopeFromChooser = chooser.choose
+    while(!unprocessedMessagesBySSP.containsKey(envelopeFromChooser.getSystemStreamPartition)){
+      envelopeFromChooser = chooser.choose
+    }
 
     val chooseNs = clock() - chooseStart
 

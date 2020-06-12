@@ -943,7 +943,7 @@ class SamzaContainer(
       taskNames.asScala.foreach(taskName => {
         val taskInstance = taskInstances.get(taskName).get
         // Commit task
-        info("Committing task:" + taskNames)
+        info("Committing task:" + taskName)
         taskInstance.commit
         //shutdownConsumer
         info("Unregistering consumers")
