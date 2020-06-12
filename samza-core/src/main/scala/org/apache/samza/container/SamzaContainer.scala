@@ -963,7 +963,7 @@ class SamzaContainer(
         //shutdownStores
         info("Shutdown stores")
         taskInstance.shutdownStores
-        taskInstance.metrics.processes.set(0)
+        taskInstance.metrics.messagesActuallyProcessed.set(0)
       })
 
       //shutdownOffsetManager
