@@ -232,14 +232,18 @@ class SystemConsumers (
 
     //Stream Switch
     var envelopeFromChooser = chooser.choose
-    info(envelopeFromChooser)
+    var skippedMessages = 0
     while(envelopeFromChooser == null || !unprocessedMessagesBySSP.containsKey(envelopeFromChooser.getSystemStreamPartition)){
+      skippedMessages += 1
       envelopeFromChooser = chooser.choose
     }
-
+    
     val chooseNs = clock() - chooseStart
 
 //    val deStart = clock()
+    if(skippedMessages > 5){
+      info("Skipped messages: " + skippedMessages)
+    }
     updateTimer(metrics.deserializationNs) {
       if (envelopeFromChooser == null) {
         trace("Chooser returned null.")
