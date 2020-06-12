@@ -232,7 +232,8 @@ class SystemConsumers (
 
     //Stream Switch
     var envelopeFromChooser = chooser.choose
-    while(!unprocessedMessagesBySSP.containsKey(envelopeFromChooser.getSystemStreamPartition)){
+    info(envelopeFromChooser)
+    while(envelopeFromChooser == null || !unprocessedMessagesBySSP.containsKey(envelopeFromChooser.getSystemStreamPartition)){
       envelopeFromChooser = chooser.choose
     }
 
