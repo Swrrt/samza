@@ -940,9 +940,7 @@ class SamzaContainer(
     taskNames.foreach(taskName => {
       val taskInstance = taskInstances.get(taskName).get
       // Commit task
-      if (isAutoCommitEnabled) {
-        taskInstance.commit
-      }
+      taskInstance.commit
       //shutdownConsumer
       taskInstance.systemStreamPartitions.foreach(partition => {
         consumerMultiplexer.unregister(partition)
