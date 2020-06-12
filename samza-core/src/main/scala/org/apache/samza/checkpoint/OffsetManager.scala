@@ -457,10 +457,10 @@ class OffsetManager(
   }
 
   //For StreamSwitch
-  def removeTasks(taskNames: List[TaskName]) = {
-    startingOffsets.--(taskNames)
-    taskNames.foreach(lastProcessedOffsets.remove(_))
+  def removeTasks(taskNames: java.util.List[TaskName]) = {
+    startingOffsets.--(taskNames.asScala)
+    taskNames.asScala.foreach(lastProcessedOffsets.remove(_))
     //TODO: Translate from taskname to ssp
-    systemStreamPartitions.--(taskNames)
+    systemStreamPartitions.--(taskNames.asScala)
   }
 }

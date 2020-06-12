@@ -60,8 +60,7 @@ class RunLoop (
   @volatile private var shutdownNow = false
 
   //StreamSwitch
-  @volatile private var pauseNow = false
-  @volatile var pauseLock = new ReentrantLock()
+  @volatile var pauseLock = new ReentrantLock(true)
 
   private val coordinatorRequests: CoordinatorRequests = new CoordinatorRequests(taskInstances.keySet.asJava)
 
@@ -94,12 +93,8 @@ class RunLoop (
 
     while (!shutdownNow) {
       var prevNs = clock()
-      if(pauseNow) {
-        //Need a timeout here avoid busy waiting
-        Thread.sleep(50)
-      }
-      else {
-        pauseLock.lock()
+      pauseLock.lock()
+      try {
         trace("Attempting to choose a message to process.")
 
         // Exclude choose time from activeNs. Although it includes deserialization time,
@@ -151,6 +146,7 @@ class RunLoop (
           chooseTime = 0
         }
         activeNs = 0L
+      }finally {
         pauseLock.unlock()
       }
     }
@@ -162,12 +158,10 @@ class RunLoop (
 
   //StreamSwitch
   def pause: Unit = {
-    pauseNow = true
     pauseLock.lock()
   }
   def unpause: Unit = {
     pauseLock.unlock()
-    pauseNow = false
   }
 
   def shutdown: Unit = {
