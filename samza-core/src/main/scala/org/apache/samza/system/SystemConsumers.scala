@@ -228,7 +228,11 @@ class SystemConsumers (
   }
 
   def choose (updateChooser: Boolean = true): IncomingMessageEnvelope = {
-    val envelopeFromChooser = chooser.choose
+    //Stream Switch
+    var envelopeFromChooser = chooser.choose
+    while(!unprocessedMessagesBySSP.containsKey(envelopeFromChooser.getSystemStreamPartition)){
+      envelopeFromChooser = chooser.choose
+    }
 
     updateTimer(metrics.deserializationNs) {
       if (envelopeFromChooser == null) {
