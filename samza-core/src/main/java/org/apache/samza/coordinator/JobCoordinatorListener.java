@@ -66,7 +66,7 @@ public interface JobCoordinatorListener {
 
   default void onRemovePartitions(Set<TaskName> partitions){
   }
-  default void onInsertPartitions(Set<TaskName> partitions){
+  default void onAddPartitions(Set<TaskName> partitions){
   }
 
 }

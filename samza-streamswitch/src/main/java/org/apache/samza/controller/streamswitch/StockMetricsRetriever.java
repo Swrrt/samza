@@ -593,12 +593,16 @@ public class StockMetricsRetriever implements StreamSwitchMetricsRetriever {
                     } else {
                         if (val >= partitionProcessed.get(partitionId)) {
                             partitionProcessed.put(partitionId, val);
-                            LOG.info("Container " + containerId + " update " + partitionId + " processed: " + val);
-                            LOG.info("Processed: " + Long.parseLong(ent.getValue()) + " checkpoint offset: " + (val - Long.parseLong(ent.getValue())));
+                            //LOG.info("Container " + containerId + " update " + partitionId + " processed: " + val);
+                            //LOG.info("Processed: " + Long.parseLong(ent.getValue()) + " checkpoint offset: " + (val - Long.parseLong(ent.getValue())));
                             partitionValid.put(partitionId, true);
                         }else{
-                            LOG.warn("Container " + containerId + "'s " +  partitionId + " processed is still smaller than old: old=" + partitionProcessed.get(partitionId) + " new=" + val);
-                            LOG.info("Processed: " + Long.parseLong(ent.getValue()) + " checkpoint offset: " + (val - Long.parseLong(ent.getValue())));
+                            if(Long.parseLong(ent.getValue()) > 0) {
+                                LOG.warn("Container " + containerId + "'s " + partitionId + " processed is still smaller than old: old=" + partitionProcessed.get(partitionId) + " new=" + val);
+                                LOG.info("Processed: " + Long.parseLong(ent.getValue()) + " checkpoint offset: " + (val - Long.parseLong(ent.getValue())));
+                            }else{
+                                //Means it is removed from source
+                            }
                             partitionValid.put(partitionId, true); //partitionValid.put(partitionId, false);
                         }
                     }
