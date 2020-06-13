@@ -943,6 +943,8 @@ class SamzaContainer(
           consumerMultiplexer.unregister(partition)
         })
 
+        taskInstance.metrics.messagesActuallyProcessed.set(0)
+
         //shutdownTask
         info("Shutdown task")
         taskInstance.shutdownTask
@@ -954,6 +956,10 @@ class SamzaContainer(
         //shutdownStores
         info("Shutdown stores")
         taskInstance.shutdownStores
+
+
+        //Remove taskinstance avoid multi-closing
+        taskInstances.-(taskName)
       })
 
       //shutdownOffsetManager

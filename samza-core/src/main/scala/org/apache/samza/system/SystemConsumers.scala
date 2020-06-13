@@ -22,6 +22,7 @@ package org.apache.samza.system
 
 import java.util
 import java.util.concurrent.TimeUnit
+
 import scala.collection.JavaConverters._
 import org.apache.samza.serializers.SerdeManager
 import org.apache.samza.util.{Logging, TimerUtil}
@@ -33,6 +34,8 @@ import java.util.HashSet
 import java.util.HashMap
 import java.util.Queue
 import java.util.Set
+
+import org.apache.samza.container.TaskName
 
 object SystemConsumers {
   val DEFAULT_POLL_INTERVAL_MS = 50
@@ -144,6 +147,8 @@ class SystemConsumers (
    */
   var totalUnprocessedMessages = 0
 
+  var removedPartitions = new util.LinkedHashSet[SystemStreamPartition]()
+
   debug("Got stream consumers: %s" format consumers)
   debug("Got no new message timeout: %s" format noNewMessagesTimeout)
 
@@ -204,6 +209,9 @@ class SystemConsumers (
 
   //StreamSwitch
   def unregister(systemStreamPartition: SystemStreamPartition): Unit = {
+
+    removedPartitions.add(systemStreamPartition)
+
     if(endOfStreamSSPs.contains(systemStreamPartition)){
       endOfStreamSSPs.remove(systemStreamPartition)
     }
@@ -231,11 +239,11 @@ class SystemConsumers (
     //Stream Switch
     var envelopeFromChooser = chooser.choose
     var skippedMessages = 0
-    while(envelopeFromChooser != null && !unprocessedMessagesBySSP.containsKey(envelopeFromChooser.getSystemStreamPartition)){
+    while(envelopeFromChooser != null && removedPartitions.contains(envelopeFromChooser.getSystemStreamPartition)){
       skippedMessages += 1
       envelopeFromChooser = chooser.choose
     }
-    if(skippedMessages > 5){
+    if(skippedMessages > 0){
       info("Skipped messages: " + skippedMessages)
     }
     updateTimer(metrics.deserializationNs) {
