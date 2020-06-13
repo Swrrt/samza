@@ -394,7 +394,13 @@ public class FollowerJobCoordinator implements JobCoordinator {
                             && oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                             && newJobModel.getContainers().get(processorId).getTasks().size() < oldJobModel.getContainers().get(processorId).getTasks().size()){
                         LOG.info("This is source, trigger remove partitions");
-                        coordinatorListener.onRemovePartitions(newJobModel.getContainers().get(processorId).getTasks().keySet());
+                        HashSet<TaskName> removingPartitions = new HashSet<>();
+                        for(TaskName partition: oldJobModel.getContainers().get(processorId).getTasks().keySet()){
+                            if(!newJobModel.getContainers().get(processorId).getTasks().containsKey(partition)){
+                                removingPartitions.add(partition);
+                            }
+                        }
+                        coordinatorListener.onRemovePartitions(removingPartitions);
                         LOG.info("Remove partition complete");
                     }
                     // stop current work
