@@ -933,13 +933,14 @@ class SamzaContainer(
         val taskInstance = taskInstances.get(taskName).get
         // Commit task
         info("Committing task:" + taskName)
+        //TODO: unregister metrics?
         taskInstance.metrics.messagesActuallyProcessed.set(0)
+
         taskInstance.commit
         //shutdownConsumer
         info("Unregistering consumers")
         taskInstance.systemStreamPartitions.foreach(partition => {
           consumerMultiplexer.unregister(partition)
-          //TODO: metrics.registry.unregister
         })
 
         //shutdownTask
