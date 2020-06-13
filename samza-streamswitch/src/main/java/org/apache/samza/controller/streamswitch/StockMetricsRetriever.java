@@ -595,7 +595,8 @@ public class StockMetricsRetriever implements StreamSwitchMetricsRetriever {
                             partitionProcessed.put(partitionId, val);
                             partitionValid.put(partitionId, true);
                         }else{
-                            LOG.warn(partitionId + "'s processed is still smaller then last: processed=" + partitionProcessed.get(partitionId) + " offset=" + val);
+                            LOG.warn("Container " + containerId + "'s " +  partitionId + " processed is still smaller than old: old=" + partitionProcessed.get(partitionId) + " new=" + val);
+                            LOG.info("Processed: " + Long.parseLong(ent.getValue()) + " checkpoint offset: " + (val - Long.parseLong(ent.getValue())));
                             partitionValid.put(partitionId, true); //partitionValid.put(partitionId, false);
                         }
                     }
