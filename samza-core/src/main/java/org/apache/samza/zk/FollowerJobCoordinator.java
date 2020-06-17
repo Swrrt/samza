@@ -423,12 +423,14 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     else if(coordinatorListener != null && oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                             && newJobModel.getContainers().get(processorId).getTasks().size() > oldJobModel.getContainers().get(processorId).getTasks().size()){
                         isTargetContainer = true;
+                        isContainerModelEffected = true;
                         //barrier.join(jobModelVersion, processorId);
                     }
                     // stop current work
                     else if (coordinatorListener != null) {
                         coordinatorListener.onJobModelExpired();
                         isContainerModelEffected = true;
+                        isTargetContainer = false;
                     }
                     // update ZK and wait for all the processors to get this new version
                     barrier.join(jobModelVersion, processorId);
