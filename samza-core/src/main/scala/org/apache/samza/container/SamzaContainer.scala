@@ -994,8 +994,9 @@ class SamzaContainer(
     info("Add partitions lock acquired")
     try{
 
-      //Initial tasks
+      //Add input SSPs
 
+      //Initial tasks
       val newTaskInstances = tasks.asScala.map(x => {
         val taskName = x._1
         val taskModel = x._2
@@ -1130,6 +1131,7 @@ class SamzaContainer(
               (storeName, storageEngine)
           }
         val taskSSPs = taskModel.getSystemStreamPartitions.asScala.toSet
+        info("Task SSP: %s" format taskSSPs)
 
         val (sideInputStores, nonSideInputStores) =
           taskStores.partition { case (storeName, _) => sideInputStoresToSystemStreams.contains(storeName)}
@@ -1239,17 +1241,22 @@ class SamzaContainer(
       })
 
       //startProducers
+      info("Starting producers")
       newTaskInstances.values.foreach(_.registerProducers)
 
       //startTask
+      info("Starting tasks")
       newTaskInstances.values.foreach(_.initTask)
 
       //startConsumers
+      info("Starting consumers")
       newTaskInstances.values.foreach(_.registerConsumers)
 
       //startMetrics
+      info("Starting metrics")
       newTaskInstances.values.foreach(_.registerMetrics)
 
+      info("Starting completed")
     }finally {
       resumeRunloop()
       info("Add partitions lock released")
