@@ -423,7 +423,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     else if(coordinatorListener != null && oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                             && newJobModel.getContainers().get(processorId).getTasks().size() > oldJobModel.getContainers().get(processorId).getTasks().size()){
                         isTargetContainer = true;
-                        barrier.join(jobModelVersion, processorId);
+                        //barrier.join(jobModelVersion, processorId);
                     }
                     // stop current work
                     else if (coordinatorListener != null) {
