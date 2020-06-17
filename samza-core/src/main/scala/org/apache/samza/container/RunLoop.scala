@@ -160,7 +160,7 @@ class RunLoop (
   def pause: Unit = {
     pauseLock.lock()
   }
-  def unpause: Unit = {
+  def resume: Unit = {
     pauseLock.unlock()
   }
 

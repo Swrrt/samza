@@ -20,8 +20,10 @@ package org.apache.samza.coordinator;
 
 import org.apache.samza.container.TaskName;
 import org.apache.samza.job.model.JobModel;
+import org.apache.samza.job.model.TaskModel;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -66,7 +68,7 @@ public interface JobCoordinatorListener {
 
   default void onRemovePartitions(Set<TaskName> partitions){
   }
-  default void onInsertPartitions(Set<TaskName> partitions){
+  default void onAddPartitions(Map<TaskName, TaskModel> partitions, JobModel jobModel){
   }
 
 }

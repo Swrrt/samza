@@ -40,11 +40,12 @@ import org.apache.samza.config.StreamConfig.Config2Stream
 import org.apache.samza.config.SystemConfig.Config2System
 import org.apache.samza.config.TaskConfig.Config2Task
 import org.apache.samza.config._
+import org.apache.samza.container.SamzaContainer.{debug, getChangelogSSPsForContainer, getLoggedStorageBaseDir, getNonLoggedStorageBaseDir, warn}
 import org.apache.samza.container.disk.DiskSpaceMonitor.Listener
 import org.apache.samza.container.disk.{DiskQuotaPolicyFactory, DiskSpaceMonitor, NoThrottlingDiskQuotaPolicyFactory, PollingScanDiskSpaceMonitor}
 import org.apache.samza.container.host.{StatisticsMonitorImpl, SystemMemoryStatistics, SystemStatisticsMonitor}
 import org.apache.samza.context._
-import org.apache.samza.job.model.{ContainerModel, JobModel}
+import org.apache.samza.job.model.{ContainerModel, JobModel, TaskModel}
 import org.apache.samza.metrics.{JmxServer, JvmMetrics, MetricsRegistryMap, MetricsReporter}
 import org.apache.samza.serializers._
 import org.apache.samza.serializers.model.SamzaObjectMapper
@@ -938,6 +939,7 @@ class SamzaContainer(
   def removePartitions(taskNames: java.util.List[TaskName]) : Unit ={
     info("Remove partitions " + taskNames)
     pauseRunloop()
+    info("Remove partition lock acquired")
     try {
       info("Start removing...")
       taskNames.asScala.foreach(taskName => {
@@ -985,7 +987,283 @@ class SamzaContainer(
 
       //shutdownAdmins
     }finally {
-      unpauseRunloop()
+      resumeRunloop()
+      info("Remove partitions lock released")
+    }
+  }
+
+  //Add partitions
+  def addPartitions(tasks: java.util.Map[TaskName, TaskModel],
+                    taskFactory: TaskFactory[_],
+                    jobContext: JobContext,
+                    jobModel: JobModel,
+                    containerId: String,
+                    applicationTaskContextFactoryOption: Option[ApplicationTaskContextFactory[ApplicationTaskContext]]
+                   ) : Unit ={
+    info("Add partitions " + tasks.keySet())
+    pauseRunloop()
+    info("Add partitions lock acquired")
+    try{
+
+      //Initial tasks
+
+      val newTaskInstances = tasks.asScala.map(x => {
+        val taskName = x._1
+        val taskModel = x._2
+        val singleThreadMode = config.getSingleThreadMode
+        val finalTaskFactory = TaskFactoryUtil.finalizeTaskFactory(
+          taskFactory,
+          singleThreadMode,
+          taskThreadPool)
+        val task = finalTaskFactory match {
+          case tf: AsyncStreamTaskFactory => tf.asInstanceOf[AsyncStreamTaskFactory].createInstance()
+          case tf: StreamTaskFactory => tf.asInstanceOf[StreamTaskFactory].createInstance()
+        }
+        val taskInstanceMetrics = new TaskInstanceMetrics("TaskName-%s" format taskName)
+        val collector = new TaskInstanceCollector(producerMultiplexer, taskInstanceMetrics)
+
+        val changeLogSystemStreams = config
+          .getStoreNames
+          .filter(config.getChangelogStream(_).isDefined)
+          .map(name => (name, config.getChangelogStream(name).get)).toMap
+          .mapValues(StreamUtil.getSystemStreamFromNames(_))
+        val systemNames = config.getSystemNames
+
+        val systemFactories = systemNames.map(systemName => {
+          val systemFactoryClassName = config
+            .getSystemFactory(systemName)
+            .getOrElse(throw new SamzaException("A stream uses system %s, which is missing from the configuration." format systemName))
+          (systemName, Util.getObj(systemFactoryClassName, classOf[SystemFactory]))
+        }).toMap
+        val storeConsumers = changeLogSystemStreams
+          .map {
+            case (storeName, changeLogSystemStream) =>
+              val systemConsumer = systemFactories
+                .getOrElse(changeLogSystemStream.getSystem,
+                  throw new SamzaException("Changelog system %s for store %s does not " +
+                    "exist in the config." format (changeLogSystemStream, storeName)))
+                .getConsumer(changeLogSystemStream.getSystem, config, taskInstanceMetrics.registry)
+              metrics.addStoreRestorationGauge(taskName, storeName)
+              (storeName, systemConsumer)
+          }
+
+        val defaultStoreBaseDir = new File(System.getProperty("user.dir"), "state")
+
+        val nonLoggedStorageBaseDir = getNonLoggedStorageBaseDir(config, defaultStoreBaseDir)
+
+        val loggedStorageBaseDir = getLoggedStorageBaseDir(config, defaultStoreBaseDir)
+
+        val storageEngineFactories = config
+          .getStoreNames
+          .map(storeName => {
+            val storageFactoryClassName = config
+              .getStorageFactoryClassName(storeName)
+              .getOrElse(throw new SamzaException("Missing storage factory for %s." format storeName))
+            (storeName, Util.getObj(storageFactoryClassName, classOf[StorageEngineFactory[Object, Object]]))
+          }).toMap
+
+        val serdesFromFactories = config.getSerdeNames.map(serdeName => {
+          val serdeClassName = config
+            .getSerdeClass(serdeName)
+            .getOrElse(SerializerConfig.getSerdeFactoryName(serdeName))
+
+          val serde = Util.getObj(serdeClassName, classOf[SerdeFactory[Object]])
+            .getSerde(serdeName, config)
+
+          (serdeName, serde)
+        }).toMap
+
+        val serializableSerde = new SerializableSerde[Serde[Object]]()
+        val serdesFromSerializedInstances = config.subset(SerializerConfig.SERIALIZER_PREFIX format "").asScala
+          .filter { case (key, value) => key.endsWith(SerializerConfig.SERIALIZED_INSTANCE_SUFFIX) }
+          .flatMap { case (key, value) =>
+            val serdeName = key.replace(SerializerConfig.SERIALIZED_INSTANCE_SUFFIX, "")
+            debug(s"Trying to deserialize serde instance for $serdeName")
+            try {
+              val bytes = Base64.getDecoder.decode(value)
+              val serdeInstance = serializableSerde.fromBytes(bytes)
+              debug(s"Returning serialized instance for $serdeName")
+              Some((serdeName, serdeInstance))
+            } catch {
+              case e: Exception =>
+                warn(s"Ignoring invalid serialized instance for $serdeName: $value", e)
+                None
+            }
+          }
+
+        val serdes = serdesFromFactories ++ serdesFromSerializedInstances
+
+        val sideInputStoresToSystemStreams = config.getStoreNames
+          .map { storeName => (storeName, config.getSideInputs(storeName)) }
+          .filter { case (storeName, sideInputs) => sideInputs.nonEmpty }
+          .map { case (storeName, sideInputs) => (storeName, sideInputs.map(StreamUtil.getSystemStreamFromNameOrId(config, _))) }
+          .toMap
+
+        val taskStores = storageEngineFactories
+          .map {
+            case (storeName, storageEngineFactory) =>
+              val changeLogSystemStreamPartition = if (changeLogSystemStreams.contains(storeName)) {
+                new SystemStreamPartition(changeLogSystemStreams(storeName), taskModel.getChangelogPartition)
+              } else {
+                null
+              }
+
+              val keySerde = config.getStorageKeySerde(storeName) match {
+                case Some(keySerde) => serdes.getOrElse(keySerde,
+                  throw new SamzaException("StorageKeySerde: No class defined for serde: %s." format keySerde))
+                case _ => null
+              }
+
+              val msgSerde = config.getStorageMsgSerde(storeName) match {
+                case Some(msgSerde) => serdes.getOrElse(msgSerde,
+                  throw new SamzaException("StorageMsgSerde: No class defined for serde: %s." format msgSerde))
+                case _ => null
+              }
+
+              // We use the logged storage base directory for change logged and side input stores since side input stores
+              // dont have changelog configured.
+              val storeDir = if (changeLogSystemStreamPartition != null || sideInputStoresToSystemStreams.contains(storeName)) {
+                TaskStorageManager.getStorePartitionDir(loggedStorageBaseDir, storeName, taskName)
+              } else {
+                TaskStorageManager.getStorePartitionDir(nonLoggedStorageBaseDir, storeName, taskName)
+              }
+
+              val storageEngine = storageEngineFactory.getStorageEngine(
+                storeName,
+                storeDir,
+                keySerde,
+                msgSerde,
+                collector,
+                taskInstanceMetrics.registry,
+                changeLogSystemStreamPartition,
+                jobContext,
+                containerContext)
+              (storeName, storageEngine)
+          }
+        val taskSSPs = taskModel.getSystemStreamPartitions.asScala.toSet
+
+        val (sideInputStores, nonSideInputStores) =
+          taskStores.partition { case (storeName, _) => sideInputStoresToSystemStreams.contains(storeName)}
+
+        val sideInputStoresToSSPs = sideInputStoresToSystemStreams.mapValues(sideInputSystemStreams =>
+          taskSSPs.filter(ssp => sideInputSystemStreams.contains(ssp.getSystemStream)).asJava)
+
+        val taskSideInputSSPs = sideInputStoresToSSPs.values.flatMap(_.asScala).toSet
+
+        val sideInputStoresToProcessor = sideInputStores.keys.map(storeName => {
+          // serialized instances takes precedence over the factory configuration.
+          config.getSideInputsProcessorSerializedInstance(storeName).map(serializedInstance =>
+            (storeName, SerdeUtils.deserialize("Side Inputs Processor", serializedInstance)))
+            .orElse(config.getSideInputsProcessorFactory(storeName).map(factoryClassName =>
+              (storeName, Util.getObj(factoryClassName, classOf[SideInputsProcessorFactory])
+                .getSideInputsProcessor(config, taskInstanceMetrics.registry))))
+            .get
+        }).toMap
+
+        val maxChangeLogStreamPartitions = jobModel.maxChangeLogStreamPartitions
+        val streamMetadataCache = new StreamMetadataCache(systemAdmins)
+        val containerModel = jobModel.getContainers.get(containerId)
+        val changelogSSPMetadataCache = new SSPMetadataCache(systemAdmins,
+          Duration.ofSeconds(5),
+          SystemClock.instance,
+          getChangelogSSPsForContainer(containerModel, changeLogSystemStreams).asJava)
+        val storageManager = new TaskStorageManager(
+          taskName = taskName,
+          taskStores = nonSideInputStores,
+          storeConsumers = storeConsumers,
+          changeLogSystemStreams = changeLogSystemStreams,
+          maxChangeLogStreamPartitions,
+          streamMetadataCache = streamMetadataCache,
+          sspMetadataCache = changelogSSPMetadataCache,
+          nonLoggedStoreBaseDir = nonLoggedStorageBaseDir,
+          loggedStoreBaseDir = loggedStorageBaseDir,
+          partition = taskModel.getChangelogPartition,
+          systemAdmins = systemAdmins,
+          new StorageConfig(config).getChangeLogDeleteRetentionsInMs,
+          new SystemClock)
+
+        var sideInputStorageManager: TaskSideInputStorageManager = null
+        if (sideInputStores.nonEmpty) {
+          sideInputStorageManager = new TaskSideInputStorageManager(
+            taskName,
+            streamMetadataCache,
+            loggedStorageBaseDir.getPath,
+            sideInputStores.asJava,
+            sideInputStoresToProcessor.asJava,
+            sideInputStoresToSSPs.asJava,
+            systemAdmins,
+            config,
+            new SystemClock)
+        }
+
+        val tableManager = new TableManager(config, serdes.asJava)
+
+        def createTaskInstance(task: Any): TaskInstance = new TaskInstance(
+          task = task,
+          taskModel = taskModel,
+          metrics = taskInstanceMetrics,
+          systemAdmins = systemAdmins,
+          consumerMultiplexer = consumerMultiplexer,
+          collector = collector,
+          offsetManager = offsetManager,
+          storageManager = storageManager,
+          tableManager = tableManager,
+          reporters = reporters,
+          systemStreamPartitions = taskSSPs,
+          exceptionHandler = TaskInstanceExceptionHandler(taskInstanceMetrics, config),
+          jobModel = jobModel,
+          streamMetadataCache = streamMetadataCache,
+          timerExecutor = timerExecutor,
+          sideInputSSPs = taskSideInputSSPs,
+          sideInputStorageManager = sideInputStorageManager,
+          jobContext = jobContext,
+          containerContext = containerContext,
+          applicationContainerContextOption = applicationContainerContextOption,
+          applicationTaskContextFactoryOption = applicationTaskContextFactoryOption)
+
+        val taskInstance = createTaskInstance(task)
+        (taskName, taskInstance)
+      }).toMap
+      taskInstances.++(newTaskInstances)
+
+      //startOffsetManager
+      info("Registering new task instances with offsets")
+      newTaskInstances.values.foreach(_.registerOffsets)
+
+      //startStores
+      newTaskInstances.values.foreach(taskInstance => {
+        val startTime = System.currentTimeMillis()
+        info("Starting stores in task instance %s" format taskInstance.taskName)
+        taskInstance.startStores
+        // Measuring the time to restore the stores
+        val timeToRestore = System.currentTimeMillis() - startTime
+        val taskGauge = metrics.taskStoreRestorationMetrics.asScala.getOrElse(taskInstance.taskName, null)
+        if (taskGauge != null) {
+          taskGauge.set(timeToRestore)
+        }
+      })
+
+      //startTableManager
+      newTaskInstances.values.foreach(taskInstance => {
+        info("Starting table manager in task instance %s" format taskInstance.taskName)
+        taskInstance.startTableManager
+      })
+
+      //startProducers
+      newTaskInstances.values.foreach(_.registerProducers)
+
+      //startTask
+      newTaskInstances.values.foreach(_.initTask)
+
+      //startConsumers
+      newTaskInstances.values.foreach(_.registerConsumers)
+
+      //startMetrics
+      newTaskInstances.values.foreach(_.registerMetrics)
+
+    }finally {
+      resumeRunloop()
+      info("Add partitions lock released")
     }
   }
   //Asynchronous pause
@@ -994,9 +1272,9 @@ class SamzaContainer(
       case runLoop: RunLoop => runLoop.pause
     }
   }
-  private def unpauseRunloop() = {
+  private def resumeRunloop() = {
     runLoop match {
-      case runLoop: RunLoop => runLoop.unpause
+      case runLoop: RunLoop => runLoop.resume
     }
   }
 

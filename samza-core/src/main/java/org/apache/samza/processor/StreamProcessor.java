@@ -49,6 +49,7 @@ import org.apache.samza.coordinator.JobCoordinator;
 import org.apache.samza.coordinator.JobCoordinatorFactory;
 import org.apache.samza.coordinator.JobCoordinatorListener;
 import org.apache.samza.job.model.JobModel;
+import org.apache.samza.job.model.TaskModel;
 import org.apache.samza.metrics.MetricsReporter;
 import org.apache.samza.runtime.ProcessorLifecycleListener;
 import org.apache.samza.task.TaskFactory;
@@ -398,6 +399,11 @@ public class StreamProcessor {
             LOGGER.info("Ignoring onNewJobModel invocation since the current state is {} and not {}.", state, State.IN_REBALANCE);
           }
         }
+      }
+
+      @Override
+      public void onAddPartitions(Map<TaskName, TaskModel> partitions, JobModel jobModel){
+        container.addPartitions(partitions, taskFactory, JobContextImpl.fromConfigWithDefaults(config), jobModel, processorId, Option.apply(applicationDefinedTaskContextFactoryOptional.orElse(null)));
       }
 
       @Override
