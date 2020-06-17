@@ -32,6 +32,7 @@ import org.apache.samza.coordinator.JobModelManager;
 import org.apache.samza.coordinator.LeaderElectorListener;
 import org.apache.samza.job.model.ContainerModel;
 import org.apache.samza.job.model.JobModel;
+import org.apache.samza.job.model.TaskModel;
 import org.apache.samza.metrics.MetricsRegistry;
 import org.apache.samza.metrics.MetricsReporter;
 import org.apache.samza.metrics.ReadableMetricsRegistry;
@@ -90,6 +91,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
     private JobCoordinatorListener coordinatorListener = null;
     private JobModel newJobModel, oldJobModel = null; //oldJobModel is used to check whether container is effected
     private boolean isContainerModelEffected = false;
+    private boolean isTargetContainer = false;
     private boolean hasCreatedStreams = false;
     private String cachedJobModelVersion = null;
 
@@ -329,9 +331,23 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     // read the new Model
                     JobModel jobModel = getJobModel();
                     // start the container with the new model if it is effected
-                    if(!isContainerModelEffected){
+                    if (!isContainerModelEffected) {
                         LOG.info("Container is not effected, no need to restart.");
-                    }else if (coordinatorListener != null) {
+                    }
+                    // It's the target
+                    else if(isTargetContainer){
+                        HashMap<TaskName, TaskModel> addPartitions = new HashMap<>();
+                        for(TaskName partition: newJobModel.getContainers().get(processorId).getTasks().keySet()){
+                            if(!oldJobModel.getContainers().get(processorId).getTasks().containsKey(partition)){
+                                addPartitions.put(partition, newJobModel.getContainers().get(processorId).getTasks().get(partition));
+                            }
+                        }
+                        isTargetContainer = false;
+                        if(coordinatorListener != null){
+                            coordinatorListener.onAddPartitions(addPartitions, jobModel);
+                        }
+                    }
+                    else if (coordinatorListener != null) {
                         coordinatorListener.onNewJobModel(processorId, jobModel);
                     }
                 });
@@ -402,6 +418,12 @@ public class FollowerJobCoordinator implements JobCoordinator {
                         }
                         coordinatorListener.onRemovePartitions(removingPartitions);
                         LOG.info("Remove partition complete");
+                    }
+                    // Check if it is target
+                    else if(coordinatorListener != null && oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
+                            && newJobModel.getContainers().get(processorId).getTasks().size() > oldJobModel.getContainers().get(processorId).getTasks().size()){
+                        isTargetContainer = true;
+                        barrier.join(jobModelVersion, processorId);
                     }
                     // stop current work
                     else if (coordinatorListener != null) {
