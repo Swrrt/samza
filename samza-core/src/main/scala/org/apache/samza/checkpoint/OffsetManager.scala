@@ -190,6 +190,74 @@ class OffsetManager(
     info("Successfully loaded starting offsets: %s" format startingOffsets)
   }
 
+  //StreamSwitch
+  def add(addSSPs: Map[TaskName, Set[SystemStreamPartition]]): Unit ={
+    info("Add partitions %s to OffsetManager" format addSSPs.keys)
+
+    //registerCheckpointManager
+    if (checkpointManager != null) {
+      addSSPs.keys.foreach(checkpointManager.register)
+    }
+
+    //loadOffsetsFromCheckpointManager
+    if (checkpointManager != null) {
+      val result = addSSPs.keys.flatMap(restoreOffsetsFromCheckpoint(_)).toMap
+      result.map { case (taskName, sspToOffset) => {
+        lastProcessedOffsets.put(taskName, new ConcurrentHashMap[SystemStreamPartition, String](sspToOffset.filter {
+          case (systemStreamPartition, offset) =>
+            val shouldKeep = offsetSettings.contains(systemStreamPartition.getSystemStream)
+            if (!shouldKeep) {
+              info("Ignoring previously checkpointed offset %s for %s since the offset is for a stream that is not currently an input stream." format (offset, systemStreamPartition))
+            }
+            //For our calculation of processed
+            offsetManagerMetrics.loadedCheckpointedOffsets.get(systemStreamPartition).set(offset)
+            //
+            info("Checkpointed offset is currently %s for %s" format (offset, systemStreamPartition))
+            shouldKeep
+        }.asJava))
+      }
+      }
+    }
+
+    //stripResetStreams
+    {
+      val systemStreamPartitionsToReset = getSystemStreamPartitionsToReset(lastProcessedOffsets)
+
+      systemStreamPartitionsToReset.filter(x => addSSPs.contains(x._1)).foreach {
+        case (taskName, systemStreamPartitions) => {
+          systemStreamPartitions.foreach {
+            systemStreamPartition =>
+            {
+              val offset = lastProcessedOffsets.get(taskName).get(systemStreamPartition)
+              info("Got offset %s for %s, but ignoring, since stream was configured to reset offsets." format (offset, systemStreamPartition))
+            }
+          }
+        }
+      }
+
+      lastProcessedOffsets.keys().asScala.filter(x => addSSPs.contains(x)).foreach { taskName =>
+        lastProcessedOffsets.get(taskName).keySet().removeAll(systemStreamPartitionsToReset(taskName).asJava)
+      }
+    }
+
+    //loadStartingOffsets
+    {
+      startingOffsets ++= lastProcessedOffsets.asScala.filter(x => addSSPs.contains(x._1)).map {
+        case (taskName, sspToOffsets) => {
+          taskName -> {
+            sspToOffsets.asScala.groupBy(_._1.getSystem).flatMap {
+              case (systemName, systemStreamPartitionOffsets) =>
+                systemAdmins.getSystemAdmin(systemName).getOffsetsAfter(systemStreamPartitionOffsets.asJava).asScala
+            }
+          }
+        }
+      }
+    }
+
+    //loadDefaults
+    loadDefaults
+  }
+
   /**
    * Set the last processed offset for a given SystemStreamPartition.
    */
