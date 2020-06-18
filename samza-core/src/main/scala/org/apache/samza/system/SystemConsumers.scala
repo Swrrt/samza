@@ -177,12 +177,27 @@ class SystemConsumers (
     refresh
   }
 
+  //StreamSwitch
+  def startConsumers: Unit ={
+    consumers
+      .keySet
+      .foreach(metrics.registerSystem)
+    consumers
+      .values
+      .foreach(_.start)
+    refresh
+  }
+
   def stop {
     debug("Stopping consumers.")
 
     consumers.values.foreach(_.stop)
 
     chooser.stop
+  }
+  //StreamSwitch
+  def stopConsumers{
+    consumers.values.foreach(_.stop)
   }
 
 
