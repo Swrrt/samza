@@ -997,6 +997,7 @@ class SamzaContainer(
       //Add input SSPs
 
       //Initial tasks
+      var sideInputSSPs = new util.HashMap[TaskName, Set[SystemStreamPartition]]()
       val newTaskInstances = tasks.asScala.map(x => {
         val taskName = x._1
         val taskModel = x._2
@@ -1140,6 +1141,7 @@ class SamzaContainer(
           taskSSPs.filter(ssp => sideInputSystemStreams.contains(ssp.getSystemStream)).asJava)
 
         val taskSideInputSSPs = sideInputStoresToSSPs.values.flatMap(_.asScala).toSet
+        sideInputSSPs.put(taskName, taskSideInputSSPs)
 
         val sideInputStoresToProcessor = sideInputStores.keys.map(storeName => {
           // serialized instances takes precedence over the factory configuration.
@@ -1216,10 +1218,14 @@ class SamzaContainer(
         (taskName, taskInstance)
       }).toMap
       taskInstances.++(newTaskInstances)
-
       //startOffsetManager
       info("Registering new task instances with offsets")
       newTaskInstances.values.foreach(_.registerOffsets)
+      //start() in offsetManager
+      
+      val newSSPs = newTaskInstances.map(x => (x._1, x._2.systemStreamPartitions -- sideInputSSPs.asScala.get(x._1).get))
+      offsetManager.add(newSSPs)
+
 
       //startStores
       newTaskInstances.values.foreach(taskInstance => {
