@@ -110,6 +110,8 @@ class TaskInstance(
   def registerMetrics {
     debug("Registering metrics for taskName: %s" format taskName)
 
+    info("Registering metrics for taskName: %s" format taskName)
+    info("Reporters %s" format reporters.keys )
     reporters.values.foreach(_.register(metrics.source, metrics.registry))
   }
 

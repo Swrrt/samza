@@ -947,7 +947,9 @@ class SamzaContainer(
         // Commit task
         info("Committing task:" + taskName)
         //TODO: unregister metrics?
-        taskInstance.metrics.messagesActuallyProcessed.set(0)
+        //Minus 2 so that this metrics will be ignored by metrics retriever.
+//        taskInstance.metrics.messagesActuallyProcessed.set(-2)
+        taskInstance.metrics.messagesActuallyProcessed.clear
 
         taskInstance.commit
         //shutdownConsumer
@@ -956,7 +958,7 @@ class SamzaContainer(
           consumerMultiplexer.unregister(partition)
         })
 
-        taskInstance.metrics.messagesActuallyProcessed.set(0)
+        //taskInstance.metrics.messagesActuallyProcessed.set(-2)
 
         //shutdownTask
         info("Shutdown task")
@@ -1324,6 +1326,10 @@ class SamzaContainer(
       //startMetrics
       info("Starting metrics")
       newTaskInstances.values.foreach(_.registerMetrics)
+      //Restart jmx reporter
+      reporters.values.foreach(reporter => {
+        reporter.start
+      })
 
       info("Starting completed")
     }finally {
