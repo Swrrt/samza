@@ -52,6 +52,10 @@ class RoundRobinChooser(metrics: RoundRobinChooserMetrics = new RoundRobinChoose
     metrics.setBufferedMessages(() => q.size)
   }
 
+  override def stop: Unit ={
+    q.clear()
+  }
+
   def update(envelope: IncomingMessageEnvelope) = {
     q.add(envelope)
   }

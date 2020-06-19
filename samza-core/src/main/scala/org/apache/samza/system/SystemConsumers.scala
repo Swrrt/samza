@@ -204,11 +204,16 @@ class SystemConsumers (
   def stopAndResetConsumers(newConsumers : Map[String, SystemConsumer]){
     consumers.values.foreach(_.stop)
     consumers = newConsumers
+    chooser.stop
   }
 
 
   def register(systemStreamPartition: SystemStreamPartition, offset: String) {
     debug("Registering stream: %s, %s" format (systemStreamPartition, offset))
+
+    if(removedPartitions.contains(systemStreamPartition)){
+      removedPartitions.remove(systemStreamPartition)
+    }
 
     if (IncomingMessageEnvelope.END_OF_STREAM_OFFSET.equals(offset)) {
       info("Stream : %s is already at end of stream" format (systemStreamPartition))
@@ -231,6 +236,11 @@ class SystemConsumers (
   def registerOld(systemStreamPartition: SystemStreamPartition, offset: String) {
     debug("Registering stream: %s, %s" format (systemStreamPartition, offset))
     metrics.registerSystemStreamPartition(systemStreamPartition)
+    if(!unprocessedMessagesBySSP.containsKey(systemStreamPartition)){
+      warn("Why %s does not has unprocessed SSP" format systemStreamPartition)
+    }
+    unprocessedMessagesBySSP.put(systemStreamPartition, new ArrayDeque[IncomingMessageEnvelope]())
+    chooser.register(systemStreamPartition, offset)
     try {
       consumers(systemStreamPartition.getSystem).register(systemStreamPartition, offset)
     } catch {
