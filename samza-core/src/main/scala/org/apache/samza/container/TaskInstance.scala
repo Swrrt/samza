@@ -170,6 +170,7 @@ class TaskInstance(
   def registerConsumers {
     debug("Registering consumers for taskName: %s" format taskName)
 
+    info("Registering consumers for : %s ssps: %s" format (taskName, systemStreamPartitions))
     systemStreamPartitions.foreach(systemStreamPartition => {
       val startingOffset = getStartingOffset(systemStreamPartition)
       consumerMultiplexer.register(systemStreamPartition, startingOffset)

@@ -1270,7 +1270,7 @@ class SamzaContainer(
       info("Stop consumers")
       consumerMultiplexer.stopConsumers
       info("Register extra consumers")
-      taskInstances.values.foreach(_.registerConsumers)
+      newTaskInstances.values.foreach(_.registerConsumers)
       info("Start consumers again")
       consumerMultiplexer.startConsumers
 
