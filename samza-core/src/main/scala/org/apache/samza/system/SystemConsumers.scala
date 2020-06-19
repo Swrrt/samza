@@ -178,7 +178,11 @@ class SystemConsumers (
   }
 
   //StreamSwitch
-  def startConsumers: Unit ={
+  def startConsumers(newSSPs: Iterable[SystemStreamPartition]): Unit ={
+    //Find all new partitions
+    emptySystemStreamPartitionsBySystem.asScala ++= newSSPs
+      .groupBy(_.getSystem)
+      .mapValues(systemStreamPartitions => new util.HashSet(systemStreamPartitions.toSeq.asJava))
     consumers
       .keySet
       .foreach(metrics.registerSystem)
