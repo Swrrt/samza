@@ -192,9 +192,16 @@ class TaskInstance(
 
     info("Registering old consumers for : %s ssps: %s" format (taskName, systemStreamPartitions))
     systemStreamPartitions.foreach(systemStreamPartition => {
-      val startingOffset = offsetManager.getLastProcessedOffset(taskName, systemStreamPartition).orNull
-      info("%s 's offset is : %s" format(systemStreamPartition, startingOffset))
-      consumerMultiplexer.registerOld(systemStreamPartition, (startingOffset.toInt + 1).toString)
+      val lastProcessedOffset = offsetManager.getLastProcessedOffset(taskName, systemStreamPartition).orNull
+      val startingOffset = getStartingOffset(systemStreamPartition)
+      //Not end of stream
+      if(!IncomingMessageEnvelope.END_OF_STREAM_OFFSET.equals(startingOffset)) {
+        info("%s 's offset is : %s" format(systemStreamPartition, lastProcessedOffset))
+        consumerMultiplexer.registerOld(systemStreamPartition, (lastProcessedOffset.toInt + 1).toString)
+      }else {
+        info("%s is now end of stream, processed offset : %s" format(systemStreamPartition, lastProcessedOffset))
+        consumerMultiplexer.registerOld(systemStreamPartition, startingOffset)
+      }
       metrics.addOffsetGauge(systemStreamPartition, () =>
         if (sideInputSSPs.contains(systemStreamPartition)) {
           sideInputStorageManager.getLastProcessedOffset(systemStreamPartition)
