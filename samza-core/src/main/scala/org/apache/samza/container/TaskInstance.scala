@@ -192,7 +192,7 @@ class TaskInstance(
     systemStreamPartitions.foreach(systemStreamPartition => {
       val startingOffset = offsetManager.getLastProcessedOffset(taskName, systemStreamPartition).orNull
       info("%s 's offset is : %s" format(systemStreamPartition, startingOffset))
-      consumerMultiplexer.registerOld(systemStreamPartition, startingOffset + 1)
+      consumerMultiplexer.registerOld(systemStreamPartition, (startingOffset.toInt + 1).toString)
       metrics.addOffsetGauge(systemStreamPartition, () =>
         if (sideInputSSPs.contains(systemStreamPartition)) {
           sideInputStorageManager.getLastProcessedOffset(systemStreamPartition)
