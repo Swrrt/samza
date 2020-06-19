@@ -200,7 +200,6 @@ class SystemConsumers (
   def stopAndResetConsumers(newConsumers : Map[String, SystemConsumer]){
     consumers.values.foreach(_.stop)
     consumers = newConsumers
-
   }
 
 
@@ -217,6 +216,17 @@ class SystemConsumers (
     unprocessedMessagesBySSP.put(systemStreamPartition, new ArrayDeque[IncomingMessageEnvelope]())
     chooser.register(systemStreamPartition, offset)
 
+    try {
+      consumers(systemStreamPartition.getSystem).register(systemStreamPartition, offset)
+    } catch {
+      case e: NoSuchElementException => throw new SystemConsumersException("can't register " + systemStreamPartition.getSystem + "'s consumer.", e)
+    }
+  }
+
+  //StreamSwitch
+  def registerOld(systemStreamPartition: SystemStreamPartition, offset: String) {
+    debug("Registering stream: %s, %s" format (systemStreamPartition, offset))
+    metrics.registerSystemStreamPartition(systemStreamPartition)
     try {
       consumers(systemStreamPartition.getSystem).register(systemStreamPartition, offset)
     } catch {

@@ -173,6 +173,7 @@ class TaskInstance(
     info("Registering consumers for : %s ssps: %s" format (taskName, systemStreamPartitions))
     systemStreamPartitions.foreach(systemStreamPartition => {
       val startingOffset = getStartingOffset(systemStreamPartition)
+      info("%s 's offset is : %s" format(systemStreamPartition, startingOffset))
       consumerMultiplexer.register(systemStreamPartition, startingOffset)
       metrics.addOffsetGauge(systemStreamPartition, () =>
         if (sideInputSSPs.contains(systemStreamPartition)) {
@@ -182,6 +183,25 @@ class TaskInstance(
         })
     })
   }
+
+  //StreamSwitch
+  def registerOldConsumers {
+    debug("Registering consumers for taskName: %s" format taskName)
+
+    info("Registering old consumers for : %s ssps: %s" format (taskName, systemStreamPartitions))
+    systemStreamPartitions.foreach(systemStreamPartition => {
+      val startingOffset = offsetManager.getLastProcessedOffset(taskName, systemStreamPartition).orNull
+      info("%s 's offset is : %s" format(systemStreamPartition, startingOffset))
+      consumerMultiplexer.registerOld(systemStreamPartition, startingOffset + 1)
+      metrics.addOffsetGauge(systemStreamPartition, () =>
+        if (sideInputSSPs.contains(systemStreamPartition)) {
+          sideInputStorageManager.getLastProcessedOffset(systemStreamPartition)
+        } else {
+          offsetManager.getLastProcessedOffset(taskName, systemStreamPartition).orNull
+        })
+    })
+  }
+
 
   def process(envelope: IncomingMessageEnvelope, coordinator: ReadableCoordinator,
     callbackFactory: TaskCallbackFactory = null) {
