@@ -1321,7 +1321,8 @@ class SamzaContainer(
       newTaskInstances.values.foreach(_.registerConsumers)
 
       info("Start consumers again")
-      consumerMultiplexer.startConsumers
+      val newSSPS = newSSPs.flatMap(x => x._2)
+      consumerMultiplexer.startConsumers(newSSPS)
 
       //startMetrics
       info("Starting metrics")
