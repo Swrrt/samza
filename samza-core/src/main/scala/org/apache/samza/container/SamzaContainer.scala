@@ -931,6 +931,7 @@ class SamzaContainer(
     info("Remove partition lock acquired")
     try {
       info("Start removing...")
+      var removedTasks = new util.HashSet[TaskName]()
       taskNames.asScala.foreach(taskName => {
         val taskInstance = taskInstances.get(taskName).get
         // Commit task
@@ -963,7 +964,8 @@ class SamzaContainer(
 
 
         //Remove taskinstance avoid multi-closing
-        taskInstances.-(taskName)
+        taskInstances = taskInstances - taskName
+        removedTasks.add(taskName)
       })
 
       //shutdownOffsetManager
@@ -977,6 +979,12 @@ class SamzaContainer(
       //shutdownSecurityManger
 
       //shutdownAdmins
+
+      //Remove task instances from runloop
+      info("Remove task instances from runloop")
+      runLoop match {
+        case runLoop : RunLoop => runLoop.removeTaskInstances(removedTasks.asScala)
+      }
     }finally {
       resumeRunloop()
       info("Remove partitions lock released")
@@ -1321,6 +1329,11 @@ class SamzaContainer(
         reporter.start
       })
 
+      //Add task instances to runloop
+      info("Add task instances to runloop")
+      runLoop match {
+        case runLoop : RunLoop => runLoop.addTaskInstances(newTaskInstances)
+      }
       info("Starting completed")
     }finally {
       resumeRunloop()

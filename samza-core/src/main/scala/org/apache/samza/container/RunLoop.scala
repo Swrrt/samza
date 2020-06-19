@@ -38,7 +38,7 @@ import scala.collection.JavaConverters._
  * be done when.
  */
 class RunLoop (
-  val taskInstances: Map[TaskName, TaskInstance],
+  var taskInstances: Map[TaskName, TaskInstance],
   val consumerMultiplexer: SystemConsumers,
   val metrics: SamzaContainerMetrics,
   val maxThrottlingDelayMs: Long,
@@ -60,7 +60,7 @@ class RunLoop (
 
   // Messages come from the chooser with no connection to the TaskInstance they're bound for.
   // Keep a mapping of SystemStreamPartition to TaskInstance to efficiently route them.
-  val systemStreamPartitionToTaskInstances = getSystemStreamPartitionToTaskInstancesMapping
+  var systemStreamPartitionToTaskInstances = getSystemStreamPartitionToTaskInstancesMapping
 
   def getSystemStreamPartitionToTaskInstancesMapping: Map[SystemStreamPartition, List[TaskInstance]] = {
     // We could just pass in the SystemStreamPartitionMap during construction,
@@ -119,6 +119,16 @@ class RunLoop (
   def pause: Unit = {
     pauseLock.lock()
   }
+  //StreamSwitch
+  def addTaskInstances(addTaskInstances : Map[TaskName, TaskInstance]):Unit = {
+    taskInstances = taskInstances ++ addTaskInstances
+    systemStreamPartitionToTaskInstances = getSystemStreamPartitionToTaskInstancesMapping
+  }
+  def removeTaskInstances(removeTaskInstances : Iterable[TaskName]): Unit = {
+    taskInstances = taskInstances -- removeTaskInstances
+    systemStreamPartitionToTaskInstances = getSystemStreamPartitionToTaskInstancesMapping
+  }
+
   def resume: Unit = {
     pauseLock.unlock()
   }
