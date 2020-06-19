@@ -754,7 +754,7 @@ object SamzaContainer extends Logging {
 
 class SamzaContainer(
   config: Config,
-  taskInstances: Map[TaskName, TaskInstance],
+  var taskInstances: Map[TaskName, TaskInstance],
   runLoop: Runnable,
   systemAdmins: SystemAdmins,
   consumerMultiplexer: SystemConsumers,
@@ -1217,7 +1217,7 @@ class SamzaContainer(
         val taskInstance = createTaskInstance(task)
         (taskName, taskInstance)
       }).toMap
-      taskInstances ++= newTaskInstances
+      taskInstances = taskInstances.++(newTaskInstances)
       //startOffsetManager
       info("Registering new task instances with offsets")
       newTaskInstances.values.foreach(_.registerOffsets)
