@@ -1228,7 +1228,7 @@ class SamzaContainer(
         val taskInstance = createTaskInstance(task)
         (taskName, taskInstance)
       }).toMap
-      taskInstances.++(newTaskInstances)
+      taskInstances ++= newTaskInstances
       //startOffsetManager
       info("Registering new task instances with offsets")
       newTaskInstances.values.foreach(_.registerOffsets)
@@ -1313,7 +1313,11 @@ class SamzaContainer(
       //TODO: how to assure offset?
       consumerMultiplexer.stopAndResetConsumers(consumers)
       info("Register extra consumers")
-      taskInstances.values.foreach(_.registerConsumers)
+      //Old task instances register
+      taskInstances.filter(x => !newTaskInstances.contains(x._1)).values.foreach(_.registerOldConsumers)
+      //New task instances register
+      newTaskInstances.values.foreach(_.registerConsumers)
+
       info("Start consumers again")
       consumerMultiplexer.startConsumers
 
