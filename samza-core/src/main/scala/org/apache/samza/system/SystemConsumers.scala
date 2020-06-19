@@ -61,7 +61,7 @@ class SystemConsumers (
   /**
    * A map of SystemConsumers that should be polled for new messages.
    */
-  consumers: Map[String, SystemConsumer],
+  var consumers: Map[String, SystemConsumer],
 
   /**
    * The class that handles deserialization of incoming messages.
@@ -196,8 +196,11 @@ class SystemConsumers (
     chooser.stop
   }
   //StreamSwitch
-  def stopConsumers{
+  //Clear consumers and create new
+  def stopAndResetConsumers(newConsumers : Map[String, SystemConsumer]){
     consumers.values.foreach(_.stop)
+    consumers = newConsumers
+
   }
 
 

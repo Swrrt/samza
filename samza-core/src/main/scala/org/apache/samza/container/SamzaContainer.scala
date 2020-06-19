@@ -40,7 +40,7 @@ import org.apache.samza.config.StreamConfig.Config2Stream
 import org.apache.samza.config.SystemConfig.Config2System
 import org.apache.samza.config.TaskConfig.Config2Task
 import org.apache.samza.config._
-import org.apache.samza.container.SamzaContainer.{debug, getChangelogSSPsForContainer, getLoggedStorageBaseDir, getNonLoggedStorageBaseDir, warn}
+import org.apache.samza.container.SamzaContainer.{debug, error, getChangelogSSPsForContainer, getLoggedStorageBaseDir, getNonLoggedStorageBaseDir, warn}
 import org.apache.samza.container.disk.DiskSpaceMonitor.Listener
 import org.apache.samza.container.disk.{DiskQuotaPolicyFactory, DiskSpaceMonitor, NoThrottlingDiskQuotaPolicyFactory, PollingScanDiskSpaceMonitor}
 import org.apache.samza.container.host.{StatisticsMonitorImpl, SystemMemoryStatistics, SystemStatisticsMonitor}
@@ -1267,10 +1267,53 @@ class SamzaContainer(
 
       //startConsumers
       info("Starting consumers")
+      val inputSystemStreamPartitions = jobModel.getContainers.get(containerId)
+        .getTasks
+        .values
+        .asScala
+        .flatMap(_.getSystemStreamPartitions.asScala)
+        .toSet
+
+      val inputSystemStreams = inputSystemStreamPartitions
+        .map(_.getSystemStream)
+        .toSet
+
+      val inputSystems = inputSystemStreams
+        .map(_.getSystem)
+        .toSet
+
+      val systemNames = config.getSystemNames
+
+      val systemFactories = systemNames.map(systemName => {
+        val systemFactoryClassName = config
+          .getSystemFactory(systemName)
+          .getOrElse(throw new SamzaException("A stream uses system %s, which is missing from the configuration." format systemName))
+        (systemName, Util.getObj(systemFactoryClassName, classOf[SystemFactory]))
+      }).toMap
+
+      val consumers = inputSystems
+        .map(systemName => {
+          val systemFactory = systemFactories(systemName)
+
+          try {
+            (systemName, systemFactory.getConsumer(systemName, config, metrics.registry))
+          } catch {
+            case e: Exception =>
+              error("Failed to create a consumer for %s, so skipping." format systemName, e)
+              (systemName, null)
+          }
+        })
+        .filter(_._2 != null)
+        .toMap
+
+      val checkpointListeners = consumers.filter(_._2.isInstanceOf[CheckpointListener])
+        .map { case (system, consumer) => (system, consumer.asInstanceOf[CheckpointListener])}
+
       info("Stop consumers")
-      consumerMultiplexer.stopConsumers
+      //TODO: how to assure offset?
+      consumerMultiplexer.stopAndResetConsumers(consumers)
       info("Register extra consumers")
-      newTaskInstances.values.foreach(_.registerConsumers)
+      taskInstances.values.foreach(_.registerConsumers)
       info("Start consumers again")
       consumerMultiplexer.startConsumers
 
