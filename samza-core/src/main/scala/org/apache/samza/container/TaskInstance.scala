@@ -187,7 +187,7 @@ class TaskInstance(
   }
 
   //StreamSwitch
-  def registerOldConsumers {
+  def reregisterConsumers {
     debug("Registering consumers for taskName: %s" format taskName)
 
     info("Registering old consumers for : %s ssps: %s" format (taskName, systemStreamPartitions))
@@ -197,10 +197,10 @@ class TaskInstance(
       //Not end of stream
       if(!IncomingMessageEnvelope.END_OF_STREAM_OFFSET.equals(startingOffset)) {
         info("%s 's offset is : %s" format(systemStreamPartition, lastProcessedOffset))
-        consumerMultiplexer.registerOld(systemStreamPartition, (lastProcessedOffset.toInt + 1).toString)
+        consumerMultiplexer.registerOldPartitions(systemStreamPartition, (lastProcessedOffset.toInt + 1).toString)
       }else {
         info("%s is now end of stream, processed offset : %s" format(systemStreamPartition, lastProcessedOffset))
-        consumerMultiplexer.registerOld(systemStreamPartition, startingOffset)
+        consumerMultiplexer.registerOldPartitions(systemStreamPartition, startingOffset)
       }
       metrics.addOffsetGauge(systemStreamPartition, () =>
         if (sideInputSSPs.contains(systemStreamPartition)) {

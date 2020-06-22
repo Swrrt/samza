@@ -191,7 +191,7 @@ class OffsetManager(
   }
 
   //StreamSwitch
-  def add(addSSPs: Map[TaskName, Set[SystemStreamPartition]]): Unit ={
+  def addTasks(addSSPs: Map[TaskName, Set[SystemStreamPartition]]): Unit ={
     info("Add partitions %s to OffsetManager" format addSSPs.keys)
 
     //registerCheckpointManager
