@@ -273,14 +273,14 @@ class SystemConsumers (
     if(unprocessedMessagesBySSP.containsKey(systemStreamPartition)){
       unprocessedMessagesBySSP.remove(systemStreamPartition)
     }
-    if(emptySystemStreamPartitionsBySystem.containsKey(systemStreamPartition)){
-      emptySystemStreamPartitionsBySystem.remove(systemStreamPartition)
+    if(emptySystemStreamPartitionsBySystem.containsKey(systemStreamPartition.system) && emptySystemStreamPartitionsBySystem.get(systemStreamPartition.system).contains(systemStreamPartition)){
+      emptySystemStreamPartitionsBySystem.get(systemStreamPartition.system).remove(systemStreamPartition)
     }
     //BaseChooser register() method does nothing. So we have nothing to unregister
     //chooser.unregister(systemStreamPartition)
 
     try{
-      consumers = consumers.filter(x => x._2 != systemStreamPartition)
+      //consumers = consumers.filter(x => x._2 != systemStreamPartition)
       //Only need to remove from KafkaSystemConsumer metrics
       //TODO: consumers(systemStreamPartition).unregister(systemStreamPartition, offset)
     }
