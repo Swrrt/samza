@@ -1245,7 +1245,7 @@ class SamzaContainer(
       //start() in offsetManager
 
       val newSSPs = newTaskInstances.map(x => (x._1, x._2.systemStreamPartitions -- sideInputSSPs.asScala.get(x._1).get))
-      offsetManager.add(newSSPs)
+      offsetManager.addTasks(newSSPs)
 
 
       //startStores
@@ -1324,11 +1324,13 @@ class SamzaContainer(
       consumerMultiplexer.stopAndResetConsumers(consumers)
       info("Register extra consumers")
       //Old task instances register
-      taskInstances.filter(x => !newTaskInstances.contains(x._1)).values.foreach(_.registerOldConsumers)
+      taskInstances.filter(x => !newTaskInstances.contains(x._1)).values.foreach(_.reregisterConsumers)
       //New task instances register
       newTaskInstances.values.foreach(_.registerConsumers)
 
       info("Start consumers again")
+
+      info("Consumers: %s" format consumerMultiplexer.consumers)
       consumerMultiplexer.start
 
       //startMetrics

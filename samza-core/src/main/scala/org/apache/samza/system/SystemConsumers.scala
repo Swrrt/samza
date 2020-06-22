@@ -178,7 +178,7 @@ class SystemConsumers (
   }
 
   //StreamSwitch
-  def startConsumers(newSSPs: Iterable[SystemStreamPartition]): Unit ={
+  def restartConsumers(newSSPs: Iterable[SystemStreamPartition]): Unit ={
     //Find all new partitions
     emptySystemStreamPartitionsBySystem.asScala ++= newSSPs
       .groupBy(_.getSystem)
@@ -233,10 +233,10 @@ class SystemConsumers (
   }
 
   //StreamSwitch
-  def registerOld(systemStreamPartition: SystemStreamPartition, offset: String) {
+  def registerOldPartitions(systemStreamPartition: SystemStreamPartition, offset: String) {
     debug("Registering stream: %s, %s" format (systemStreamPartition, offset))
     metrics.registerSystemStreamPartition(systemStreamPartition)
-    
+
     if(removedPartitions.contains(systemStreamPartition)){
       removedPartitions.remove(systemStreamPartition)
     }
@@ -280,6 +280,7 @@ class SystemConsumers (
     //chooser.unregister(systemStreamPartition)
 
     try{
+      consumers = consumers.filter(x => x._2 != systemStreamPartition)
       //Only need to remove from KafkaSystemConsumer metrics
       //TODO: consumers(systemStreamPartition).unregister(systemStreamPartition, offset)
     }
