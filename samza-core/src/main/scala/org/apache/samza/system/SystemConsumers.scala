@@ -372,7 +372,7 @@ class SystemConsumers (
 
       metrics.systemStreamPartitionFetchesPerPoll(systemName).inc(systemFetchSet.size)
       //Debugging
-      info("Fetch: %s" format systemFetchSet)
+      //info("Fetch: %s" format systemFetchSet)
       val systemStreamPartitionEnvelopes = consumer.poll(systemFetchSet, timeout)
       trace("Got incoming message envelopes: %s" format systemStreamPartitionEnvelopes)
 
