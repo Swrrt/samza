@@ -78,7 +78,7 @@ class RunLoop (
    * Starts the run loop. Blocks until either the tasks request shutdown, or an
    * unhandled exception is thrown.
    */
-  //TODO: Add a pause signal here
+  //StreamSwitch: add a pauselock
   def run {
     while (!shutdownNow) {
       pauseLock.lock()
