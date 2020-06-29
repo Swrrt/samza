@@ -318,7 +318,15 @@ public class LatencyGuarantor extends StreamSwitch {
 
             //Window average delay
             private double calculateExecutorInstantaneousDelay(String executorId, long timeIndex){
-                long totalDelay = 0;
+                long totalBacklog = 0;
+                if(state.getMapping(timeIndex).containsKey(state.executorIdFromStringToInt(executorId))) {
+                    for(int substream: state.getMapping(timeIndex).get(state.executorIdFromStringToInt(executorId))){
+                        totalBacklog += state.getSubstreamCompleted(substream, timeIndex) - state.getSubstreamCompleted(substream, timeIndex - 1);
+                    }
+                }
+                if(executorServiceRate.getOrDefault(executorId, 0.0) > 0.0)return totalBacklog / executorServiceRate.get(executorId);
+                return 1e100;
+                /*long totalDelay = 0;
                 long totalCompleted = 0;
                 long n0 = timeIndex - windowReq + 1;
                 if(n0<1){
@@ -336,7 +344,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 //In state, latency is count as # of timeslots, need to transfer to real time
                 executorCompleted.put(executorId, totalCompleted);
                 if(totalCompleted > 0) return totalDelay * metricsRetreiveInterval / ((double)totalCompleted);
-                return 0;
+                return 0;*/
             }
 
             //Calculate model snapshot from state
