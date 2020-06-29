@@ -940,7 +940,7 @@ class SamzaContainer(
     info("Remove partitions " + taskNames)
     pauseRunloop()
     info("Remove partition lock acquired")
-    print("Src pause at: %s" format(System.currentTimeMillis()))
+    print("Src pause at: %s\n" format(System.currentTimeMillis()))
     try {
       info("Start removing...")
       var removedTasks = new util.HashSet[TaskName]()
@@ -1000,7 +1000,7 @@ class SamzaContainer(
     }finally {
       resumeRunloop()
       info("Remove partitions lock released")
-      print("Src resume at: %s" format(System.currentTimeMillis()))
+      print("Src resume at: %s\n" format(System.currentTimeMillis()))
     }
   }
 
@@ -1015,7 +1015,7 @@ class SamzaContainer(
     info("Add partitions " + tasks.keySet())
     pauseRunloop()
     info("Add partitions lock acquired")
-    print("Tgt pause at: %s" format(System.currentTimeMillis()))
+    print("Tgt pause at: %s\n" format(System.currentTimeMillis()))
     try{
 
       //Add input SSPs
@@ -1353,7 +1353,7 @@ class SamzaContainer(
     }finally {
       resumeRunloop()
       info("Add partitions lock released")
-      print("Tgt resume at: %s" format(System.currentTimeMillis()))
+      print("Tgt resume at: %s\n" format(System.currentTimeMillis()))
     }
   }
   //Asynchronous pause

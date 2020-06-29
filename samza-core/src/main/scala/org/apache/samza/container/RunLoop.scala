@@ -84,7 +84,7 @@ class RunLoop (
    * Starts the run loop. Blocks until either the tasks request shutdown, or an
    * unhandled exception is thrown.
    */
-  //TODO: Add a pause signal here
+  //StreamSwitch: add a pauselock
   def run {
     var start = clock()
     var processTime = 0L
