@@ -319,12 +319,19 @@ public class LatencyGuarantor extends StreamSwitch {
             //Window average delay
             private double calculateExecutorInstantaneousDelay(String executorId, long timeIndex){
                 long totalBacklog = 0;
-                if(state.getMapping(timeIndex).containsKey(state.executorIdFromStringToInt(executorId))) {
-                    for(int substream: state.getMapping(timeIndex).get(state.executorIdFromStringToInt(executorId))){
-                        totalBacklog += state.getSubstreamArrived(substream, timeIndex) - state.getSubstreamCompleted(substream, timeIndex);
+                long n0 = timeIndex - windowReq + 1;
+                if(n0<1){
+                    n0 = 1;
+                    LOG.warn("Calculate instant delay index smaller than window size!");
+                }
+                for(long i = n0; i <= timeIndex; i++) {
+                    if (state.getMapping(i).containsKey(state.executorIdFromStringToInt(executorId))) {
+                        for (int substream : state.getMapping(i).get(state.executorIdFromStringToInt(executorId))) {
+                            totalBacklog += state.getSubstreamArrived(substream, i) - state.getSubstreamCompleted(substream, i);
+                        }
                     }
                 }
-                if(executorServiceRate.getOrDefault(executorId, 0.0) > 0.0)return totalBacklog / executorServiceRate.get(executorId);
+                if( (timeIndex - n0 + 1) > 0 && executorServiceRate.getOrDefault(executorId, 0.0) > 0.0)return totalBacklog / (executorServiceRate.get(executorId) * (timeIndex - n0 + 1));
                 return 1e100;
                 /*long totalDelay = 0;
                 long totalCompleted = 0;
