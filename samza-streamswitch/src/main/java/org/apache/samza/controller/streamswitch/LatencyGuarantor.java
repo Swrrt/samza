@@ -321,7 +321,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 long totalBacklog = 0;
                 if(state.getMapping(timeIndex).containsKey(state.executorIdFromStringToInt(executorId))) {
                     for(int substream: state.getMapping(timeIndex).get(state.executorIdFromStringToInt(executorId))){
-                        totalBacklog += state.getSubstreamCompleted(substream, timeIndex) - state.getSubstreamCompleted(substream, timeIndex - 1);
+                        totalBacklog += state.getSubstreamCompleted(substream, timeIndex) - state.getSubstreamArrived(substream, timeIndex);
                     }
                 }
                 if(executorServiceRate.getOrDefault(executorId, 0.0) > 0.0)return totalBacklog / executorServiceRate.get(executorId);
