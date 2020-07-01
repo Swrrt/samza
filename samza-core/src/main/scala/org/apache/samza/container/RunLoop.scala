@@ -107,6 +107,9 @@ class RunLoop (
 
         val processStart = clock()
 
+        //Debugging
+        info("Choose ssp %s" format (envelope.getSystemStreamPartition))
+
         executor.execute(new Runnable() {
           override def run(): Unit = process(envelope)
         })
