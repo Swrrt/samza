@@ -190,16 +190,17 @@ class SystemConsumers (
     consumers.values.foreach(_.stop)
     consumers = newConsumers
     chooser.stop
+    //removedPartitions.clear()
+    unprocessedMessagesBySSP.clear()
+    emptySystemStreamPartitionsBySystem.clear()
   }
 
 
   def register(systemStreamPartition: SystemStreamPartition, offset: String) {
     debug("Registering stream: %s, %s" format (systemStreamPartition, offset))
 
-    if(removedPartitions.contains(systemStreamPartition)){
-      removedPartitions.remove(systemStreamPartition)
-    }
-
+    removedPartitions.remove(systemStreamPartition)
+    info("removedPartitions: %s" format(removedPartitions) )
     if (IncomingMessageEnvelope.END_OF_STREAM_OFFSET.equals(offset)) {
       info("Stream : %s is already at end of stream" format (systemStreamPartition))
       endOfStreamSSPs.add(systemStreamPartition)
@@ -222,9 +223,7 @@ class SystemConsumers (
     debug("Registering stream: %s, %s" format (systemStreamPartition, offset))
     metrics.registerSystemStreamPartition(systemStreamPartition)
 
-    if(removedPartitions.contains(systemStreamPartition)){
-      removedPartitions.remove(systemStreamPartition)
-    }
+    removedPartitions.remove(systemStreamPartition)
 
     if(!unprocessedMessagesBySSP.containsKey(systemStreamPartition)){
       warn("Why %s does not has unprocessed SSP" format systemStreamPartition)
@@ -258,8 +257,8 @@ class SystemConsumers (
     if(unprocessedMessagesBySSP.containsKey(systemStreamPartition)){
       unprocessedMessagesBySSP.remove(systemStreamPartition)
     }
-    if(emptySystemStreamPartitionsBySystem.containsKey(systemStreamPartition.system) && emptySystemStreamPartitionsBySystem.get(systemStreamPartition.system).contains(systemStreamPartition)){
-      emptySystemStreamPartitionsBySystem.get(systemStreamPartition.system).remove(systemStreamPartition)
+    if(emptySystemStreamPartitionsBySystem.containsKey(systemStreamPartition.getSystem) && emptySystemStreamPartitionsBySystem.get(systemStreamPartition.getSystem).contains(systemStreamPartition)){
+      emptySystemStreamPartitionsBySystem.get(systemStreamPartition.getSystem).remove(systemStreamPartition)
     }
     //BaseChooser register() method does nothing. So we have nothing to unregister
     //chooser.unregister(systemStreamPartition)
@@ -371,13 +370,13 @@ class SystemConsumers (
         val envelopes = new ArrayDeque(sspAndEnvelope.getValue)
         val numEnvelopes = envelopes.size
         totalUnprocessedMessages += numEnvelopes
-        info("fectched ssp %s num %d" format (systemStreamPartition, numEnvelopes))
+        //info("fectched ssp %s num %d" format (systemStreamPartition, numEnvelopes))
         if (numEnvelopes > 0) {
           unprocessedMessagesBySSP.put(systemStreamPartition, envelopes)
 
           // Update the chooser if it needs a message for this SSP.
           if (emptySystemStreamPartitionsBySystem.get(systemStreamPartition.getSystem).remove(systemStreamPartition)) {
-            info("Try to update ssp %s" format systemStreamPartition)
+            //info("Try to update ssp %s" format systemStreamPartition)
             tryUpdate(systemStreamPartition)
           }
         }
@@ -394,6 +393,7 @@ class SystemConsumers (
     } finally {
       if (!updated) {
         // if failed to update the chooser, add the ssp back into the emptySystemStreamPartitionBySystem map to ensure that we will poll for the next message
+        warn("Failed to update?")
         emptySystemStreamPartitionsBySystem.get(ssp.getSystem).add(ssp)
       }
     }
