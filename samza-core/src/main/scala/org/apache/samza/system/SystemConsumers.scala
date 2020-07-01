@@ -377,6 +377,7 @@ class SystemConsumers (
 
           // Update the chooser if it needs a message for this SSP.
           if (emptySystemStreamPartitionsBySystem.get(systemStreamPartition.getSystem).remove(systemStreamPartition)) {
+            info("Try to update ssp %s" format systemStreamPartition)
             tryUpdate(systemStreamPartition)
           }
         }
