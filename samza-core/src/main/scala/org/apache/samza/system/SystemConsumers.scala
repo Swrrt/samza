@@ -177,21 +177,6 @@ class SystemConsumers (
     refresh
   }
 
-  //StreamSwitch
-  def restartConsumers(newSSPs: Iterable[SystemStreamPartition]): Unit ={
-    //Find all new partitions
-    emptySystemStreamPartitionsBySystem.asScala ++= newSSPs
-      .groupBy(_.getSystem)
-      .mapValues(systemStreamPartitions => new util.HashSet(systemStreamPartitions.toSeq.asJava))
-    consumers
-      .keySet
-      .foreach(metrics.registerSystem)
-    consumers
-      .values
-      .foreach(_.start)
-    refresh
-  }
-
   def stop {
     debug("Stopping consumers.")
 
@@ -372,7 +357,7 @@ class SystemConsumers (
 
       metrics.systemStreamPartitionFetchesPerPoll(systemName).inc(systemFetchSet.size)
       //Debugging
-      //info("Fetch: %s" format systemFetchSet)
+      info("Fetch: %s" format systemFetchSet)
       val systemStreamPartitionEnvelopes = consumer.poll(systemFetchSet, timeout)
       trace("Got incoming message envelopes: %s" format systemStreamPartitionEnvelopes)
 
@@ -386,7 +371,7 @@ class SystemConsumers (
         val envelopes = new ArrayDeque(sspAndEnvelope.getValue)
         val numEnvelopes = envelopes.size
         totalUnprocessedMessages += numEnvelopes
-
+        info("fectched ssp %s num %d" format (systemStreamPartition, numEnvelopes))
         if (numEnvelopes > 0) {
           unprocessedMessagesBySSP.put(systemStreamPartition, envelopes)
 
