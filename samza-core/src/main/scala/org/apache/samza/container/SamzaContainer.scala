@@ -1313,6 +1313,7 @@ class SamzaContainer(
         .map { case (system, consumer) => (system, consumer.asInstanceOf[CheckpointListener])}
 
       info("Stop consumers")
+      taskInstances.filter(x => !newTaskInstances.contains(x._1)).values.foreach(_.commit)
       //TODO: how to assure offset?
       consumerMultiplexer.stopAndResetConsumers(consumers)
       info("Register extra consumers")
