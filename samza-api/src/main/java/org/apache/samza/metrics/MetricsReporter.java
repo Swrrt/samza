@@ -29,4 +29,8 @@ public interface MetricsReporter {
   void register(String source, ReadableMetricsRegistry registry);
 
   void stop();
+
+  //For Migration
+  default void unregister(String source, ReadableMetricsRegistry registry){
+  }
 }
