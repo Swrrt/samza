@@ -200,7 +200,7 @@ class SystemConsumers (
     debug("Registering stream: %s, %s" format (systemStreamPartition, offset))
 
     removedPartitions.remove(systemStreamPartition)
-    info("removedPartitions: %s" format(removedPartitions) )
+    //info("removedPartitions: %s" format(removedPartitions) )
     if (IncomingMessageEnvelope.END_OF_STREAM_OFFSET.equals(offset)) {
       info("Stream : %s is already at end of stream" format (systemStreamPartition))
       endOfStreamSSPs.add(systemStreamPartition)

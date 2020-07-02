@@ -598,8 +598,9 @@ public class StockMetricsRetriever implements StreamSwitchMetricsRetriever {
                             partitionValid.put(partitionId, true);
                         }else{
                             if(Long.parseLong(ent.getValue()) > 0) {
-                                LOG.warn("Container " + containerId + "'s " + partitionId + " processed is still smaller than old: old=" + partitionProcessed.get(partitionId) + " new=" + val);
-                                LOG.info("Processed: " + Long.parseLong(ent.getValue()) + " checkpoint offset: " + (val - Long.parseLong(ent.getValue())));
+                                //Debugging
+                                //LOG.warn("Container " + containerId + "'s " + partitionId + " processed is still smaller than old: old=" + partitionProcessed.get(partitionId) + " new=" + val);
+                                //LOG.info("Processed: " + Long.parseLong(ent.getValue()) + " checkpoint offset: " + (val - Long.parseLong(ent.getValue())));
                             }else{
                                 //Means it is removed from source
                             }
