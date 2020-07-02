@@ -370,13 +370,12 @@ class SystemConsumers (
         val envelopes = new ArrayDeque(sspAndEnvelope.getValue)
         val numEnvelopes = envelopes.size
         totalUnprocessedMessages += numEnvelopes
-        info("fectched ssp %s num %d" format (systemStreamPartition, numEnvelopes))
+        //info("fectched ssp %s num %d" format (systemStreamPartition, numEnvelopes))
         if (numEnvelopes > 0) {
           unprocessedMessagesBySSP.put(systemStreamPartition, envelopes)
 
           // Update the chooser if it needs a message for this SSP.
           if (emptySystemStreamPartitionsBySystem.get(systemStreamPartition.getSystem).remove(systemStreamPartition)) {
-            info("Try to update ssp %s" format systemStreamPartition)
             tryUpdate(systemStreamPartition)
           }
         }
@@ -393,7 +392,6 @@ class SystemConsumers (
     } finally {
       if (!updated) {
         // if failed to update the chooser, add the ssp back into the emptySystemStreamPartitionBySystem map to ensure that we will poll for the next message
-        warn("Failed to update ssp %s" format(ssp))
         emptySystemStreamPartitionsBySystem.get(ssp.getSystem).add(ssp)
       }
     }

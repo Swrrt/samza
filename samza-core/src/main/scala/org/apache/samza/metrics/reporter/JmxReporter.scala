@@ -59,13 +59,6 @@ class JmxReporter(server: MBeanServer) extends MetricsReporter with Logging {
 
   def register(source: String, registry: ReadableMetricsRegistry) {
 
-    //Debugging
-    for ((registry, source1) <- sources) {
-      if(source1.equals(source)){
-        warn("Re-registering for source %s" format(source))
-      }
-    }
-
     if (!listeners.contains(registry)) {
       sources += registry -> source
       listeners += registry -> new ReadableMetricsRegistryListener {

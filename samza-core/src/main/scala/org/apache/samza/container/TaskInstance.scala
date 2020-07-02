@@ -224,8 +224,6 @@ class TaskInstance(
     }
 
     if (ssp2CaughtupMapping(incomingMessageSsp)) {
-      //Debugging
-      info("task %s process ssp %s" format(taskName, incomingMessageSsp))
       metrics.messagesActuallyProcessed.inc
 
       trace("Processing incoming message envelope for taskName and SSP: %s, %s"
