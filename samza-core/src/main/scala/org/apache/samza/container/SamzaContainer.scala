@@ -941,6 +941,7 @@ class SamzaContainer(
         //Minus 2 so that this metrics will be ignored by metrics retriever.
 //        taskInstance.metrics.messagesActuallyProcessed.set(-2)
         taskInstance.metrics.messagesActuallyProcessed.clear
+        reporters.foreach(x => x._2.unregister(taskInstance.metrics.source, taskInstance.metrics.registry))
 
         taskInstance.commit
         //shutdownConsumer
