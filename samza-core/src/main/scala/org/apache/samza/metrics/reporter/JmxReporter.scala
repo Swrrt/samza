@@ -108,6 +108,7 @@ class JmxReporter(server: MBeanServer) extends MetricsReporter with Logging {
       //Testing
       registry.unlisten(listener)
       sources -= registry
+      listeners -= registry
     }
   }
 
