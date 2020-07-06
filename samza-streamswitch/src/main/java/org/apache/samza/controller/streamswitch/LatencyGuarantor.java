@@ -913,9 +913,6 @@ public class LatencyGuarantor extends StreamSwitch {
         LOG.info("New mapping: " + newAssignment);
         System.out.println("New mapping at time: " + examiner.state.currentTimeIndex + " mapping: " + newAssignment);
 
-        //No migration
-        if(true)return ;
-
         //Scale out
         if (!executorMapping.containsKey(pres.target)) {
             LOG.info("Scale out");
