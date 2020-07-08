@@ -996,6 +996,8 @@ public class LatencyGuarantor extends StreamSwitch {
                 if(pendingPres.migratingSubstreams.size() == executorMapping.get(pendingPres.source).size()){
                     examiner.model.executorServiceRate.remove(pendingPres.source);
                     examiner.model.executorInstantaneousDelay.remove(pendingPres.source);
+                    examiner.model.executorBacklogInstantaneousDelay.remove(pendingPres.source);
+                    examiner.model.executorBacklog.remove(pendingPres.source);
                     migrationType = "scale-in";
                 }
                 if(!executorMapping.containsKey(pendingPres.target)){
