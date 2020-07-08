@@ -399,10 +399,10 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
 
                     double oldInstantaneousDelay = executorInstantaneousDelay.getOrDefault(executor, 0.0);
-                    double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);
+                    double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorBacklogDelay(executor, timeIndex) * (1.0 - decayFactor);
                     executorInstantaneousDelay.put(executor, newInstantaneousDelay);
                     double oldBacklogDelay = executorBacklogInstantaneousDelay.getOrDefault(executor, 0.0);
-                    double newBacklogDelay = oldBacklogDelay * decayFactor + calculateExecutorBacklogDelay(executor, timeIndex) * (1.0 - decayFactor);
+                    double newBacklogDelay = oldBacklogDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);
                     executorBacklogInstantaneousDelay.put(executor, newBacklogDelay);
                 }
                 //Debugging
