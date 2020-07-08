@@ -913,9 +913,6 @@ public class LatencyGuarantor extends StreamSwitch {
         LOG.info("New mapping: " + newAssignment);
         System.out.println("New mapping at time: " + examiner.state.currentTimeIndex + " mapping: " + newAssignment);
 
-        //No migration
-        if(true)return ;
-
         //Scale out
         if (!executorMapping.containsKey(pres.target)) {
             LOG.info("Scale out");
@@ -999,6 +996,8 @@ public class LatencyGuarantor extends StreamSwitch {
                 if(pendingPres.migratingSubstreams.size() == executorMapping.get(pendingPres.source).size()){
                     examiner.model.executorServiceRate.remove(pendingPres.source);
                     examiner.model.executorInstantaneousDelay.remove(pendingPres.source);
+                    examiner.model.executorBacklogInstantaneousDelay.remove(pendingPres.source);
+                    examiner.model.executorBacklog.remove(pendingPres.source);
                     migrationType = "scale-in";
                 }
                 if(!executorMapping.containsKey(pendingPres.target)){
