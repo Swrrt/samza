@@ -53,10 +53,14 @@ public abstract class StreamSwitch implements OperatorController{
             }
         }
         nextExecutorID.set(executors.size() + 2); //Samza's container ID start from 000002
-        String executor = executors.get(0);
+
+        int i = 0;
         while(iterator.hasNext()){
+            String executor = executors.get(i);
             executorMapping.get(executor).add(iterator.next());
+            i++;
         }
+
         LOG.info("Initial executorMapping: " + executorMapping);
         listener.remap(executorMapping);
     }

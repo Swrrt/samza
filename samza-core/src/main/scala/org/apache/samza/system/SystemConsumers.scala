@@ -22,6 +22,7 @@ package org.apache.samza.system
 
 import java.util
 import java.util.concurrent.TimeUnit
+
 import scala.collection.JavaConverters._
 import org.apache.samza.serializers.SerdeManager
 import org.apache.samza.util.{Logging, TimerUtil}
@@ -33,6 +34,8 @@ import java.util.HashSet
 import java.util.HashMap
 import java.util.Queue
 import java.util.Set
+
+import org.apache.samza.container.TaskName
 
 object SystemConsumers {
   val DEFAULT_POLL_INTERVAL_MS = 50
@@ -58,7 +61,7 @@ class SystemConsumers (
   /**
    * A map of SystemConsumers that should be polled for new messages.
    */
-  consumers: Map[String, SystemConsumer],
+  var consumers: Map[String, SystemConsumer],
 
   /**
    * The class that handles deserialization of incoming messages.
@@ -144,6 +147,8 @@ class SystemConsumers (
    */
   var totalUnprocessedMessages = 0
 
+  var removedPartitions = new util.LinkedHashSet[SystemStreamPartition]()
+
   debug("Got stream consumers: %s" format consumers)
   debug("Got no new message timeout: %s" format noNewMessagesTimeout)
 
@@ -179,11 +184,23 @@ class SystemConsumers (
 
     chooser.stop
   }
+  //StreamSwitch
+  //Clear consumers and create new
+  def stopAndResetConsumers(newConsumers : Map[String, SystemConsumer]){
+    consumers.values.foreach(_.stop)
+    consumers = newConsumers
+    chooser.stop
+    //removedPartitions.clear()
+    unprocessedMessagesBySSP.clear()
+    emptySystemStreamPartitionsBySystem.clear()
+  }
 
 
   def register(systemStreamPartition: SystemStreamPartition, offset: String) {
     debug("Registering stream: %s, %s" format (systemStreamPartition, offset))
 
+    removedPartitions.remove(systemStreamPartition)
+    //info("removedPartitions: %s" format(removedPartitions) )
     if (IncomingMessageEnvelope.END_OF_STREAM_OFFSET.equals(offset)) {
       info("Stream : %s is already at end of stream" format (systemStreamPartition))
       endOfStreamSSPs.add(systemStreamPartition)
@@ -201,6 +218,57 @@ class SystemConsumers (
     }
   }
 
+  //StreamSwitch
+  def registerOldPartitions(systemStreamPartition: SystemStreamPartition, offset: String) {
+    debug("Registering stream: %s, %s" format (systemStreamPartition, offset))
+    metrics.registerSystemStreamPartition(systemStreamPartition)
+
+    removedPartitions.remove(systemStreamPartition)
+
+    if(!unprocessedMessagesBySSP.containsKey(systemStreamPartition)){
+      warn("Why %s does not has unprocessed SSP" format systemStreamPartition)
+    }
+
+    if (IncomingMessageEnvelope.END_OF_STREAM_OFFSET.equals(offset)) {
+      info("Stream : %s is already at end of stream" format (systemStreamPartition))
+      endOfStreamSSPs.add(systemStreamPartition)
+      return
+    }
+
+    unprocessedMessagesBySSP.put(systemStreamPartition, new ArrayDeque[IncomingMessageEnvelope]())
+    chooser.register(systemStreamPartition, offset)
+    try {
+      consumers(systemStreamPartition.getSystem).register(systemStreamPartition, offset)
+    } catch {
+      case e: NoSuchElementException => throw new SystemConsumersException("can't register " + systemStreamPartition.getSystem + "'s consumer.", e)
+    }
+  }
+
+
+  //StreamSwitch
+  def unregister(systemStreamPartition: SystemStreamPartition): Unit = {
+
+    removedPartitions.add(systemStreamPartition)
+
+    if(endOfStreamSSPs.contains(systemStreamPartition)){
+      endOfStreamSSPs.remove(systemStreamPartition)
+    }
+    //metrics.unregisterSystemStreampartition(systemStreamPartition)
+    if(unprocessedMessagesBySSP.containsKey(systemStreamPartition)){
+      unprocessedMessagesBySSP.remove(systemStreamPartition)
+    }
+    if(emptySystemStreamPartitionsBySystem.containsKey(systemStreamPartition.getSystem) && emptySystemStreamPartitionsBySystem.get(systemStreamPartition.getSystem).contains(systemStreamPartition)){
+      emptySystemStreamPartitionsBySystem.get(systemStreamPartition.getSystem).remove(systemStreamPartition)
+    }
+    //BaseChooser register() method does nothing. So we have nothing to unregister
+    //chooser.unregister(systemStreamPartition)
+
+    try{
+      //consumers = consumers.filter(x => x._2 != systemStreamPartition)
+      //Only need to remove from KafkaSystemConsumer metrics
+      //TODO: consumers(systemStreamPartition).unregister(systemStreamPartition, offset)
+    }
+  }
 
   def isEndOfStream(systemStreamPartition: SystemStreamPartition) = {
     endOfStreamSSPs.contains(systemStreamPartition)
@@ -209,11 +277,19 @@ class SystemConsumers (
   def choose (updateChooser: Boolean = true): IncomingMessageEnvelope = {
     val chooseStart = clock()
 
-    val envelopeFromChooser = chooser.choose
-
     val chooseNs = clock() - chooseStart
 
 //    val deStart = clock()
+    //Stream Switch
+    var envelopeFromChooser = chooser.choose
+    var skippedMessages = 0
+    while(envelopeFromChooser != null && removedPartitions.contains(envelopeFromChooser.getSystemStreamPartition)){
+      skippedMessages += 1
+      envelopeFromChooser = chooser.choose
+    }
+    if(skippedMessages > 0){
+      info("Skipped messages: " + skippedMessages)
+    }
     updateTimer(metrics.deserializationNs) {
       if (envelopeFromChooser == null) {
         trace("Chooser returned null.")
@@ -287,7 +363,8 @@ class SystemConsumers (
       trace("Fetching: %s" format systemFetchSet)
 
       metrics.systemStreamPartitionFetchesPerPoll(systemName).inc(systemFetchSet.size)
-
+      //Debugging
+      //info("Fetch: %s" format systemFetchSet)
       val systemStreamPartitionEnvelopes = consumer.poll(systemFetchSet, timeout)
       trace("Got incoming message envelopes: %s" format systemStreamPartitionEnvelopes)
 
@@ -301,7 +378,7 @@ class SystemConsumers (
         val envelopes = new ArrayDeque(sspAndEnvelope.getValue)
         val numEnvelopes = envelopes.size
         totalUnprocessedMessages += numEnvelopes
-
+        //info("fectched ssp %s num %d" format (systemStreamPartition, numEnvelopes))
         if (numEnvelopes > 0) {
           unprocessedMessagesBySSP.put(systemStreamPartition, envelopes)
 

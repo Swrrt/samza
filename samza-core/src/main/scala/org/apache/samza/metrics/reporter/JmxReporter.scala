@@ -58,6 +58,7 @@ class JmxReporter(server: MBeanServer) extends MetricsReporter with Logging {
   }
 
   def register(source: String, registry: ReadableMetricsRegistry) {
+
     if (!listeners.contains(registry)) {
       sources += registry -> source
       listeners += registry -> new ReadableMetricsRegistryListener {
@@ -76,6 +77,31 @@ class JmxReporter(server: MBeanServer) extends MetricsReporter with Logging {
       }
     } else {
       warn("Trying to re-register a registry for source %s. Ignoring." format source)
+    }
+  }
+
+  //Migration
+  //Unregister certain mbeans
+  def unregister(source: String, registry: ReadableMetricsRegistry){
+    if(listeners.contains(registry)){
+      val listener = listeners.get(registry).get
+      //Testing
+      registry.getGroups.asScala.foreach(group => {
+        registry.getGroup(group).asScala.foreach {
+          case (name, metric) =>
+            metric.visit(new MetricsVisitor {
+              def counter(counter: Counter) = unregisterBean(new JmxCounter(counter, getObjectName(group, name, sources(registry))))
+              def gauge[T](gauge: Gauge[T]) = unregisterBean(new JmxGauge(gauge.asInstanceOf[Gauge[Object]], getObjectName(group, name, sources(registry))))
+              def timer(timer: Timer) = unregisterBean(new JmxTimer(timer, getObjectName(group, name, sources(registry))))
+              def listGauge[T](listGauge: ListGauge[T]) = unregisterBean(new JmxListGauge(listGauge.asInstanceOf[ListGauge[Object]], getObjectName(group, name, sources(registry))))
+
+            })
+        }
+      })
+      //Testing
+      registry.unlisten(listener)
+      sources -= registry
+      listeners -= registry
     }
   }
 

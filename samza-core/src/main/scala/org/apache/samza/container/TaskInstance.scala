@@ -110,6 +110,8 @@ class TaskInstance(
   def registerMetrics {
     debug("Registering metrics for taskName: %s" format taskName)
 
+    info("Registering metrics for taskName: %s" format taskName)
+    info("Reporters %s" format reporters.keys )
     reporters.values.foreach(_.register(metrics.source, metrics.registry))
   }
 
@@ -170,8 +172,10 @@ class TaskInstance(
   def registerConsumers {
     debug("Registering consumers for taskName: %s" format taskName)
 
+    info("Registering consumers for : %s ssps: %s" format (taskName, systemStreamPartitions))
     systemStreamPartitions.foreach(systemStreamPartition => {
       val startingOffset = getStartingOffset(systemStreamPartition)
+      info("%s 's offset is : %s" format(systemStreamPartition, startingOffset))
       consumerMultiplexer.register(systemStreamPartition, startingOffset)
       metrics.addOffsetGauge(systemStreamPartition, () =>
         if (sideInputSSPs.contains(systemStreamPartition)) {
@@ -181,6 +185,32 @@ class TaskInstance(
         })
     })
   }
+
+  //StreamSwitch
+  def reregisterConsumers {
+    debug("Registering consumers for taskName: %s" format taskName)
+
+    info("Registering old consumers for : %s ssps: %s" format (taskName, systemStreamPartitions))
+    systemStreamPartitions.foreach(systemStreamPartition => {
+      val lastProcessedOffset = offsetManager.getLastProcessedOffset(taskName, systemStreamPartition).orNull
+      val startingOffset = getStartingOffset(systemStreamPartition)
+      //Not end of stream
+      if(!IncomingMessageEnvelope.END_OF_STREAM_OFFSET.equals(startingOffset)) {
+        info("%s 's offset is : %s" format(systemStreamPartition, lastProcessedOffset))
+        consumerMultiplexer.registerOldPartitions(systemStreamPartition, (lastProcessedOffset.toInt + 1).toString)
+      }else {
+        info("%s is now end of stream, processed offset : %s" format(systemStreamPartition, lastProcessedOffset))
+        consumerMultiplexer.registerOldPartitions(systemStreamPartition, startingOffset)
+      }
+      metrics.addOffsetGauge(systemStreamPartition, () =>
+        if (sideInputSSPs.contains(systemStreamPartition)) {
+          sideInputStorageManager.getLastProcessedOffset(systemStreamPartition)
+        } else {
+          offsetManager.getLastProcessedOffset(taskName, systemStreamPartition).orNull
+        })
+    })
+  }
+
 
   def process(envelope: IncomingMessageEnvelope, coordinator: ReadableCoordinator,
     callbackFactory: TaskCallbackFactory = null) {
