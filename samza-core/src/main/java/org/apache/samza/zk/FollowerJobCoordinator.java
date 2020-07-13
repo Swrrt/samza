@@ -398,7 +398,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
                 if (!newJobModel.getContainers().containsKey(processorId)) {
                     LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
                             processorId, newJobModel);
-                    barrier.join(jobModelVersion, processorId);
+                    //barrier.join(jobModelVersion, processorId);
                     stop();
                 }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                         && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
