@@ -567,7 +567,16 @@ public class LeaderJobCoordinator implements JobCoordinator{
         zkUtils.publishJobModel(nextJMVersion, jobModel);
 
         // Start the barrier for the job model update
-        barrier.create(nextJMVersion, currentProcessorIds);
+
+        //Optimized Migration: when continuous migration, last scaled-in processor may not stop yet and still in currentProcessorIds, we should not wait for it to join.
+        //barrier.create(nextJMVersion, currentProcessorIds);
+        List<String> filteredProcessorIds = new LinkedList<>();
+        for(String pid: currentProcessorIds){
+            if(jobModel.getContainers().containsKey(pid)){
+                filteredProcessorIds.add(pid);
+            }
+        }
+        barrier.create(nextJMVersion, filteredProcessorIds);
 
 
         // Listen to barrier change, to inform controller when to update
