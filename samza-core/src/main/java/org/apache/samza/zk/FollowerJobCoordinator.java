@@ -336,6 +336,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     }
                     // It's the target
                     else if(isTargetContainer){
+                        LOG.info("This is target container");
                         HashMap<TaskName, TaskModel> addPartitions = new HashMap<>();
                         for(TaskName partition: newJobModel.getContainers().get(processorId).getTasks().keySet()){
                             if(!oldJobModel.getContainers().get(processorId).getTasks().containsKey(partition)){
@@ -397,7 +398,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
                 if (!newJobModel.getContainers().containsKey(processorId)) {
                     LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
                             processorId, newJobModel);
-                    barrier.join(jobModelVersion, processorId);
+                    //barrier.join(jobModelVersion, processorId);
                     stop();
                 }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                         && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
@@ -422,6 +423,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     // Check if it is target
                     else if(coordinatorListener != null && oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                             && newJobModel.getContainers().get(processorId).getTasks().size() > oldJobModel.getContainers().get(processorId).getTasks().size()){
+                        LOG.info("This is target container");
                         isTargetContainer = true;
                         isContainerModelEffected = true;
                         //barrier.join(jobModelVersion, processorId);
