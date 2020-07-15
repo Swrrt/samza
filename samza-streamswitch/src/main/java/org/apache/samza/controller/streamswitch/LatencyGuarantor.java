@@ -307,8 +307,8 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             private double calculateBacklogDelay(long backlog, double service){
-                //conservative
-                service = conservativeFactor * service;
+                //no conservative
+                //service = conservativeFactor * service;
                 if(backlog == 0)return 0.0;
                 if(service <= 0.0)return 1e100;
                 return backlog / service;
@@ -745,19 +745,23 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
 
                 long backlog0 = examiner.model.executorBacklog.get(srcExecutor), backlog1 = 0;
+                double arrival0 = examiner.model.executorArrivalRate.get(srcExecutor), arrival1 = 0;
                 //double executorServiceRate = examiner.model.executorServiceRate.get(srcExecutor); //Assume new executor has same service rate
                 double best = 1e100;
                 List<String> migratingSubstreams = new ArrayList<>();
                 for(String substream: sortedSubstreams){
                     long backlog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex);
+                    double arrival = examiner.model.substreamArrivalRate.get(substream);
                     backlog0 -= backlog;
                     backlog1 += backlog;
+                    arrival0 -= arrival;
+                    arrival1 += arrival;
 
-                    if(Math.max(backlog0, backlog1) < best){
-                        best = Math.max(backlog0, backlog1);
+                    if(Math.max(arrival0, arrival1) < best){
+                        best = Math.max(arrival0, arrival1);
                         migratingSubstreams.add(substream);
                     }
-                    if(backlog0 < backlog1)break;
+                    if(arrival0 < arrival1)break;
                 }
                 long newExecutorId = nextExecutorID.get();
                 String tgtExecutor = String.format("%06d", newExecutorId);
@@ -851,32 +855,34 @@ public class LatencyGuarantor extends StreamSwitch {
 
                 for(String src: oes){
                     long srcBacklog = examiner.model.executorBacklog.get(src);
+                    double srcArrival = examiner.model.executorArrivalRate.get(src);
                     for(String tgt: oes)
                         if(!tgt.equals(src)){
-                            double tgtBacklog = examiner.model.executorBacklog.get(tgt);
+                            double tgtArrival = examiner.model.executorArrivalRate.get(tgt);
+                            long tgtBacklog = examiner.model.executorBacklog.get(tgt);
                             double tgtService = examiner.model.executorServiceRate.get(tgt);
                             //Try to migrate all substreams from src to tgt
-                            //if(srcArrival + tgtArrival < tgtService){
-                            double estimatedBacklogDelay = 1e100;
-                            if(tgtService > 0)estimatedBacklogDelay = (srcBacklog + tgtBacklog) / tgtService;
-                            else estimatedBacklogDelay = 1e100;
-                            List<Double> current = new ArrayList<>();
-                            for(String executor: oes){
-                                if(executor.equals(src)){
-                                    current.add(0.0);
-                                }else if(executor.equals(tgt)){
-                                    current.add(estimatedBacklogDelay);
-                                }else{
-                                    current.add(examiner.model.executorBacklogDelay.get(executor));
+                            if(srcArrival + tgtArrival < tgtService * conservativeFactor) {
+                                double estimatedBacklogDelay = 1e100;
+                                if (tgtService > 0) estimatedBacklogDelay = examiner.model.calculateBacklogDelay(srcBacklog + tgtBacklog, tgtService);
+                                else estimatedBacklogDelay = 1e100;
+                                List<Double> current = new ArrayList<>();
+                                for (String executor : oes) {
+                                    if (executor.equals(src)) {
+                                        current.add(0.0);
+                                    } else if (executor.equals(tgt)) {
+                                        current.add(estimatedBacklogDelay);
+                                    } else {
+                                        current.add(examiner.model.executorBacklogDelay.get(executor));
+                                    }
+                                }
+                                current.sort(Collections.reverseOrder());
+                                if (best == null || vectorGreaterThan(best, current)) {
+                                    best = current;
+                                    minsrc = src;
+                                    mintgt = tgt;
                                 }
                             }
-                            current.sort(Collections.reverseOrder());
-                            if(best == null || vectorGreaterThan(best, current)){
-                                best = current;
-                                minsrc = src;
-                                mintgt = tgt;
-                            }
-                            //}
                         }
                 }
 
@@ -889,9 +895,9 @@ public class LatencyGuarantor extends StreamSwitch {
                         if(executor.equals(minsrc)){
                             map.put(minsrc, 0.0);
                         }else if(executor.equals(mintgt)){
-                            double backlog = examiner.model.executorBacklog.get(mintgt) + examiner.model.executorBacklog.get(mintgt);
+                            long backlog = examiner.model.executorBacklog.get(mintgt) + examiner.model.executorBacklog.get(mintgt);
                             double service = examiner.model.executorServiceRate.get(mintgt);
-                            map.put(mintgt, (backlog / service));
+                            map.put(mintgt, examiner.model.calculateBacklogDelay(backlog, service));
                         }else{
                             map.put(executor, examiner.model.executorBacklogDelay.get(executor));
                         }
@@ -1036,8 +1042,9 @@ public class LatencyGuarantor extends StreamSwitch {
                 for (String tgtExecutor : oes)
                     if (!srcExecutor.equals(tgtExecutor)) {
                         long tgtBacklog = examiner.model.executorBacklog.get(tgtExecutor);
+                        double tgtArrival = examiner.model.executorArrivalRate.get(tgtExecutor);
                         double tgtServiceRate = examiner.model.executorServiceRate.get(tgtExecutor);
-                        if (tgtBacklog / tgtServiceRate < latencyReq) {
+                        if (tgtArrival < tgtServiceRate && tgtBacklog / tgtServiceRate < latencyReq) {
                             TreeMap<Long, Set<String>> substreams = new TreeMap<>();
                             for(String substream: executorMapping.get(srcExecutor)){
                                 long backlog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex);
@@ -1053,13 +1060,17 @@ public class LatencyGuarantor extends StreamSwitch {
                             }
 
                             long srcBacklog = examiner.model.executorBacklog.get(srcExecutor);
+                            double srcArrival = examiner.model.executorArrivalRate.get(srcExecutor);
                             double srcServiceRate = examiner.model.executorServiceRate.get(srcExecutor);
                             List<String> migrating = new ArrayList<>();
                             //LOG.info("Debugging, try to migrate to " + tgtExecutor + "tgt la=" + tgtArrivalRate + "tgt mu=" + tgtServiceRate);
                             for(String substream: sortedSubstreams){ //Cannot migrate all substreams out?
                                 long backlog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex);
+                                double arrival = examiner.model.substreamArrivalRate.get(substream);
                                 srcBacklog -= backlog;
                                 tgtBacklog += backlog;
+                                srcArrival -= arrival;
+                                tgtArrival += arrival;
                                 migrating.add(substream);
 
                                 double srcDelay = examiner.model.calculateBacklogDelay(srcBacklog, srcServiceRate),
@@ -1078,7 +1089,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                 current.sort(Collections.reverseOrder()); //Delay vector is from largest to smallest.
 
                                 //LOG.info("Debugging, vectors=" + current);
-                                if(best == null || vectorGreaterThan(best, current)){
+                                if(srcArrival < srcServiceRate && tgtArrival < tgtServiceRate && (best == null || vectorGreaterThan(best, current))){
                                     best = current;
                                     bestTgtExecutor = tgtExecutor;
                                     if(bestMigratingSubstreams != null)bestMigratingSubstreams.clear();
