@@ -331,8 +331,8 @@ public class LatencyGuarantor extends StreamSwitch {
 
             private double calculateExecutorBacklogDelay(String executorId, long timeIndex){
                 long totalBacklog = 0;
-                long n0 = timeIndex - windowReq + 1;
-                //long n0 = timeIndex;
+                //long n0 = timeIndex - windowReq + 1;
+                long n0 = timeIndex;
                 if(n0<1){
                     n0 = 1;
                     LOG.warn("Calculate instant delay index smaller than window size!");
