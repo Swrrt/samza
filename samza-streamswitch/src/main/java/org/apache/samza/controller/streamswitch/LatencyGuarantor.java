@@ -585,7 +585,6 @@ public class LatencyGuarantor extends StreamSwitch {
 
             //Calculate healthiness from backlog
             private int getBacklogHealthiness(Map<String, Double> backlogDelay, Set<String> oes){
-                boolean isGood = true;
                 for(String oe: oes){
                     double b = backlogDelay.get(oe);
                     if(b > latencyReq){
@@ -854,7 +853,8 @@ public class LatencyGuarantor extends StreamSwitch {
         HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
         unlockedOEs.removeAll(oeUnlockTime.keySet());
 
-        int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
+        //int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
+        int healthiness = diagnoser.getBacklogHealthiness(examiner.getBacklogDelay(), unlockedOEs);
         //Use crossing
         //int healthiness = diagnoser.isBacklogCrossing(examiner.getInstantDelay(), examiner.getBacklogDelay(), unlockedOEs);
 
