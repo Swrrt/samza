@@ -583,6 +583,14 @@ public class LatencyGuarantor extends StreamSwitch {
                 return GOOD;
             }
 
+            //Use maximum of backlog and instant delay
+            private int getMaximumHealthiness(Map<String, Double> instantDelay, Map<String, Double> backlogDelay, Set<String> oes){
+                for(String oe: oes){
+                    if(Math.max(instantDelay.get(oe), backlogDelay.get(oe)) > l_high) return SEVERE;
+                }
+                return GOOD;
+            }
+
             //Calculate healthiness from backlog
             private int getBacklogHealthiness(Map<String, Double> backlogDelay, Set<String> oes){
                 for(String oe: oes){
@@ -854,7 +862,8 @@ public class LatencyGuarantor extends StreamSwitch {
         unlockedOEs.removeAll(oeUnlockTime.keySet());
 
         //int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
-        int healthiness = diagnoser.getBacklogHealthiness(examiner.getBacklogDelay(), unlockedOEs);
+        //int healthiness = diagnoser.getBacklogHealthiness(examiner.getBacklogDelay(), unlockedOEs);
+        int healthiness = diagnoser.getMaximumHealthiness(examiner.getInstantDelay(), examiner.getBacklogDelay(), unlockedOEs);
         //Use crossing
         //int healthiness = diagnoser.isBacklogCrossing(examiner.getInstantDelay(), examiner.getBacklogDelay(), unlockedOEs);
 
