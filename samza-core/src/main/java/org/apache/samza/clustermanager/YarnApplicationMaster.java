@@ -136,6 +136,9 @@ public class YarnApplicationMaster {
      * @param coordinatorSystemConfig the coordinator stream config that can be used to read the
      *                                {@link org.apache.samza.job.model.JobModel} from.
      */
+
+    private List<String> stoppedOEs;
+
     public YarnApplicationMaster(Config coordinatorSystemConfig) {
 
         metrics = new MetricsRegistryMap();

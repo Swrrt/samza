@@ -95,6 +95,8 @@ public class FollowerJobCoordinator implements JobCoordinator {
     private boolean hasCreatedStreams = false;
     private String cachedJobModelVersion = null;
 
+    private boolean isStopped = false;
+
     @VisibleForTesting
     ScheduleAfterDebounceTime debounceTimer;
 
@@ -394,11 +396,16 @@ public class FollowerJobCoordinator implements JobCoordinator {
                 oldJobModel = newJobModel;
                 newJobModel = zkUtils.getJobModel(jobModelVersion);
                 LOG.info("pid=" + processorId + ": new JobModel is available. Version =" + jobModelVersion + "; JobModel = " + newJobModel);
+                //Scaled-in processor should not join barrier.
+                if (isStopped) {
+                    LOG.info("This processor has already stopped, do nothing");
+                }
                 //Doing: only restart related processors.
-                if (!newJobModel.getContainers().containsKey(processorId)) {
+                else if (!newJobModel.getContainers().containsKey(processorId)) {
                     LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
                             processorId, newJobModel);
-                    //barrier.join(jobModelVersion, processorId);
+                    isStopped = true; //
+                    barrier.join(jobModelVersion, processorId);
                     stop();
                 }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                         && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
