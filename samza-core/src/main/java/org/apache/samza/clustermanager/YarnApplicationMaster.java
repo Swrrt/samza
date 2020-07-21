@@ -228,15 +228,15 @@ public class YarnApplicationMaster {
             systemAdmins.start();
             partitionMonitor.start();
 
+            //Pre-allocate container
+            log.info("Pre-allocate one idle container.");
+            containerProcessManager.scaleOut();
+
             //Start leader
             startLeader();
 
             //Start JobController
             startController(containers);
-
-            //Pre-allocate container
-            log.info("Pre-allocate one idle container.");
-            containerProcessManager.scaleOut();
 
             boolean isInterrupted = false;
             while (!containerProcessManager.shouldShutdown() && !checkAndThrowException() && !isInterrupted) {
