@@ -129,6 +129,8 @@ public class YarnApplicationMaster {
 
     private SystemAdmins systemAdmins = null;
 
+    private Deque<String> preallocatedOEs = null;
+
     /**
      * Creates a new ClusterBasedJobCoordinator instance from a config. Invoke run() to actually
      * run the jobcoordinator.
@@ -136,6 +138,7 @@ public class YarnApplicationMaster {
      * @param coordinatorSystemConfig the coordinator stream config that can be used to read the
      *                                {@link org.apache.samza.job.model.JobModel} from.
      */
+
     public YarnApplicationMaster(Config coordinatorSystemConfig) {
 
         metrics = new MetricsRegistryMap();
@@ -224,6 +227,10 @@ public class YarnApplicationMaster {
             containerProcessManager.start();
             systemAdmins.start();
             partitionMonitor.start();
+
+            //Pre-allocate container
+            log.info("Pre-allocate one idle container.");
+            containerProcessManager.scaleOut();
 
             //Start leader
             startLeader();

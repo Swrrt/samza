@@ -91,6 +91,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
     private String cachedJobModelVersion = null;
 
     private JobModel nextJobModel = null;
+    private JobModel lastJobModel = null;
     private ReentrantLock updateLock;
 
     @VisibleForTesting
@@ -568,11 +569,11 @@ public class LeaderJobCoordinator implements JobCoordinator{
 
         // Start the barrier for the job model update
 
-        //Optimized Migration: when continuous migration, last scaled-in processor may not stop yet and still in currentProcessorIds, we should not wait for it to join.
+        //Optimized Migration: when continuous migration, last scaled-in processor may not stop yet and still in currentProcessorIds, we should not create barrier for it to join.
         //barrier.create(nextJMVersion, currentProcessorIds);
         List<String> filteredProcessorIds = new LinkedList<>();
         for(String pid: currentProcessorIds){
-            if(jobModel.getContainers().containsKey(pid)){
+            if((lastJobModel != null && lastJobModel.getContainers().containsKey(pid)) || jobModel.getContainers().containsKey(pid)){
                 filteredProcessorIds.add(pid);
             }
         }
@@ -589,6 +590,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
         LOG.info("pid=" + processorId + "Published new Job Model. Version = " + nextJMVersion);
 
         debounceTimer.scheduleAfterDebounceTime(ON_ZK_CLEANUP, 0, () -> zkUtils.cleanupZK(NUM_VERSIONS_TO_LEAVE));
+        lastJobModel = jobModel;
         return true;
     }
     class LeaderBarrierListener extends ZkUtils.GenerationAwareZkDataListener {
