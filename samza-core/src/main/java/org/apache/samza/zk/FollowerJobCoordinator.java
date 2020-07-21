@@ -95,6 +95,9 @@ public class FollowerJobCoordinator implements JobCoordinator {
     private boolean hasCreatedStreams = false;
     private String cachedJobModelVersion = null;
 
+    private boolean isStopped = false;
+    private boolean isStarted = false;
+
     @VisibleForTesting
     ScheduleAfterDebounceTime debounceTimer;
 
@@ -330,6 +333,9 @@ public class FollowerJobCoordinator implements JobCoordinator {
 
                     // read the new Model
                     JobModel jobModel = getJobModel();
+                    if (!isStarted){
+                        LOG.info("This is pre-allocated container, do nothing.");
+                    }else
                     // start the container with the new model if it is effected
                     if (!isContainerModelEffected) {
                         LOG.info("Container is not effected, no need to restart.");
@@ -394,48 +400,74 @@ public class FollowerJobCoordinator implements JobCoordinator {
                 oldJobModel = newJobModel;
                 newJobModel = zkUtils.getJobModel(jobModelVersion);
                 LOG.info("pid=" + processorId + ": new JobModel is available. Version =" + jobModelVersion + "; JobModel = " + newJobModel);
-                //Doing: only restart related processors.
-                if (!newJobModel.getContainers().containsKey(processorId)) {
-                    LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
-                            processorId, newJobModel);
-                    //barrier.join(jobModelVersion, processorId);
-                    stop();
-                }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
-                        && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
-                    LOG.info("New JobModel does not change this container, do nothing");
-                    isContainerModelEffected = false;
-                    barrier.join(jobModelVersion, processorId);
-                } else {
-                    //Check if it is source
-                    if(coordinatorListener != null
-                            && oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
-                            && newJobModel.getContainers().get(processorId).getTasks().size() < oldJobModel.getContainers().get(processorId).getTasks().size()){
-                        LOG.info("This is source, trigger remove partitions");
-                        HashSet<TaskName> removingPartitions = new HashSet<>();
-                        for(TaskName partition: oldJobModel.getContainers().get(processorId).getTasks().keySet()){
-                            if(!newJobModel.getContainers().get(processorId).getTasks().containsKey(partition)){
-                                removingPartitions.add(partition);
+                if(isStarted) {
+                    //Scaled-in processor should not join barrier.
+                    if (isStopped) {
+                        LOG.info("This processor has already stopped, do nothing");
+                    }
+                    //Doing: only restart related processors.
+                    else if (!newJobModel.getContainers().containsKey(processorId)) {
+                        LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
+                                processorId, newJobModel);
+                        isStopped = true; //
+                        barrier.join(jobModelVersion, processorId);
+                        stop();
+                    } else if (oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
+                            && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))) {
+                        LOG.info("New JobModel does not change this container, do nothing");
+                        isContainerModelEffected = false;
+                        barrier.join(jobModelVersion, processorId);
+                    } else {
+                        //Check if it is source
+                        if (coordinatorListener != null
+                                && oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
+                                && newJobModel.getContainers().get(processorId).getTasks().size() < oldJobModel.getContainers().get(processorId).getTasks().size()) {
+                            LOG.info("This is source, trigger remove partitions");
+                            HashSet<TaskName> removingPartitions = new HashSet<>();
+                            for (TaskName partition : oldJobModel.getContainers().get(processorId).getTasks().keySet()) {
+                                if (!newJobModel.getContainers().get(processorId).getTasks().containsKey(partition)) {
+                                    removingPartitions.add(partition);
+                                }
                             }
+                            coordinatorListener.onRemovePartitions(removingPartitions);
+                            LOG.info("Remove partition complete");
                         }
-                        coordinatorListener.onRemovePartitions(removingPartitions);
-                        LOG.info("Remove partition complete");
+                        // Check if it is target
+                        else if (coordinatorListener != null && oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
+                                && newJobModel.getContainers().get(processorId).getTasks().size() > oldJobModel.getContainers().get(processorId).getTasks().size()) {
+                            LOG.info("This is target container");
+                            isTargetContainer = true;
+                            isContainerModelEffected = true;
+                            //barrier.join(jobModelVersion, processorId);
+                        }
+                        // stop current work
+                        else if (coordinatorListener != null) {
+                            coordinatorListener.onJobModelExpired();
+                            isContainerModelEffected = true;
+                            isTargetContainer = false;
+                        }
+                        // update ZK and wait for all the processors to get this new version
+                        barrier.join(jobModelVersion, processorId);
                     }
-                    // Check if it is target
-                    else if(coordinatorListener != null && oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
-                            && newJobModel.getContainers().get(processorId).getTasks().size() > oldJobModel.getContainers().get(processorId).getTasks().size()){
-                        LOG.info("This is target container");
-                        isTargetContainer = true;
-                        isContainerModelEffected = true;
-                        //barrier.join(jobModelVersion, processorId);
+                }
+                // For pre-allocate container
+                else{
+                    if(!newJobModel.getContainers().containsKey(processorId)){
+                        LOG.info("Did not start this pre-allocated container, do nothing");
+                    }else{
+                        if(oldJobModel == null){
+                            LOG.info("It's the beginning container");
+                            coordinatorListener.onJobModelExpired();
+                            isContainerModelEffected = true;
+                            isTargetContainer = false;
+                        }else{
+                            LOG.info("This is scale out target container");
+                            isTargetContainer = true;
+                            isContainerModelEffected = true;
+                        }
+                        isStarted = true;
+                        barrier.join(jobModelVersion, processorId);
                     }
-                    // stop current work
-                    else if (coordinatorListener != null) {
-                        coordinatorListener.onJobModelExpired();
-                        isContainerModelEffected = true;
-                        isTargetContainer = false;
-                    }
-                    // update ZK and wait for all the processors to get this new version
-                    barrier.join(jobModelVersion, processorId);
                 }
             });
         }
