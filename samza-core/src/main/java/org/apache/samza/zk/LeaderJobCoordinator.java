@@ -573,7 +573,7 @@ public class LeaderJobCoordinator implements JobCoordinator{
         //barrier.create(nextJMVersion, currentProcessorIds);
         List<String> filteredProcessorIds = new LinkedList<>();
         for(String pid: currentProcessorIds){
-            if(lastJobModel == null || lastJobModel.getContainers().containsKey(pid) || jobModel.getContainers().containsKey(pid)){
+            if((lastJobModel != null && lastJobModel.getContainers().containsKey(pid)) || jobModel.getContainers().containsKey(pid)){
                 filteredProcessorIds.add(pid);
             }
         }
