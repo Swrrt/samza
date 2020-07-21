@@ -461,9 +461,10 @@ public class FollowerJobCoordinator implements JobCoordinator {
                             isContainerModelEffected = true;
                             isTargetContainer = false;
                         }else{
-                            LOG.info("This is scale out target container");
-                            isTargetContainer = true;
+                            LOG.info("It's the scale out target container");
+                            coordinatorListener.onJobModelExpired();
                             isContainerModelEffected = true;
+                            isTargetContainer = false;
                         }
                         isStarted = true;
                         barrier.join(jobModelVersion, processorId);
