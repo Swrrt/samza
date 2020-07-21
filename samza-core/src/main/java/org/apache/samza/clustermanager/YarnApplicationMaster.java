@@ -235,6 +235,7 @@ public class YarnApplicationMaster {
             startController(containers);
 
             //Pre-allocate container
+            log.info("Pre-allocate one idle container.");
             containerProcessManager.scaleOut();
 
             boolean isInterrupted = false;
