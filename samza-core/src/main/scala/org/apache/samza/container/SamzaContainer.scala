@@ -981,6 +981,9 @@ class SamzaContainer(
         removedTasks.add(taskName)
       })
 
+      //Debugging
+      info("Last Processed Offsets: %s" format(offsetManager.lastProcessedOffsets))
+
       //shutdownOffsetManager
       info("Remove tasks from offsetManager")
       offsetManager.removeTasks(taskNames)

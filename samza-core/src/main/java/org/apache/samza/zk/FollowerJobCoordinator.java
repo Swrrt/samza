@@ -409,13 +409,14 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     else if (!newJobModel.getContainers().containsKey(processorId)) {
                         LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
                                 processorId, newJobModel);
-                        isStopped = true; //
+                        isStopped = true; //TODO: possible un-checkpointed offset
                         barrier.join(jobModelVersion, processorId);
                         stop();
                     } else if (oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                             && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))) {
                         LOG.info("New JobModel does not change this container, do nothing");
                         isContainerModelEffected = false;
+                        isTargetContainer = false;
                         barrier.join(jobModelVersion, processorId);
                     } else {
                         //Check if it is source
@@ -430,6 +431,8 @@ public class FollowerJobCoordinator implements JobCoordinator {
                                 }
                             }
                             coordinatorListener.onRemovePartitions(removingPartitions);
+                            isContainerModelEffected = false;
+                            isTargetContainer = false;
                             LOG.info("Remove partition complete");
                         }
                         // Check if it is target
