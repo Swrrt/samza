@@ -3,6 +3,7 @@ package org.apache.samza.controller.streamswitch;
 import javafx.util.Pair;
 import org.apache.samza.config.Config;
 import org.apache.samza.controller.OperatorControllerListener;
+import org.mortbay.util.MultiMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -502,14 +503,14 @@ public class LatencyGuarantor extends StreamSwitch {
         }
     }
     class Prescription {
-        String source, target;
-        List<String> migratingSubstreams;
+        List<String> sources, targets;
+        Map<String, Map.Entry<String, String>> migratingSubstreams;
         Prescription(){
             migratingSubstreams = null;
         }
-        Prescription(String source, String target, List<String> migratingSubstreams){
-            this.source = source;
-            this.target = target;
+        Prescription(List<String> sources, List<String> targets, Map<String, Map.Entry<String, String>> migratingSubstreams){
+            this.sources = sources;
+            this.targets = targets;
             this.migratingSubstreams = migratingSubstreams;
         }
         Map<String, List<String>> generateNewSubstreamAssignment(Map<String, List<String>> oldAssignment){
@@ -518,13 +519,18 @@ public class LatencyGuarantor extends StreamSwitch {
                 List<String> substreams = new ArrayList<>(oldAssignment.get(executor));
                 newAssignment.put(executor, substreams);
             }
-            if (!newAssignment.containsKey(target)) newAssignment.put(target, new LinkedList<>());
-            for (String substream : migratingSubstreams) {
-                newAssignment.get(source).remove(substream);
-                newAssignment.get(target).add(substream);
+            for(String target: targets) {
+                if (!newAssignment.containsKey(target)) newAssignment.put(target, new LinkedList<>());
+            }
+            for (Map.Entry<String, Map.Entry<String, String>> substream : migratingSubstreams.entrySet()) {
+                String source = substream.getValue().getKey(), target = substream.getValue().getValue();
+                newAssignment.get(source).remove(substream.getKey());
+                newAssignment.get(target).add(substream.getKey());
             }
             //For scale in
-            if (newAssignment.get(source).size() == 0) newAssignment.remove(source);
+            for(String source: sources) {
+                if (newAssignment.get(source).size() == 0) newAssignment.remove(source);
+            }
             return newAssignment;
         }
     }
@@ -651,7 +657,14 @@ public class LatencyGuarantor extends StreamSwitch {
                 double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor), arrivalrate1 = 0;
                 //double executorServiceRate = examiner.model.executorServiceRate.get(srcExecutor); //Assume new executor has same service rate
                 double best = 1e100;
-                List<String> migratingSubstreams = new ArrayList<>();
+
+                long newExecutorId = nextExecutorID.get();
+                String tgtExecutor = String.format("%06d", newExecutorId);
+                if(newExecutorId + 1 > nextExecutorID.get()){
+                    nextExecutorID.set(newExecutorId + 1);
+                }
+
+                Map<String, Map.Entry<String, String>> migratingSubstreams = new TreeMap<>();
                 for(String substream: sortedSubstreams){
                     double arrival = examiner.model.substreamArrivalRate.get(substream);
                     arrivalrate0 -= arrival;
@@ -659,17 +672,104 @@ public class LatencyGuarantor extends StreamSwitch {
 
                     if(Math.max(arrivalrate0, arrivalrate1) < best){
                         best = Math.max(arrivalrate0, arrivalrate1);
-                        migratingSubstreams.add(substream);
+                        migratingSubstreams.put(substream, new AbstractMap.SimpleEntry<>(srcExecutor, tgtExecutor));
                     }
                     if(arrivalrate0 < arrivalrate1)break;
                 }
-                long newExecutorId = nextExecutorID.get();
-                String tgtExecutor = String.format("%06d", newExecutorId);
-                if(newExecutorId + 1 > nextExecutorID.get()){
-                    nextExecutorID.set(newExecutorId + 1);
-                }
+
                 //LOG.info("Debugging, scale out migrating substreams: " + migratingSubstreams);
-                return new Pair<Prescription, Map<String, Double>>(new Prescription(srcExecutor, tgtExecutor, migratingSubstreams), null);
+                List<String> srcExecutors = new LinkedList<>();
+                srcExecutors.add(srcExecutor);
+                List<String> tgtExecutors = new LinkedList<>();
+                tgtExecutors.add(tgtExecutor);
+                return new Pair<>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
+            }
+
+            private Pair<Prescription, Map<String, Double>> multipleScaleOut(Set<String> oes, int scaleOutNumber){
+                LOG.info("Scale out by " + scaleOutNumber + " container");
+                if(oes.size() <= 0){
+                    LOG.info("No executor to move");
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
+                }
+
+                if(executorMapping.size() + 1 > maxNumberOfExecutors){
+                    LOG.info("Reach executor number limit, cannot scale out");
+                    return new Pair<>(new Prescription(), null);
+                }
+
+                if(executorMapping.size() + scaleOutNumber > maxNumberOfExecutors){
+                    scaleOutNumber = maxNumberOfExecutors - executorMapping.size();
+                    LOG.info("Reach executor number limit, can only scale out " + scaleOutNumber);
+                }
+
+                Pair<String, Double> a = getWorstExecutor(oes);
+                String srcExecutor = a.getKey();
+                if(srcExecutor == null || srcExecutor.equals("") || executorMapping.get(srcExecutor).size() <=scaleOutNumber){
+                    LOG.info("Cannot scale out: insufficient substream to migrate");
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
+                }
+
+                LOG.info("Migrating out from executor " + srcExecutor);
+
+                //Try from smallest latency to largest latency
+                TreeMap<Double, Set<String>> substreams = new TreeMap<>();
+
+                for(String substream: executorMapping.get(srcExecutor)){
+                    double delay = examiner.state.getSubstreamLatency(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex) /
+                            ((double) examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex - 1));
+                    substreams.putIfAbsent(delay, new HashSet<>());
+                    substreams.get(delay).add(substream);
+                }
+                //Debugging
+                LOG.info("Debugging, substreams' latency=" + substreams);
+
+                List<String> sortedSubstreams = new LinkedList<>();
+                for(Map.Entry<Double, Set<String>> entry: substreams.entrySet()){
+                    sortedSubstreams.addAll(entry.getValue());
+                }
+
+                List<String> tgtExecutors = new LinkedList<>();
+                TreeMap<Double, List<String>> arrivalRate = new TreeMap<>(); //Sort OEs from smallest to largest.
+                arrivalRate.put(0.0, new LinkedList<>());
+                for(int i = 0; i<scaleOutNumber; i++){
+                    long newExecutorId = nextExecutorID.get();
+                    String tgtExecutor = String.format("%06d", newExecutorId);
+                    if(newExecutorId + 1 > nextExecutorID.get()){
+                        nextExecutorID.set(newExecutorId + 1);
+                    }
+                    tgtExecutors.add(tgtExecutor);
+                    arrivalRate.firstEntry().getValue().add(tgtExecutor);
+                }
+                double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor);
+                double best = 1e100;
+                Map<String, Map.Entry<String, String>> migratingSubstreams = new HashMap<>();
+                //TODO: possible bug when some substreams have 0 arrival rate.
+                for(String substream: sortedSubstreams){
+                    double arrival = examiner.model.substreamArrivalRate.get(substream);
+                    arrivalrate0 -= arrival;
+                    double tgtArrivalrate = arrivalRate.firstEntry().getKey() + arrival;
+                    String tgtExecutor = arrivalRate.firstEntry().getValue().get(0);
+
+                    arrivalRate.firstEntry().getValue().remove(0);
+                    if(arrivalRate.firstEntry().getValue().size() == 0){
+                        arrivalRate.pollFirstEntry();
+                    }
+                    if(!arrivalRate.containsKey(tgtArrivalrate)){
+                        arrivalRate.put(tgtArrivalrate,new LinkedList<>());
+                    }
+                    arrivalRate.get(tgtArrivalrate).add(tgtExecutor);
+
+                    double maxArrivalRate = arrivalRate.lastKey();
+                    if(Math.max(maxArrivalRate, arrivalrate0) <= best) {
+                        best = Math.max(maxArrivalRate, arrivalrate0);
+                        migratingSubstreams.put(substream, new AbstractMap.SimpleEntry<>(srcExecutor, tgtExecutor));
+                    }else{
+                        break;
+                    }
+                }
+                List<String> srcExecutors = new LinkedList<>();
+                srcExecutors.add(srcExecutor);
+                return new Pair<Prescription, Map<String, Double>>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
             }
 
             //Iterate all pairs of source and targe OE, find the one minimize delay vector
@@ -732,7 +832,14 @@ public class LatencyGuarantor extends StreamSwitch {
                             map.put(executor, examiner.model.getLongTermDelay(executor));
                         }
                     }
-                    return new Pair<Prescription, Map<String, Double>>(new Prescription(minsrc, mintgt, migratingSubstreams), map);
+                    List<String> srcs = new LinkedList<>(), tgts = new LinkedList<>();
+                    srcs.add(minsrc);
+                    tgts.add(mintgt);
+                    Map<String, Map.Entry<String, String>> migrating = new HashMap<>();
+                    for(String substream: migratingSubstreams){
+                        migrating.put(substream, new AbstractMap.SimpleEntry<>(minsrc, mintgt));
+                    }
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(srcs, tgts, migrating), map);
                 }else {
                     LOG.info("Cannot find any scale in");
                     return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
@@ -842,9 +949,17 @@ public class LatencyGuarantor extends StreamSwitch {
                         map.put(executor, examiner.model.getLongTermDelay(executor));
                     }
                 }
-                return new Pair<>(new Prescription(srcExecutor, bestTgtExecutor, bestMigratingSubstreams), map);
-            }
 
+                List<String> srcs = new LinkedList<>(), tgts = new LinkedList<>();
+                srcs.add(srcExecutor);
+                tgts.add(bestTgtExecutor);
+                Map<String, Map.Entry<String, String>> migrating = new HashMap<>();
+                for(String substream: bestMigratingSubstreams){
+                    migrating.put(substream, new AbstractMap.SimpleEntry<>(srcExecutor, bestTgtExecutor));
+                }
+                //return new Pair<>(new Prescription(srcExecutor, bestTgtExecutor, bestMigratingSubstreams), map);
+                return new Pair<>(new Prescription(srcs, tgts, migrating), map);
+            }
             private final static int GOOD = 0, MODERATE = 1, SEVERE = 2;
         }
 
@@ -854,9 +969,10 @@ public class LatencyGuarantor extends StreamSwitch {
         HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
         unlockedOEs.removeAll(oeUnlockTime.keySet());
 
-        int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
+        //int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
         //Use crossing
         //int healthiness = diagnoser.isBacklogCrossing(examiner.getInstantDelay(), examiner.getBacklogDelay(), unlockedOEs);
+        int healthiness = diagnoser.getBacklogHealthiness(examiner.getBacklogDelay(), unlockedOEs);
 
         Prescription pres = new Prescription(null, null, null);
         LOG.info("Debugging, instant delay vector: " + examiner.getInstantDelay() + " long term delay vector: " + examiner.getLongtermDelay());
@@ -939,23 +1055,23 @@ public class LatencyGuarantor extends StreamSwitch {
 
         LOG.info("Old mapping: " + executorMapping);
         Map<String, List<String>> newAssignment = pres.generateNewSubstreamAssignment(executorMapping);
-        LOG.info("Prescription : src: " + pres.source + " , tgt: " + pres.target + " , migrating: " + pres.migratingSubstreams);
+        LOG.info("Prescription : srcs: " + pres.sources + " , tgts: " + pres.targets + " , migrating: " + pres.migratingSubstreams);
         LOG.info("New mapping: " + newAssignment);
         System.out.println("New mapping at time: " + examiner.state.currentTimeIndex + " mapping: " + newAssignment);
 
         //Scale out
-        if (!executorMapping.containsKey(pres.target)) {
+        if (!executorMapping.containsKey(pres.targets.get(0))) {
             LOG.info("Scale out");
             //For drawing figure
-            System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.source + " to executor " + pres.target);
+            System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
 
             listener.scale(newAssignment.size(), newAssignment);
         }
         //Scale in
-        else if(executorMapping.get(pres.source).size() == pres.migratingSubstreams.size()) {
+        else if(executorMapping.get(pres.sources.get(0)).size() == pres.migratingSubstreams.size()) {
             LOG.info("Scale in");
             //For drawing figure
-            System.out.println("Migration! Scale in prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.source + " to executor " + pres.target);
+            System.out.println("Migration! Scale in prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
 
             listener.scale(newAssignment.size(), newAssignment);
         }
@@ -963,7 +1079,7 @@ public class LatencyGuarantor extends StreamSwitch {
         else {
             LOG.info("Load balance");
             //For drawing figure
-            System.out.println("Migration! Load balance prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.source + " to executor " + pres.target);
+            System.out.println("Migration! Load balance prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
 
             listener.remap(newAssignment);
         }
@@ -1023,24 +1139,28 @@ public class LatencyGuarantor extends StreamSwitch {
             } else {
                 String migrationType = "migration";
                 //Scale in, remove useless information
-                if(pendingPres.migratingSubstreams.size() == executorMapping.get(pendingPres.source).size()){
-                    examiner.model.executorServiceRate.remove(pendingPres.source);
-                    examiner.model.executorInstantaneousDelay.remove(pendingPres.source);
-                    examiner.model.executorBacklogDelay.remove(pendingPres.source);
-                    examiner.model.executorBacklog.remove(pendingPres.source);
+                if(pendingPres.migratingSubstreams.size() == executorMapping.get(pendingPres.sources.get(0)).size()){
+                    examiner.model.executorServiceRate.remove(pendingPres.sources.get(0));
+                    examiner.model.executorInstantaneousDelay.remove(pendingPres.sources.get(0));
+                    examiner.model.executorBacklogDelay.remove(pendingPres.sources.get(0));
+                    examiner.model.executorBacklog.remove(pendingPres.sources.get(0));
                     migrationType = "scale-in";
                 }
-                if(!executorMapping.containsKey(pendingPres.target)){
+                if(!executorMapping.containsKey(pendingPres.targets.get(0))){
                     migrationType = "scale-out";
                 }
                 //For drawing figre
-                LOG.info("Migrating " + pendingPres.migratingSubstreams + " from " + pendingPres.source + " to " + pendingPres.target);
+                LOG.info("Migrating " + pendingPres.migratingSubstreams + " from " + pendingPres.sources + " to " + pendingPres.targets);
 
                 long unlockTime = examiner.state.currentTimeIndex + (migrationInterval / metricsRetreiveInterval);
-                oeUnlockTime.put(pendingPres.source, unlockTime);
-                oeUnlockTime.put(pendingPres.target, unlockTime);
+                for(String source: pendingPres.sources) {
+                    oeUnlockTime.put(source, unlockTime);
+                }
+                for(String target: pendingPres.targets) {
+                    oeUnlockTime.put(target, unlockTime);
+                }
                 isMigrating = false;
-                System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
+                System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets);
 
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
