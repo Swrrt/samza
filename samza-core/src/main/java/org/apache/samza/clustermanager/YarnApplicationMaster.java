@@ -129,7 +129,7 @@ public class YarnApplicationMaster {
 
     private SystemAdmins systemAdmins = null;
 
-    private Deque<String> preallocatedOEs = null;
+    private int numberOfPreOEs;
 
     /**
      * Creates a new ClusterBasedJobCoordinator instance from a config. Invoke run() to actually
@@ -172,6 +172,8 @@ public class YarnApplicationMaster {
         controller = createController();
 
         numOfContainers = (new JobConfig(config)).getContainerCount();
+
+        numberOfPreOEs = config.getInt("yarn.precontainer.number", 10);
 
     }
 
@@ -229,8 +231,10 @@ public class YarnApplicationMaster {
             partitionMonitor.start();
 
             //Pre-allocate container
-            log.info("Pre-allocate one idle container.");
-            containerProcessManager.scaleOut();
+            log.info("Pre-allocate " + numberOfPreOEs + " idle container.");
+            for(int i = 0; i < numberOfPreOEs; i++){
+                containerProcessManager.scaleOut();
+            }
 
             //Start leader
             startLeader();
