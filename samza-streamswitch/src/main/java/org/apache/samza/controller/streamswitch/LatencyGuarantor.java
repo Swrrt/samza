@@ -1019,7 +1019,7 @@ public class LatencyGuarantor extends StreamSwitch {
             //Scale out
             LOG.info("Cannot load-balance, need to scale out");
             //result = diagnoser.scaleOut(unlockedOEs);
-            result = diagnoser.multipleScaleOut(unlockedOEs, 5);
+            result = diagnoser.multipleScaleOut(unlockedOEs, 2);
             return result.getKey();
         }
     }
