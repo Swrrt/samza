@@ -731,6 +731,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         for(int i=0;i<numberToMigration;i++){
                             String substream = executorMapping.get(oe).get(i);
                             String tgt = tgts.get(totalMigrated % tgts.size());
+                            totalMigrated++;
                             migratingSubstreams.put(substream, new AbstractMap.SimpleEntry<>(oe, tgt));
                         }
                     }
@@ -1128,20 +1129,25 @@ public class LatencyGuarantor extends StreamSwitch {
             listener.scale(newAssignment.size(), newAssignment);
         }
         //Scale in
-        else if(executorMapping.get(pres.sources.get(0)).size() == pres.migratingSubstreams.size()) {
-            LOG.info("Scale in");
-            //For drawing figure
-            System.out.println("Migration! Scale in prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
-
-            listener.scale(newAssignment.size(), newAssignment);
-        }
-        //Load balance
         else {
-            LOG.info("Load balance");
-            //For drawing figure
-            System.out.println("Migration! Load balance prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
+            int total = 0;
+            for(String src: pres.sources)
+                total += executorMapping.get(src).size();
+            if(total == pres.migratingSubstreams.size()) {
+                LOG.info("Scale in");
+                //For drawing figure
+                System.out.println("Migration! Scale in prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
 
-            listener.remap(newAssignment);
+                listener.scale(newAssignment.size(), newAssignment);
+            }
+            //Load balance
+            else {
+                LOG.info("Load balance");
+                //For drawing figure
+                System.out.println("Migration! Load balance prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
+
+                listener.remap(newAssignment);
+            }
         }
     }
 
