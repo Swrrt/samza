@@ -685,6 +685,60 @@ public class LatencyGuarantor extends StreamSwitch {
                 return new Pair<>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
             }
 
+            private Pair<Prescription, Map<String, Double>> multiSourceTargetLoadBalance(Set<String> oes, int srcNum, int tgtNum){
+                LOG.info("Test multiple sources/targets");
+                if(oes.size() <= srcNum + tgtNum){
+                    LOG.info("Not enough executors to move");
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
+                }
+                List<String> srcs = new LinkedList<>(), tgts = new LinkedList<>();
+                TreeMap<Double, List<String>> toes = new TreeMap<>();
+                for(String oe :oes){
+                    double instantdelay = examiner.model.getLongTermDelay(oe);
+                    if(!toes.containsKey(instantdelay)){
+                        toes.put(instantdelay, new LinkedList<>());
+                    }
+                    toes.get(instantdelay).add(oe);
+                }
+                for(int i=0;i<srcNum;i++) {
+                    String oe = toes.lastEntry().getValue().get(0);
+                    toes.lastEntry().getValue().remove(0);
+                    if(toes.lastEntry().getValue().size() == 0){
+                        toes.pollLastEntry();
+                    }
+                    if(executorMapping.get(oe).size() > 1){
+                        srcs.add(oe);
+                    }
+                }
+
+                for(int i=0;i<tgtNum;i++) {
+                    String oe = toes.firstEntry().getValue().get(0);
+                    toes.firstEntry().getValue().remove(0);
+                    if(toes.firstEntry().getValue().size() == 0){
+                        toes.pollFirstEntry();
+                    }
+                    tgts.add(oe);
+                }
+                toes.clear();
+                //TODO: implement an algorithm here
+
+                //Currently random move some substreams
+                Map<String, Map.Entry<String, String>> migratingSubstreams = new HashMap<>();
+                int totalMigrated = 0;
+                for(String oe: srcs){
+                    if(executorMapping.get(oe).size() > 1){
+                        int numberToMigration = Math.min(executorMapping.get(oe).size() - 1, 2);
+                        for(int i=0;i<numberToMigration;i++){
+                            String substream = executorMapping.get(oe).get(i);
+                            String tgt = tgts.get(totalMigrated % tgts.size());
+                            migratingSubstreams.put(substream, new AbstractMap.SimpleEntry<>(oe, tgt));
+                        }
+                    }
+                }
+
+                return new Pair<>(new Prescription(srcs, tgts, migratingSubstreams), null);
+            }
+
             private Pair<Prescription, Map<String, Double>> multipleScaleOut(Set<String> oes, int scaleOutNumber){
                 LOG.info("Scale out by " + scaleOutNumber + " container");
                 if(oes.size() <= 0){
@@ -1006,7 +1060,11 @@ public class LatencyGuarantor extends StreamSwitch {
         else{
             LOG.info("Current healthiness is Severe");
             System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
-            Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
+            Pair<Prescription, Map<String, Double>> result = diagnoser.multiSourceTargetLoadBalance(unlockedOEs, 3, 3);
+            if(true){
+                return result.getKey();
+            }
+            /*Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
             //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
                 int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
@@ -1015,11 +1073,11 @@ public class LatencyGuarantor extends StreamSwitch {
                     LOG.info("Load-balance is OK");
                     return result.getKey();
                 }
-            }
+            }*/
             //Scale out
             LOG.info("Cannot load-balance, need to scale out");
             //result = diagnoser.scaleOut(unlockedOEs);
-            result = diagnoser.multipleScaleOut(unlockedOEs, 5);
+            result = diagnoser.multipleScaleOut(unlockedOEs, 2);
             return result.getKey();
         }
     }
