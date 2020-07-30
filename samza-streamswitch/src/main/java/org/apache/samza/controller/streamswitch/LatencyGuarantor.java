@@ -1205,7 +1205,11 @@ public class LatencyGuarantor extends StreamSwitch {
             } else {
                 String migrationType = "migration";
                 //Scale in, remove useless information
-                if(pendingPres.migratingSubstreams.size() == executorMapping.get(pendingPres.sources.get(0)).size()){
+                int totalSubstreams = 0;
+                for(String oe: pendingPres.sources){
+                    totalSubstreams += executorMapping.get(oe).size();
+                }
+                if(pendingPres.migratingSubstreams.size() == totalSubstreams){
                     examiner.model.executorServiceRate.remove(pendingPres.sources.get(0));
                     examiner.model.executorInstantaneousDelay.remove(pendingPres.sources.get(0));
                     examiner.model.executorBacklogDelay.remove(pendingPres.sources.get(0));
