@@ -1061,7 +1061,8 @@ public class LatencyGuarantor extends StreamSwitch {
             LOG.info("Current healthiness is Severe");
             System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
             Pair<Prescription, Map<String, Double>> result = diagnoser.multiSourceTargetLoadBalance(unlockedOEs, 3, 3);
-            if(true){
+            if(result.getKey().migratingSubstreams != null){
+                LOG.info("OK to migrate");
                 return result.getKey();
             }
             /*Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
