@@ -746,6 +746,8 @@ public class LatencyGuarantor extends StreamSwitch {
                     LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog);
                     if(sortedSubstream.size() > 0) {
                         while (srcArrival >= service || srcBacklog / service >= latencyReq) {
+                            //Debugging
+                            LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog + " substreams=" + sortedSubstream.values());
                             long newExecutorId = nextExecutorID.get();
                             String tgtExecutor = String.format("%06d", newExecutorId);
                             if (newExecutorId + 1 > nextExecutorID.get()) {
@@ -891,7 +893,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             }
 
                             //Debugging
-                            LOG.info("Debugging, substreams' latency=" + substreams);
+                            //LOG.info("Debugging, substreams' latency=" + substreams);
                             List<String> sortedSubstreams = new LinkedList<>();
                             for(Map.Entry<Double, Set<String>> entry: substreams.entrySet()){
                                 sortedSubstreams.addAll(entry.getValue());
