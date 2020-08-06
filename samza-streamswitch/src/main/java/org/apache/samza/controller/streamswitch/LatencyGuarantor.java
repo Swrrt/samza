@@ -738,6 +738,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             sortedSubstream.get(backlog).add(sub);
                         }
                     }
+                    //Debugging
+                    LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog);
                     if(sortedSubstream.size() > 0) {
                         while (srcArrival >= service || srcBacklog / service >= latencyReq) {
                             long newExecutorId = nextExecutorID.get();
@@ -763,6 +765,10 @@ public class LatencyGuarantor extends StreamSwitch {
                                 } else {
                                     break;
                                 }
+                            }
+                            if(tgtBacklog == 0){
+                                LOG.warn("Something happened, no substream is migrated" + sortedSubstream.firstEntry());
+                                break;
                             }
                         }
                     }
