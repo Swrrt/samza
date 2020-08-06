@@ -685,147 +685,91 @@ public class LatencyGuarantor extends StreamSwitch {
                 return new Pair<>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
             }
 
-            private Pair<Prescription, Map<String, Double>> multiSourceTargetLoadBalance(Set<String> oes, int srcNum, int tgtNum){
-                LOG.info("Test multiple sources/targets");
-                if(oes.size() <= srcNum + tgtNum){
-                    LOG.info("Not enough executors to move");
-                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
-                }
-                List<String> srcs = new LinkedList<>(), tgts = new LinkedList<>();
-                TreeMap<Double, List<String>> toes = new TreeMap<>();
-                for(String oe :oes){
-                    double instantdelay = examiner.model.getLongTermDelay(oe);
-                    if(!toes.containsKey(instantdelay)){
-                        toes.put(instantdelay, new LinkedList<>());
-                    }
-                    toes.get(instantdelay).add(oe);
-                }
-                for(int i=0;i<srcNum;i++) {
-                    String oe = toes.lastEntry().getValue().get(0);
-                    toes.lastEntry().getValue().remove(0);
-                    if(toes.lastEntry().getValue().size() == 0){
-                        toes.pollLastEntry();
-                    }
-                    if(executorMapping.get(oe).size() > 1){
+            //Scale out OEs that will violate requirement
+            //Try to preserve guarantee, but if not possible, try to minimize violation time
+            private Pair<Prescription, Map<String, Double>> scaleOutByBacklog(Set<String> oes){
+                LOG.info("Scale out using backlog");
+                //Find all oes that will violate requirement
+                List<String> srcs = new LinkedList<>();
+                List<String> tgts = new LinkedList<>();
+                Map<String, Map.Entry<String, String>> migratingSubstreams = new TreeMap<>();
+                for(String oe: oes){
+                    double arrival = examiner.model.executorArrivalRate.get(oe), service = examiner.model.executorServiceRate.get(oe);
+                    double backlogDelay = examiner.model.executorBacklogDelay.get(oe);
+                    if(arrival >= service || backlogDelay >= latencyReq){
                         srcs.add(oe);
                     }
                 }
-
-                for(int i=0;i<tgtNum;i++) {
-                    String oe = toes.firstEntry().getValue().get(0);
-                    toes.firstEntry().getValue().remove(0);
-                    if(toes.firstEntry().getValue().size() == 0){
-                        toes.pollFirstEntry();
-                    }
-                    tgts.add(oe);
-                }
-                toes.clear();
-                //TODO: implement an algorithm here
-
-                //Currently random move some substreams
-                Map<String, Map.Entry<String, String>> migratingSubstreams = new HashMap<>();
-                int totalMigrated = 0;
+                LOG.info("Scale out from " + srcs);
+                //Consider these OEs independently
                 for(String oe: srcs){
-                    if(executorMapping.get(oe).size() > 1){
-                        int numberToMigration = Math.min(executorMapping.get(oe).size() - 1, 2);
-                        for(int i=0;i<numberToMigration;i++){
-                            String substream = executorMapping.get(oe).get(i);
-                            String tgt = tgts.get(totalMigrated % tgts.size());
-                            totalMigrated++;
-                            migratingSubstreams.put(substream, new AbstractMap.SimpleEntry<>(oe, tgt));
+                    //Try to satisfy requirement
+                    double service = examiner.model.executorServiceRate.get(oe);
+                    long srcBacklog = examiner.model.executorBacklog.get(oe);
+                    double srcArrival = examiner.model.executorArrivalRate.get(oe);
+                    //Check whether it is possible to satisfy requirement if one substream per OE
+                    //Excluded those cannot be satisfied.
+                    TreeMap<Long, List<String>> sortedSubstream = new TreeMap<>();
+                    long numberToScaleOut = 0;
+                    for(String sub: executorMapping.get(oe)){
+                        long backlog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
+                        double sarrival = examiner.model.substreamArrivalRate.get(sub);
+                        if(sarrival >= service || backlog / service >= latencyReq){ //For those cannot be satisfied, allocate entire OE for each of them.
+                            //Debugging
+                            LOG.info("Impossible to satisfy requirement, substream " + sub);
+                            numberToScaleOut ++;
+                            if(numberToScaleOut < executorMapping.get(oe).size()) {
+                                long newExecutorId = nextExecutorID.get();
+                                String tgtExecutor = String.format("%06d", newExecutorId);
+                                if (newExecutorId + 1 > nextExecutorID.get()) {
+                                    nextExecutorID.set(newExecutorId + 1);
+                                }
+                                tgts.add(tgtExecutor);
+                                migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
+                                srcArrival -= sarrival;
+                                srcBacklog -= backlog;
+                            }else{//Remain one substream in source
+                                LOG.info("All substreams cannot be satisfied.");
+                            }
+                        }else{
+                            if(!sortedSubstream.containsKey(backlog)){
+                                sortedSubstream.put(backlog, new LinkedList<>());
+                            }
+                            sortedSubstream.get(backlog).add(sub);
+                        }
+                    }
+                    if(sortedSubstream.size() > 0) {
+                        while (srcArrival >= service || srcBacklog / service >= latencyReq) {
+                            long newExecutorId = nextExecutorID.get();
+                            String tgtExecutor = String.format("%06d", newExecutorId);
+                            if (newExecutorId + 1 > nextExecutorID.get()) {
+                                nextExecutorID.set(newExecutorId + 1);
+                            }
+                            tgts.add(tgtExecutor);
+                            long tgtBacklog = 0;
+                            double tgtArrival = 0;
+                            while (sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
+                                long subBacklog = sortedSubstream.firstKey();
+                                String sub = sortedSubstream.firstEntry().getValue().get(0);
+                                double subArrival = examiner.model.substreamArrivalRate.get(sub);
+                                if (tgtArrival + subArrival < service && (tgtBacklog + subBacklog) / service < latencyReq) {
+                                    tgtArrival += subArrival;
+                                    tgtBacklog += subBacklog;
+                                    migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
+                                    sortedSubstream.firstEntry().getValue().remove(0);
+                                    if (sortedSubstream.firstEntry().getValue().size() == 0) {
+                                        sortedSubstream.pollFirstEntry();
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
-
                 return new Pair<>(new Prescription(srcs, tgts, migratingSubstreams), null);
             }
 
-            private Pair<Prescription, Map<String, Double>> multipleScaleOut(Set<String> oes, int scaleOutNumber){
-                LOG.info("Scale out by " + scaleOutNumber + " container");
-                if(oes.size() <= 0){
-                    LOG.info("No executor to move");
-                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
-                }
-
-                if(executorMapping.size() + 1 > maxNumberOfExecutors){
-                    LOG.info("Reach executor number limit, cannot scale out");
-                    return new Pair<>(new Prescription(), null);
-                }
-
-                if(executorMapping.size() + scaleOutNumber > maxNumberOfExecutors){
-                    scaleOutNumber = maxNumberOfExecutors - executorMapping.size();
-                    LOG.info("Reach executor number limit, can only scale out " + scaleOutNumber);
-                }
-
-                Pair<String, Double> a = getWorstExecutor(oes);
-                String srcExecutor = a.getKey();
-                if(srcExecutor == null || srcExecutor.equals("") || executorMapping.get(srcExecutor).size() <=scaleOutNumber){
-                    LOG.info("Cannot scale out: insufficient substream to migrate");
-                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
-                }
-
-                LOG.info("Migrating out from executor " + srcExecutor);
-
-                //Try from smallest latency to largest latency
-                TreeMap<Double, Set<String>> substreams = new TreeMap<>();
-
-                for(String substream: executorMapping.get(srcExecutor)){
-                    double delay = examiner.state.getSubstreamLatency(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex) /
-                            ((double) examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(substream), examiner.state.currentTimeIndex - 1));
-                    substreams.putIfAbsent(delay, new HashSet<>());
-                    substreams.get(delay).add(substream);
-                }
-                //Debugging
-                LOG.info("Debugging, substreams' latency=" + substreams);
-
-                List<String> sortedSubstreams = new LinkedList<>();
-                for(Map.Entry<Double, Set<String>> entry: substreams.entrySet()){
-                    sortedSubstreams.addAll(entry.getValue());
-                }
-
-                List<String> tgtExecutors = new LinkedList<>();
-                TreeMap<Double, List<String>> arrivalRate = new TreeMap<>(); //Sort OEs from smallest to largest.
-                arrivalRate.put(0.0, new LinkedList<>());
-                for(int i = 0; i<scaleOutNumber; i++){
-                    long newExecutorId = nextExecutorID.get();
-                    String tgtExecutor = String.format("%06d", newExecutorId);
-                    if(newExecutorId + 1 > nextExecutorID.get()){
-                        nextExecutorID.set(newExecutorId + 1);
-                    }
-                    tgtExecutors.add(tgtExecutor);
-                    arrivalRate.firstEntry().getValue().add(tgtExecutor);
-                }
-                double arrivalrate0 = examiner.model.executorArrivalRate.get(srcExecutor);
-                double best = 1e100;
-                Map<String, Map.Entry<String, String>> migratingSubstreams = new HashMap<>();
-                //TODO: possible bug when some substreams have 0 arrival rate.
-                for(String substream: sortedSubstreams){
-                    double arrival = examiner.model.substreamArrivalRate.get(substream);
-                    arrivalrate0 -= arrival;
-                    double tgtArrivalrate = arrivalRate.firstEntry().getKey() + arrival;
-                    String tgtExecutor = arrivalRate.firstEntry().getValue().get(0);
-
-                    arrivalRate.firstEntry().getValue().remove(0);
-                    if(arrivalRate.firstEntry().getValue().size() == 0){
-                        arrivalRate.pollFirstEntry();
-                    }
-                    if(!arrivalRate.containsKey(tgtArrivalrate)){
-                        arrivalRate.put(tgtArrivalrate,new LinkedList<>());
-                    }
-                    arrivalRate.get(tgtArrivalrate).add(tgtExecutor);
-
-                    double maxArrivalRate = arrivalRate.lastKey();
-                    if(Math.max(maxArrivalRate, arrivalrate0) <= best) {
-                        best = Math.max(maxArrivalRate, arrivalrate0);
-                        migratingSubstreams.put(substream, new AbstractMap.SimpleEntry<>(srcExecutor, tgtExecutor));
-                    }else{
-                        break;
-                    }
-                }
-                List<String> srcExecutors = new LinkedList<>();
-                srcExecutors.add(srcExecutor);
-                return new Pair<Prescription, Map<String, Double>>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
-            }
 
             //Iterate all pairs of source and targe OE, find the one minimize delay vector
             private Pair<Prescription, Map<String, Double>> scaleIn(Set<String> oes){
@@ -834,9 +778,6 @@ public class LatencyGuarantor extends StreamSwitch {
                     LOG.info("Not enough executor to merge");
                     return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
-                //Only consider unlocked oes
-                //HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
-                //unlockedOEs.removeAll(oeUnlockTime.keySet());
 
                 String minsrc = "", mintgt = "";
                 List<Double> best = null;
@@ -1073,8 +1014,8 @@ public class LatencyGuarantor extends StreamSwitch {
             }
             //Scale out
             LOG.info("Cannot load-balance, need to scale out");
-            result = diagnoser.scaleOut(unlockedOEs);
-            //result = diagnoser.multipleScaleOut(unlockedOEs, 2);
+            //result = diagnoser.scaleOut(unlockedOEs);
+            result = diagnoser.scaleOutByBacklog(unlockedOEs);
             return result.getKey();
         }
     }
