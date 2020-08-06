@@ -756,7 +756,9 @@ public class LatencyGuarantor extends StreamSwitch {
                                 double subArrival = examiner.model.substreamArrivalRate.get(sub);
                                 if (tgtArrival + subArrival < service && (tgtBacklog + subBacklog) / service < latencyReq) {
                                     tgtArrival += subArrival;
+                                    srcArrival -= subArrival;
                                     tgtBacklog += subBacklog;
+                                    srcBacklog -= subBacklog;
                                     migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
                                     sortedSubstream.firstEntry().getValue().remove(0);
                                     if (sortedSubstream.firstEntry().getValue().size() == 0) {
@@ -767,7 +769,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                 }
                             }
                             if(tgtBacklog == 0){
-                                LOG.warn("Something happened, no substream is migrated" + sortedSubstream.firstEntry());
+                                LOG.warn("Something happened, no substream is migrated " + sortedSubstream.firstEntry() + " srcarrival: " + srcArrival);
                                 break;
                             }
                         }
