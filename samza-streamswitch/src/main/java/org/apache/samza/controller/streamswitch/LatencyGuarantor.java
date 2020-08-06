@@ -701,6 +701,10 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                 }
                 LOG.info("Scale out from " + srcs);
+                if(srcs.size() == 0){
+                    LOG.info("No OE violate, do nothing");
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
+                }
                 //Consider these OEs independently
                 for(String oe: srcs){
                     //Try to satisfy requirement
