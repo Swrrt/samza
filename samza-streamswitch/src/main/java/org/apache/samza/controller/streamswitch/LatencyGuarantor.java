@@ -713,11 +713,12 @@ public class LatencyGuarantor extends StreamSwitch {
                     double srcArrival = examiner.model.executorArrivalRate.get(oe);
                     //Check whether it is possible to satisfy requirement if one substream per OE
                     //Excluded those cannot be satisfied.
-                    TreeMap<Long, List<String>> sortedSubstream = new TreeMap<>();
+                    TreeMap<Double, List<String>> sortedSubstream = new TreeMap<>();
                     long numberToScaleOut = 0;
                     for(String sub: executorMapping.get(oe)){
                         long backlog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
                         double sarrival = examiner.model.substreamArrivalRate.get(sub);
+                        double sinstant = examiner.model.executorInstantaneousDelay.get(sub);
                         if(sarrival >= service || backlog / service >= latencyReq){ //For those cannot be satisfied, allocate entire OE for each of them.
                             //Debugging
                             LOG.info("Impossible to satisfy requirement, substream " + sub);
@@ -736,10 +737,10 @@ public class LatencyGuarantor extends StreamSwitch {
                                 LOG.info("All substreams cannot be satisfied.");
                             }
                         }else{
-                            if(!sortedSubstream.containsKey(backlog)){
-                                sortedSubstream.put(backlog, new LinkedList<>());
+                            if(!sortedSubstream.containsKey(sinstant)){
+                                sortedSubstream.put(sinstant, new LinkedList<>());
                             }
-                            sortedSubstream.get(backlog).add(sub);
+                            sortedSubstream.get(sinstant).add(sub);
                         }
                     }
                     //Debugging
@@ -757,8 +758,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             long tgtBacklog = 0;
                             double tgtArrival = 0;
                             while (sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
-                                long subBacklog = sortedSubstream.firstKey();
                                 String sub = sortedSubstream.firstEntry().getValue().get(0);
+                                long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
                                 double subArrival = examiner.model.substreamArrivalRate.get(sub);
                                 if (tgtArrival + subArrival < service && (tgtBacklog + subBacklog) / service < latencyReq) {
                                     tgtArrival += subArrival;
