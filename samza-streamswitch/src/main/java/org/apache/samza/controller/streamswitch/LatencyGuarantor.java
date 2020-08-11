@@ -736,7 +736,8 @@ public class LatencyGuarantor extends StreamSwitch {
                     //Sort substreams according to instant delay
                     TreeMap<Double, List<String>> sortedSubstream = new TreeMap<>();
                     for(String sub: executorMapping.get(oe)){
-                        double sinstant = examiner.model.executorInstantaneousDelay.get(sub);
+                        double sinstant = examiner.state.getSubstreamLatency(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) /
+                                ((double) examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex - 1));
                         if(!sortedSubstream.containsKey(sinstant)){
                             sortedSubstream.put(sinstant, new LinkedList<>());
                         }
