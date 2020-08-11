@@ -1106,15 +1106,15 @@ public class LatencyGuarantor extends StreamSwitch {
             //Try scale in
             //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
             Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
-            if(result.getValue() != null) {
+            //if(result.getValue() != null) {
                 //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
                 //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
                     //LOG.info("Scale-in is OK");
                     return result.getKey();
                 //}
-            }
+            //}
             //Do nothing
-            return pres;
+            //return pres;
         }
         //Severe
         else{
