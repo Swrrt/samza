@@ -687,19 +687,20 @@ public class LatencyGuarantor extends StreamSwitch {
 
 
             //Scale out OEs that will violate requirement
-            private Set<String> findSevereOEs(Set<String> activatedOEs){
-                LOG.info("Find severe oes");
+            private Set<String> findSevereOEs(Set<String> activatedOEs, double migrationTime){
+                LOG.info("Finding severe oes");
                 Set<String> severeOEs = new HashSet<>();
                 for(String oe: activatedOEs){
                     double backlogDelay = examiner.model.executorBacklogDelay.get(oe);
-                    if(backlogDelay >= latencyReq){
+                    if(backlogDelay + migrationTime >= latencyReq){
                         severeOEs.add(oe);
                     }
                 }
+                LOG.info("Severe oes:" + severeOEs);
                 return severeOEs;
             }
             //Try to preserve guarantee, but if not possible, try to minimize violation time
-            private Pair<Prescription, Map<String, Double>> loadBalanceAndScaleOut(Set<String> activatedOEs, Set<String> severeOEs){
+            private Pair<Prescription, Map<String, Double>> loadBalanceAndScaleOut(Set<String> activatedOEs, Set<String> severeOEs, double migrationTime){
                 LOG.info("Scale out using backlog");
                 //Find all oes that will violate requirement
                 Set<String> tgts = new HashSet<>();
@@ -715,7 +716,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(String oe: activatedOEs){
                     if(!severeOEs.contains(oe)){
                         double instantDelay = examiner.model.executorInstantaneousDelay.get(oe);
-                        if(instantDelay < latencyReq){ //TODO: add migration time here?
+                        if(instantDelay + migrationTime < latencyReq){ //TODO: add migration time here?
                             List<Object> tlist = new ArrayList<>();
                             tlist.add(examiner.model.executorBacklog.get(oe));
                             tlist.add(examiner.model.executorArrivalRate.get(oe));
@@ -748,7 +749,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog);
 
                     //Move out substreams until: 1) src is ok or 2) it's the last substream
-                    while ((srcArrival >= service || srcBacklog / service >= latencyReq) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
+                    while ((srcArrival >= service || (srcBacklog / service + migrationTime) >= latencyReq) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
                         //Debugging
                         LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog + " substreams=" + sortedSubstream.values());
 
@@ -1033,10 +1034,11 @@ public class LatencyGuarantor extends StreamSwitch {
         //Severe
         else{
             LOG.info("Current healthiness is Severe");
-            Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs);
+            double migrationTime = 500; //TODO: use real migration time?
+            Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
             System.out.println("Number of severe OEs: " + severeOEs.size());
             LOG.info("Try load-balance and scale out");
-            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs);
+            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, migrationTime);
             /*//System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
             //LOG.info("The result of load-balance: " + result.getValue());
