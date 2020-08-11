@@ -1032,7 +1032,11 @@ public class LatencyGuarantor extends StreamSwitch {
         //Severe
         else{
             LOG.info("Current healthiness is Severe");
-            System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
+            Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs);
+            System.out.println("Number of severe OEs: " + severeOEs.size());
+            LOG.info("Try load-balance and scale out");
+            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs);
+            /*//System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
             //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
@@ -1045,8 +1049,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
             //Scale out
             LOG.info("Cannot load-balance, need to scale out");
-            result = diagnoser.scaleOut(unlockedOEs);
-            //result = diagnoser.scaleOutByBacklog(unlockedOEs);
+            //result = diagnoser.scaleOut(unlockedOEs);*/
             return result.getKey();
         }
     }
