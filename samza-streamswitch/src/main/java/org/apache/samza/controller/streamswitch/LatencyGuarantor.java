@@ -1273,14 +1273,19 @@ public class LatencyGuarantor extends StreamSwitch {
                     totalSubstreams += executorMapping.get(oe).size();
                 }
                 if(pendingPres.migratingSubstreams.size() == totalSubstreams){
-                    examiner.model.executorServiceRate.remove(pendingPres.sources.get(0));
-                    examiner.model.executorInstantaneousDelay.remove(pendingPres.sources.get(0));
-                    examiner.model.executorBacklogDelay.remove(pendingPres.sources.get(0));
-                    examiner.model.executorBacklog.remove(pendingPres.sources.get(0));
+                    for(String src: pendingPres.sources) {
+                        examiner.model.executorServiceRate.remove(src);
+                        examiner.model.executorInstantaneousDelay.remove(src);
+                        examiner.model.executorBacklogDelay.remove(src);
+                        examiner.model.executorBacklog.remove(src);
+                    }
                     migrationType = "scale-in";
                 }
-                if(!executorMapping.containsKey(pendingPres.targets.get(0))){
-                    migrationType = "scale-out";
+                for(String tgt: pendingPres.targets) {
+                    if (!executorMapping.containsKey(tgt)) {
+                        migrationType = "scale-out";
+                        break;
+                    }
                 }
                 //For drawing figre
                 LOG.info("Migrating " + pendingPres.migratingSubstreams + " from " + pendingPres.sources + " to " + pendingPres.targets);
