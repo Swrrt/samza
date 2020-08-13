@@ -1311,8 +1311,18 @@ public class LatencyGuarantor extends StreamSwitch {
                     oeUnlockTime.put(target, unlockTime);
                 }
                 isMigrating = false;
-                System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets);
-
+                if(migrationType.equals("scale-out")){
+                    List newOEs = new LinkedList();
+                    for(String tgt: pendingPres.targets) {
+                        if (!executorMapping.containsKey(tgt)) {
+                            newOEs.add(tgt);
+                        }
+                    }
+                    System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets + " ,new " + newOEs);
+                    newOEs.clear();
+                }else {
+                    System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets);
+                }
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
             }
