@@ -1200,7 +1200,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     newOEs.add(tgt);
                 }
             }
-            System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets + ",new executors " + newOEs);
+            System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets + " ,new executors " + newOEs);
 
             listener.scale(newAssignment.size(), newAssignment);
         }
