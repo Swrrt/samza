@@ -828,7 +828,8 @@ public class LatencyGuarantor extends StreamSwitch {
                     tlist.add(service);
                     activeOEs.put(oe, tlist);
                 }
-                do{
+                //Be conservative, only scale in by one
+                //do{
                     //Find minimum backlog delay oe as src
                     String minSrc = null;
                     for(String oe: activeOEs.keySet()){
@@ -841,7 +842,8 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                     if(minSrc == null){
                         LOG.info("No oe to scaled in");
-                        break;
+                        //break;
+                        return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                     }
                     LOG.info("Try to scale in " + minSrc);
                     //Try to distribute its substreams
@@ -871,7 +873,10 @@ public class LatencyGuarantor extends StreamSwitch {
                             break;
                         }
                     }
-                    if(!possible)break;
+                    //if(!possible)break;
+                    if(!possible){
+                        return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
+                    }
                     LOG.info("OK to scale in " + dest);
                     srcs.add(minSrc);
                     for(String sub: dest.keySet()){
@@ -880,7 +885,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     }
                     dest.clear();
                     activeOEs.remove(minSrc);
-                }while(true);
+                //}while(true);
                 return new Pair<>(new Prescription(srcs, new ArrayList<String>(tgts), migratingSubstreams), null);
             }
 
