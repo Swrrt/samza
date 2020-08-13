@@ -1193,7 +1193,14 @@ public class LatencyGuarantor extends StreamSwitch {
         if (isScaleOut) {
             LOG.info("Scale out");
             //For drawing figure
-            System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
+            List<String> newOEs = new LinkedList<>();
+            for(String tgt: pres.targets){
+                if(!executorMapping.containsKey(tgt)) {
+                    isScaleOut = true;
+                    newOEs.add(tgt);
+                }
+            }
+            System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets + " ,new executors " + newOEs);
 
             listener.scale(newAssignment.size(), newAssignment);
         }
