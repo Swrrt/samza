@@ -1091,7 +1091,7 @@ public class LatencyGuarantor extends StreamSwitch {
         HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
         unlockedOEs.removeAll(oeUnlockTime.keySet());
 
-        double migrationTime = config.getLong("streamswitch.system.conservative", 500); //TODO: use real migration time?
+        double migrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500); //TODO: use real migration time?
         Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
         //int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
         //Use crossing
