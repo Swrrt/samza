@@ -749,7 +749,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog);
 
                     //Move out substreams until: 1) src is ok or 2) it's the last substream
-                    while ((srcArrival >= service || (srcBacklog / service + migrationTime) >= latencyReq) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
+                    while ((srcArrival >= service * conservativeFactor || (srcBacklog / service + migrationTime) >= latencyReq) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
                         //Debugging
                         LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog + " substreams=" + sortedSubstream.values());
 
@@ -762,7 +762,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             long tBacklog = (Long)potentialTgts.get(tgt).get(0);
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
-                            if((tBacklog + subBacklog) / tService < latencyReq && tArrival + subArrival < tService){
+                            if((tBacklog + subBacklog) / tService < latencyReq && tArrival + subArrival < tService * conservativeFactor){
                                 finalTgt = tgt;
                                 break;
                             }
@@ -858,7 +858,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                 long tBacklog = (Long)activeOEs.get(oe).get(0);
                                 double tArrival = (Double)activeOEs.get(oe).get(1);
                                 double tService = (Double) activeOEs.get(oe).get(2);
-                                if(tArrival + subArrival < tService && (tBacklog + subBacklog) / tService + migrationTime < latencyReq){
+                                if(tArrival + subArrival < tService * conservativeFactor && (tBacklog + subBacklog) / tService + migrationTime < latencyReq){
                                     tgtOE = oe;
                                     dest.put(sub, tgtOE);
                                     activeOEs.get(oe).set(0, tBacklog + subBacklog);
