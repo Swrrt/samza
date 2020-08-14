@@ -748,6 +748,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     //Debugging
                     LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog);
 
+                    int numberOfOE = executorMapping.size();
                     //Move out substreams until: 1) src is ok or 2) it's the last substream
                     while ((srcArrival >= service * conservativeFactor || (srcBacklog / service + migrationTime) >= latencyReq) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
                         //Debugging
@@ -777,19 +778,25 @@ public class LatencyGuarantor extends StreamSwitch {
                             if(!tgts.contains(finalTgt))tgts.add(finalTgt);
                             migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, finalTgt));
                         }else{ //Need to scale out
-                            long newExecutorId = nextExecutorID.get();
-                            String tgtExecutor = String.format("%06d", newExecutorId);
-                            if (newExecutorId + 1 > nextExecutorID.get()) {
-                                nextExecutorID.set(newExecutorId + 1);
+                            //OK to Scale out
+                            if(numberOfOE < maxNumberOfExecutors) {
+                                long newExecutorId = nextExecutorID.get();
+                                String tgtExecutor = String.format("%06d", newExecutorId);
+                                if (newExecutorId + 1 > nextExecutorID.get()) {
+                                    nextExecutorID.set(newExecutorId + 1);
+                                }
+                                LOG.info("Scale out " + sub + " to " + tgtExecutor);
+                                List<Object> tlist = new ArrayList<>();
+                                tlist.add(subBacklog);
+                                tlist.add(subArrival);
+                                tlist.add(service);
+                                potentialTgts.put(tgtExecutor, tlist);
+                                tgts.add(tgtExecutor);
+                                migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
+                            }else{ //Reach OE number limitation
+                                LOG.info("Cannot scale out more OEs");
+                                return new Pair<>(new Prescription(new ArrayList<String>(severeOEs), new ArrayList<String>(tgts), migratingSubstreams), null);
                             }
-                            LOG.info("Scale out " + sub + " to " + tgtExecutor);
-                            List<Object> tlist = new ArrayList<>();
-                            tlist.add(subBacklog);
-                            tlist.add(subArrival);
-                            tlist.add(service);
-                            potentialTgts.put(tgtExecutor, tlist);
-                            tgts.add(tgtExecutor);
-                            migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
                         }
                         srcArrival -= subArrival;
                         srcBacklog -= subBacklog;
@@ -1084,7 +1091,7 @@ public class LatencyGuarantor extends StreamSwitch {
         HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
         unlockedOEs.removeAll(oeUnlockTime.keySet());
 
-        double migrationTime = 500; //TODO: use real migration time?
+        double migrationTime = config.getLong("streamswitch.system.conservative", 500); //TODO: use real migration time?
         Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
         //int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
         //Use crossing
