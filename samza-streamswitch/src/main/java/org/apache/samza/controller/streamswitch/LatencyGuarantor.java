@@ -793,6 +793,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                 potentialTgts.put(tgtExecutor, tlist);
                                 tgts.add(tgtExecutor);
                                 migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
+                                numberOfOE ++;
                             }else{ //Reach OE number limitation
                                 LOG.info("Cannot scale out more OEs");
                                 return new Pair<>(new Prescription(new ArrayList<String>(severeOEs), new ArrayList<String>(tgts), migratingSubstreams), null);
@@ -1091,7 +1092,7 @@ public class LatencyGuarantor extends StreamSwitch {
         HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
         unlockedOEs.removeAll(oeUnlockTime.keySet());
 
-        double migrationTime = 500; //TODO: use real migration time?
+        double migrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500); //TODO: use real migration time?
         Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
         //int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
         //Use crossing
