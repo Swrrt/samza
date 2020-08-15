@@ -793,6 +793,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                 potentialTgts.put(tgtExecutor, tlist);
                                 tgts.add(tgtExecutor);
                                 migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
+                                numberOfOE ++;
                             }else{ //Reach OE number limitation
                                 LOG.info("Cannot scale out more OEs");
                                 return new Pair<>(new Prescription(new ArrayList<String>(severeOEs), new ArrayList<String>(tgts), migratingSubstreams), null);
