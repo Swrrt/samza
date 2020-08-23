@@ -165,7 +165,7 @@ public class YarnApplicationMaster implements FailureListener{
         jobCoordinatorSleepInterval = clusterManagerConfig.getJobCoordinatorSleepInterval();
 
         // build a container process Manager
-        containerProcessManager = new ContainerProcessManager(config, state, metrics);
+        containerProcessManager = new ContainerProcessManager(config, state, metrics, this);
 
         controller = createController();
 
