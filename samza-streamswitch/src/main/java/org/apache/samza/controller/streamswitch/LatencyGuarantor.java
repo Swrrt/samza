@@ -953,6 +953,12 @@ public class LatencyGuarantor extends StreamSwitch {
     @Override
     public synchronized void onMigrationExecutorsStopped(){
         LOG.info("Migration executors stopped, try to acquire lock...");
+        if(isFailureRecovery){
+            LOG.info("This is failure recovery");
+            isFailureRecovery = false;
+            isMigrating = false;
+            return ;
+        }
         updateLock.lock();
         try {
             if (examiner == null) {
@@ -1001,5 +1007,17 @@ public class LatencyGuarantor extends StreamSwitch {
             LOG.info("Migration completed, unlock");
         }
         */
+    }
+    @Override
+    public void onExecutorFailure(String oeId){
+        LOG.info("Re-deploy the JobModel for failed executor");
+        isFailureRecovery = true;
+        if(isMigrating) {
+            //TODO: failure during migration
+            LOG.warn("Warning, failure during migration");
+        }else{
+            isMigrating = true;
+        }
+        listener.remap(executorMapping);
     }
 }

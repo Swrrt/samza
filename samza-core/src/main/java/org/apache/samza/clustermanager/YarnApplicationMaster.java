@@ -25,6 +25,7 @@ import org.apache.samza.SamzaException;
 import org.apache.samza.checkpoint.CheckpointManager;
 import org.apache.samza.config.*;
 import org.apache.samza.container.TaskName;
+import org.apache.samza.controller.FailureListener;
 import org.apache.samza.coordinator.JobCoordinatorListener;
 import org.apache.samza.coordinator.JobModelManager;
 import org.apache.samza.coordinator.StreamPartitionCountMonitor;
@@ -53,7 +54,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class YarnApplicationMaster {
+public class YarnApplicationMaster implements FailureListener{
     private static final Logger log = LoggerFactory.getLogger(YarnApplicationMaster.class);
 
     private final Config config;
@@ -458,5 +459,13 @@ public class YarnApplicationMaster {
             }
         }, container, tasks);
         controller.start();
+    }
+
+    //Fault-tolerance
+    public void failureHappenOnContainer(String failedContainerId){
+        //Translate ContainerId to processor Id
+        log.info("Container " + failedContainerId + " failed, inform controller");
+        String oeId = String.format("%06d", Integer.parseInt(failedContainerId) + 2);
+        controller.onExecutorFailure(oeId);
     }
 }

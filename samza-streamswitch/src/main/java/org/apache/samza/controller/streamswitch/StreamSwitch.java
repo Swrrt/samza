@@ -26,12 +26,16 @@ public abstract class StreamSwitch implements OperatorController{
     AtomicLong nextExecutorID;
     Config config;
 
+    //Fault-tolerance
+    protected boolean isFailureRecovery;
+
     public StreamSwitch(Config config){
         this.config = config;
         metricsRetreiveInterval = config.getInt("streamswitch.system.metrics_interval", 100);
         maxNumberOfExecutors = config.getInt("streamswitch.system.max_executors", 64);
         metricsRetriever = createMetricsRetriever();
         isMigrating = false;
+        isFailureRecovery = false;
         updateLock = new ReentrantLock();
     }
     @Override

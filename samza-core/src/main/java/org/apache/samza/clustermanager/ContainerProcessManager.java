@@ -22,6 +22,7 @@ import org.apache.samza.SamzaException;
 import org.apache.samza.config.ClusterManagerConfig;
 import org.apache.samza.config.Config;
 import org.apache.samza.config.JobConfig;
+import org.apache.samza.controller.FailureListener;
 import org.apache.samza.coordinator.JobModelManager;
 import org.apache.samza.coordinator.stream.messages.SetContainerHostMapping;
 import org.apache.samza.metrics.ContainerProcessManagerMetrics;
@@ -105,6 +106,9 @@ public class ContainerProcessManager implements ClusterResourceManager.Callback 
    */
   private final ContainerProcessManagerMetrics metrics;
 
+  //For fault-tolerance
+  private FailureListener failureListener;
+
   //for testing
   ContainerProcessManager(Config config, SamzaApplicationState state, MetricsRegistryMap registry, AbstractContainerAllocator allocator, ClusterResourceManager manager) {
     this.state = state;
@@ -137,6 +141,35 @@ public class ContainerProcessManager implements ClusterResourceManager.Callback 
     }
 
     this.allocatorThread = new Thread(this.containerAllocator, "Container Allocator Thread");
+    log.info("finished initialization of samza task manager");
+
+  }
+
+  //For fault-tolerance
+  public ContainerProcessManager(Config config,
+                                 SamzaApplicationState state,
+                                 MetricsRegistryMap registry,
+                                 FailureListener failureListener) {
+    this.state = state;
+    this.clusterManagerConfig = new ClusterManagerConfig(config);
+    this.jobConfig = new JobConfig(config);
+
+    this.hostAffinityEnabled = clusterManagerConfig.getHostAffinityEnabled();
+
+    ResourceManagerFactory factory = getContainerProcessManagerFactory(clusterManagerConfig);
+    this.clusterResourceManager = checkNotNull(factory.getClusterResourceManager(this, state));
+    this.metrics = new ContainerProcessManagerMetrics(config, state, registry);
+
+    if (this.hostAffinityEnabled) {
+      this.containerAllocator = new HostAwareContainerAllocator(clusterResourceManager, clusterManagerConfig.getContainerRequestTimeout(), config, state);
+    } else {
+      this.containerAllocator = new ContainerAllocator(clusterResourceManager, config, state);
+    }
+
+    this.allocatorThread = new Thread(this.containerAllocator, "Container Allocator Thread");
+
+    this.failureListener = failureListener;
+
     log.info("finished initialization of samza task manager");
 
   }
@@ -313,6 +346,12 @@ public class ContainerProcessManager implements ClusterResourceManager.Callback 
         state.neededContainers.incrementAndGet();
         // Find out previously running container location
         String lastSeenOn = state.jobModelManager.jobModel().getContainerToHostValue(containerId, SetContainerHostMapping.HOST_KEY);
+
+        if(failureListener != null){
+          log.info("Call failure listener " + containerId + " is failed.");
+          failureListener.failureHappenOnContainer(containerId);
+        }
+
         if (!hostAffinityEnabled || lastSeenOn == null) {
           lastSeenOn = ResourceRequestState.ANY_HOST;
         }

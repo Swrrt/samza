@@ -8,4 +8,8 @@ public interface OperatorController {
     //Methods used to inform Controller
     void onMigrationExecutorsStopped();
     void onMigrationCompleted();
+
+    //Fault-tolerance
+    default void onExecutorFailure(String oeId){
+    }
 }
