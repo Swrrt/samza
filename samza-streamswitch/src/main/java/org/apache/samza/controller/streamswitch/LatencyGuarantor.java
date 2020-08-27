@@ -939,7 +939,7 @@ public class LatencyGuarantor extends StreamSwitch {
             Prescription pres = diagnose(examiner);
             if (pres.migratingSubstreams != null) {
                 //Treatment
-
+                treat(pres);
             } else {
                 LOG.info("Nothing to do this time.");
             }
