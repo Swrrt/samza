@@ -939,7 +939,7 @@ public class LatencyGuarantor extends StreamSwitch {
             Prescription pres = diagnose(examiner);
             if (pres.migratingSubstreams != null) {
                 //Treatment
-                treat(pres);
+
             } else {
                 LOG.info("Nothing to do this time.");
             }
@@ -953,40 +953,47 @@ public class LatencyGuarantor extends StreamSwitch {
     @Override
     public synchronized void onMigrationExecutorsStopped(){
         LOG.info("Migration executors stopped, try to acquire lock...");
-        if(isFailureRecovery){
-            LOG.info("This is failure recovery");
-            isFailureRecovery = false;
-            isMigrating = false;
-            return ;
-        }
         updateLock.lock();
         try {
-            if (examiner == null) {
-                LOG.warn("Examiner haven't been initialized");
-            } if(pendingPres == null){// else if (!isMigrating || pendingPres == null) {
-                LOG.warn("There is no pending migration, please checkout");
-            } else {
-                String migrationType = "migration";
-                //Scale in, remove useless information
-                if(pendingPres.migratingSubstreams.size() == executorMapping.get(pendingPres.source).size()){
-                    examiner.model.executorServiceRate.remove(pendingPres.source);
-                    examiner.model.executorInstantaneousDelay.remove(pendingPres.source);
-                    migrationType = "scale-in";
+            if(isFailureRecovery) {
+                LOG.info("This is failure recovery");
+                isFailureRecovery = false;
+                if (pendingPres == null) {
+                    LOG.info("No pending prescription");
+                    isMigrating = false;
+                } else {
+                    LOG.info("Need to redo migration");
+                    listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
                 }
-                if(!executorMapping.containsKey(pendingPres.target)){
-                    migrationType = "scale-out";
+            }else {
+                if (examiner == null) {
+                    LOG.warn("Examiner haven't been initialized");
                 }
-                //For drawing figre
-                LOG.info("Migrating " + pendingPres.migratingSubstreams + " from " + pendingPres.source + " to " + pendingPres.target);
+                if (pendingPres == null) {// else if (!isMigrating || pendingPres == null) {
+                    LOG.warn("There is no pending migration, please checkout");
+                } else {
+                    String migrationType = "migration";
+                    //Scale in, remove useless information
+                    if (pendingPres.migratingSubstreams.size() == executorMapping.get(pendingPres.source).size()) {
+                        examiner.model.executorServiceRate.remove(pendingPres.source);
+                        examiner.model.executorInstantaneousDelay.remove(pendingPres.source);
+                        migrationType = "scale-in";
+                    }
+                    if (!executorMapping.containsKey(pendingPres.target)) {
+                        migrationType = "scale-out";
+                    }
+                    //For drawing figre
+                    LOG.info("Migrating " + pendingPres.migratingSubstreams + " from " + pendingPres.source + " to " + pendingPres.target);
 
-                long unlockTime = examiner.state.currentTimeIndex + (migrationInterval / metricsRetreiveInterval);
-                oeUnlockTime.put(pendingPres.source, unlockTime);
-                oeUnlockTime.put(pendingPres.target, unlockTime);
-                isMigrating = false;
-                System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
+                    long unlockTime = examiner.state.currentTimeIndex + (migrationInterval / metricsRetreiveInterval);
+                    oeUnlockTime.put(pendingPres.source, unlockTime);
+                    oeUnlockTime.put(pendingPres.target, unlockTime);
+                    isMigrating = false;
+                    System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.source + " to " + pendingPres.target);
 
-                executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
-                pendingPres = null;
+                    executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
+                    pendingPres = null;
+                }
             }
         }finally {
             updateLock.unlock();
@@ -1010,14 +1017,45 @@ public class LatencyGuarantor extends StreamSwitch {
     }
     @Override
     public void onExecutorFailure(String oeId){
-        LOG.info("Re-deploy the JobModel for failed executor");
-        isFailureRecovery = true;
-        if(isMigrating) {
-            //TODO: failure during migration
-            LOG.warn("Warning, failure during migration");
-        }else{
-            isMigrating = true;
+        LOG.info("Failure detected, try to acquire lock");
+        updateLock.lock();
+        try {
+            if (isMigrating) {
+                //TODO: failure during migration
+                LOG.info("Failure before migration barrier");
+                isFailureRecovery = true;
+                if(pendingPres == null){
+                    LOG.warn("There is no pending migration, please checkout");
+                }else{
+                    if(executorMapping.get(pendingPres.source).size() == pendingPres.migratingSubstreams.size()) {
+                        LOG.info("Pending prescription is scale-in");
+                        if(pendingPres.source.equals(oeId)){
+                            LOG.info("Source failed, need to wait for it restart");
+                            listener.remap(executorMapping);
+                        }else{
+                            LOG.info("Source not failed, just deploy using new JobModel");
+                            listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
+                            pendingPres = null;
+                        }
+                    }else if (!executorMapping.containsKey(pendingPres.target)) {
+                        LOG.info("Pending prescription is scale-out, just deploy using new JobModel");
+                        listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
+                        pendingPres = null;
+                    }else{
+                        LOG.info("Pending prescription is LB, just deploy using new JobModel");
+                        listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
+                        pendingPres = null;
+                    }
+                }
+            } else {
+                LOG.info("Re-deploy the JobModel for failed executor");
+                isFailureRecovery = true;
+                isMigrating = true;
+                listener.remap(executorMapping);
+            }
+        }finally {
+            updateLock.unlock();
+            LOG.info("Failure informed, release lock");
         }
-        listener.remap(executorMapping);
     }
 }
