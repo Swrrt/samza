@@ -400,13 +400,14 @@ public class FollowerJobCoordinator implements JobCoordinator {
                             int id = (Integer) pid_method.invoke(mgmt);
                             LOG.info("This pid is " + id);
                             Runtime.getRuntime().exec("kill " + id).waitFor();
+
                         }catch (Exception e){
                             LOG.info("Fail to trigger failure");
                         }
+                    }else {
+                        barrier.join(jobModelVersion, processorId);
+                        stop();
                     }
-
-                    barrier.join(jobModelVersion, processorId);
-                    stop();
                 }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                         && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
                     LOG.info("New JobModel does not change this container, do nothing");
