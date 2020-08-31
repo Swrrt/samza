@@ -1031,7 +1031,9 @@ public class LatencyGuarantor extends StreamSwitch {
                         LOG.info("Pending prescription is scale-in");
                         if(pendingPres.source.equals(oeId)){
                             LOG.info("Source failed, need to wait for it restart");
-                            listener.remap(executorMapping);
+                            //listener.remap(executorMapping);
+                            listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
+                            pendingPres = null;
                         }else{
                             LOG.info("Source not failed, just deploy using new JobModel");
                             listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
