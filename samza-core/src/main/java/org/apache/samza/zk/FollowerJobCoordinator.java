@@ -329,6 +329,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
 
                     // read the new Model
                     JobModel jobModel = getJobModel();
+                    oldJobModel = jobModel;
                     // start the container with the new model if it is effected
                     if(!isContainerModelEffected){
                         LOG.info("Container is not effected, no need to restart.");
@@ -375,7 +376,6 @@ public class FollowerJobCoordinator implements JobCoordinator {
                 String jobModelVersion = (String) data;
 
                 LOG.info("Got a notification for new JobModel version. Path = {} Version = {}", dataPath, data);
-                oldJobModel = newJobModel;
                 newJobModel = zkUtils.getJobModel(jobModelVersion);
                 LOG.info("pid=" + processorId + ": new JobModel is available. Version =" + jobModelVersion + "; JobModel = " + newJobModel);
                 //Doing: only restart related processors.
