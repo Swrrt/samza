@@ -45,6 +45,7 @@ import org.apache.samza.util.Util;
 import org.apache.zookeeper.Watcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sun.java2d.loops.ProcessPath;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -385,8 +386,23 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     Random rand = new Random();
                     if(rand.nextInt(100) < 25){
                         LOG.info("Trigger failure before barrier");
-                        int a = 0;
-                        System.out.println(1 / a);
+                        try {
+                            java.lang.management.RuntimeMXBean runtime =
+                                    java.lang.management.ManagementFactory.getRuntimeMXBean();
+                            java.lang.reflect.Field jvm = runtime.getClass().getDeclaredField("jvm");
+                            jvm.setAccessible(true);
+                            sun.management.VMManagement mgmt =
+                                    (sun.management.VMManagement) jvm.get(runtime);
+                            java.lang.reflect.Method pid_method =
+                                    mgmt.getClass().getDeclaredMethod("getProcessId");
+                            pid_method.setAccessible(true);
+
+                            int id = (Integer) pid_method.invoke(mgmt);
+                            LOG.info("This pid is " + id);
+                            Runtime.getRuntime().exec("kill " + id).waitFor();
+                        }catch (Exception e){
+                            LOG.info("Fail to trigger failure");
+                        }
                     }
 
                     barrier.join(jobModelVersion, processorId);
