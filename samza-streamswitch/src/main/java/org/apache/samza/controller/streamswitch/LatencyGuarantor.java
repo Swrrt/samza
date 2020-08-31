@@ -1033,19 +1033,23 @@ public class LatencyGuarantor extends StreamSwitch {
                             LOG.info("Source failed, need to wait for it restart");
                             //listener.remap(executorMapping);
                             listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
+                            isFailureRecovery = false;
                             pendingPres = null;
                         }else{
                             LOG.info("Source not failed, just deploy using new JobModel");
                             listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
+                            isFailureRecovery = false;
                             pendingPres = null;
                         }
                     }else if (!executorMapping.containsKey(pendingPres.target)) {
                         LOG.info("Pending prescription is scale-out, just deploy using new JobModel");
                         listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
+                        isFailureRecovery = false;
                         pendingPres = null;
                     }else{
                         LOG.info("Pending prescription is LB, just deploy using new JobModel");
                         listener.remap(pendingPres.generateNewSubstreamAssignment(executorMapping));
+                        isFailureRecovery = false;
                         pendingPres = null;
                     }
                 }
