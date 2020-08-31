@@ -382,12 +382,12 @@ public class FollowerJobCoordinator implements JobCoordinator {
                     LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
                             processorId, newJobModel);
                     //Add random failure in here
-                    /*Random rand = new Random();
-                    if(rand.nextInt(100) < 20){
+                    Random rand = new Random();
+                    if(rand.nextInt(100) < 25){
                         LOG.info("Trigger failure before barrier");
                         int a = 0;
                         System.out.println(1 / a);
-                    }*/
+                    }
 
                     barrier.join(jobModelVersion, processorId);
                     stop();
