@@ -389,9 +389,6 @@ public class FollowerJobCoordinator implements JobCoordinator {
                 }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                         && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
                     LOG.info("New JobModel does not change this container, do nothing");
-                    isContainerModelEffected = false;
-                    barrier.join(jobModelVersion, processorId);
-                } else {
                     //Add random failure in here
                     Random rand = new Random();
                     if(rand.nextInt(100) < 5){
@@ -414,7 +411,12 @@ public class FollowerJobCoordinator implements JobCoordinator {
                         }catch (Exception e){
                             LOG.info("Fail to trigger failure");
                         }
-                    }else {
+                    }else{
+                        isContainerModelEffected = false;
+                        barrier.join(jobModelVersion, processorId);
+                    }
+                } else {
+                    {
                         // stop current work
                         if (coordinatorListener != null) {
                             coordinatorListener.onJobModelExpired();
