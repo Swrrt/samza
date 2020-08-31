@@ -1055,7 +1055,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
             } else {
                 LOG.info("Re-deploy the JobModel for failed executor");
-                isFailureRecovery = true;
+                isFailureRecovery = false;
                 isMigrating = true;
                 listener.remap(executorMapping);
             }
