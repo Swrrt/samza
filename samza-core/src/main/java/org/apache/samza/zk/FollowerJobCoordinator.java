@@ -382,9 +382,19 @@ public class FollowerJobCoordinator implements JobCoordinator {
                 if (!newJobModel.getContainers().containsKey(processorId)) {
                     LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
                             processorId, newJobModel);
+                    {
+                        barrier.join(jobModelVersion, processorId);
+                        stop();
+                    }
+                }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
+                        && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
+                    LOG.info("New JobModel does not change this container, do nothing");
+                    isContainerModelEffected = false;
+                    barrier.join(jobModelVersion, processorId);
+                } else {
                     //Add random failure in here
                     Random rand = new Random();
-                    if(rand.nextInt(100) < 25){
+                    if(rand.nextInt(100) < 5){
                         LOG.info("Trigger failure before barrier");
                         try {
                             java.lang.management.RuntimeMXBean runtime =
@@ -405,22 +415,14 @@ public class FollowerJobCoordinator implements JobCoordinator {
                             LOG.info("Fail to trigger failure");
                         }
                     }else {
+                        // stop current work
+                        if (coordinatorListener != null) {
+                            coordinatorListener.onJobModelExpired();
+                        }
+                        isContainerModelEffected = true;
+                        // update ZK and wait for all the processors to get this new version
                         barrier.join(jobModelVersion, processorId);
-                        stop();
                     }
-                }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
-                        && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
-                    LOG.info("New JobModel does not change this container, do nothing");
-                    isContainerModelEffected = false;
-                    barrier.join(jobModelVersion, processorId);
-                } else {
-                    // stop current work
-                    if (coordinatorListener != null) {
-                        coordinatorListener.onJobModelExpired();
-                    }
-                    isContainerModelEffected = true;
-                    // update ZK and wait for all the processors to get this new version
-                    barrier.join(jobModelVersion, processorId);
                 }
             });
         }
