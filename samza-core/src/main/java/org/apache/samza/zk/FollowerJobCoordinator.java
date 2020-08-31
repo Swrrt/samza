@@ -412,15 +412,61 @@ public class FollowerJobCoordinator implements JobCoordinator {
                         && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
                     LOG.info("New JobModel does not change this container, do nothing");
                     isContainerModelEffected = false;
-                    barrier.join(jobModelVersion, processorId);
-                } else {
-                    // stop current work
-                    if (coordinatorListener != null) {
-                        coordinatorListener.onJobModelExpired();
+                    Random rand = new Random();
+                    if(rand.nextInt(100) < 25){
+                        LOG.info("Trigger failure before barrier");
+                        try {
+                            java.lang.management.RuntimeMXBean runtime =
+                                    java.lang.management.ManagementFactory.getRuntimeMXBean();
+                            java.lang.reflect.Field jvm = runtime.getClass().getDeclaredField("jvm");
+                            jvm.setAccessible(true);
+                            sun.management.VMManagement mgmt =
+                                    (sun.management.VMManagement) jvm.get(runtime);
+                            java.lang.reflect.Method pid_method =
+                                    mgmt.getClass().getDeclaredMethod("getProcessId");
+                            pid_method.setAccessible(true);
+
+                            int id = (Integer) pid_method.invoke(mgmt);
+                            LOG.info("This pid is " + id);
+                            Runtime.getRuntime().exec("kill " + id).waitFor();
+
+                        }catch (Exception e){
+                            LOG.info("Fail to trigger failure");
+                        }
+                    }else {
+                        barrier.join(jobModelVersion, processorId);
                     }
-                    isContainerModelEffected = true;
-                    // update ZK and wait for all the processors to get this new version
-                    barrier.join(jobModelVersion, processorId);
+                } else {
+                    Random rand = new Random();
+                    if(rand.nextInt(100) < 25) {
+                        LOG.info("Trigger failure before barrier");
+                        try {
+                            java.lang.management.RuntimeMXBean runtime =
+                                    java.lang.management.ManagementFactory.getRuntimeMXBean();
+                            java.lang.reflect.Field jvm = runtime.getClass().getDeclaredField("jvm");
+                            jvm.setAccessible(true);
+                            sun.management.VMManagement mgmt =
+                                    (sun.management.VMManagement) jvm.get(runtime);
+                            java.lang.reflect.Method pid_method =
+                                    mgmt.getClass().getDeclaredMethod("getProcessId");
+                            pid_method.setAccessible(true);
+
+                            int id = (Integer) pid_method.invoke(mgmt);
+                            LOG.info("This pid is " + id);
+                            Runtime.getRuntime().exec("kill " + id).waitFor();
+
+                        } catch (Exception e) {
+                            LOG.info("Fail to trigger failure");
+                        }
+                    }else {
+                        // stop current work
+                        if (coordinatorListener != null) {
+                            coordinatorListener.onJobModelExpired();
+                        }
+                        isContainerModelEffected = true;
+                        // update ZK and wait for all the processors to get this new version
+                        barrier.join(jobModelVersion, processorId);
+                    }
                 }
             });
         }
