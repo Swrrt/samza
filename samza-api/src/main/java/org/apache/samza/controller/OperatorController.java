@@ -10,6 +10,6 @@ public interface OperatorController {
     void onMigrationCompleted();
 
     //Fault-tolerance
-    default void onExecutorFailure(String oeId){
+    default void onExecutorFailed(String oeId){
     }
 }

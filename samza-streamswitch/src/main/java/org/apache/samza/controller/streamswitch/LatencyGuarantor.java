@@ -1017,7 +1017,7 @@ public class LatencyGuarantor extends StreamSwitch {
         */
     }
     @Override
-    public void onExecutorFailure(String oeId){
+    public void onExecutorFailed(String oeId){
         LOG.info("Failure detected, try to acquire lock");
         updateLock.lock();
         try {

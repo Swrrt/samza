@@ -349,7 +349,7 @@ public class ContainerProcessManager implements ClusterResourceManager.Callback 
 
         if(failureListener != null){
           log.info("Call failure listener " + containerId + " is failed.");
-          failureListener.failureHappenOnContainer(containerId);
+          failureListener.onContainerFailed(containerId);
         }
 
         if (!hostAffinityEnabled || lastSeenOn == null) {

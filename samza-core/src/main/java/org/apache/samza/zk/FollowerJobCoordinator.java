@@ -389,7 +389,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
                 }else if(oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)
                         && newJobModel.getContainers().get(processorId).equals(oldJobModel.getContainers().get(getProcessorId()))){
                     LOG.info("New JobModel does not change this container, do nothing");
-                    //Add random failure in here
+                    /*//Add random failure in here
                     Random rand = new Random();
                     if(rand.nextInt(100) < 5){
                         LOG.info("Trigger failure before barrier");
@@ -415,7 +415,7 @@ public class FollowerJobCoordinator implements JobCoordinator {
                         isContainerModelEffected = false;
                         barrier.join(jobModelVersion, processorId);
                     }
-                } else {
+                } else {*/
                     {
                         // stop current work
                         if (coordinatorListener != null) {

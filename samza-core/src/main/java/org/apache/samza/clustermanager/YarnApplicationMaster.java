@@ -462,10 +462,10 @@ public class YarnApplicationMaster implements FailureListener{
     }
 
     //Fault-tolerance
-    public void failureHappenOnContainer(String failedContainerId){
+    public void onContainerFailed(String failedContainerId){
         //Translate ContainerId to processor Id
         log.info("Container " + failedContainerId + " failed, inform controller");
         String oeId = String.format("%06d", Integer.parseInt(failedContainerId) + 2);
-        controller.onExecutorFailure(oeId);
+        controller.onExecutorFailed(oeId);
     }
 }
