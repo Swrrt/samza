@@ -692,7 +692,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 Set<String> severeOEs = new HashSet<>();
                 for(String oe: activatedOEs){
                     double backlogDelay = examiner.model.executorBacklogDelay.get(oe);
-                    if(backlogDelay + migrationTime >= latencyReq){
+                    if(backlogDelay + migrationTime > latencyReq){
                         severeOEs.add(oe);
                     }
                 }
