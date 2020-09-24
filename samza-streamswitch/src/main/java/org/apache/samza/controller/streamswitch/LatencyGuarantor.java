@@ -1093,8 +1093,8 @@ public class LatencyGuarantor extends StreamSwitch {
         unlockedOEs.removeAll(oeUnlockTime.keySet());
 
         double migrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500); //TODO: use real migration time?
-        //Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
-        int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
+        Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
+        //int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
         //Use crossing
         //int healthiness = diagnoser.isBacklogCrossing(examiner.getInstantDelay(), examiner.getBacklogDelay(), unlockedOEs);
         //int healthiness = diagnoser.getBacklogHealthiness(examiner.getBacklogDelay(), unlockedOEs);
@@ -1107,14 +1107,14 @@ public class LatencyGuarantor extends StreamSwitch {
         }*/
 
         //Moderate
-        if(healthiness == Diagnoser.MODERATE){
+        /*if(healthiness == Diagnoser.MODERATE){
             LOG.info("Current healthiness is Moderate, do nothing");
             return pres;
-        }
+        }*/
 
         //Good
-        if(healthiness == Diagnoser.GOOD){
-        //if(severeOEs.size() == 0){ //No severe OE
+        //if(healthiness == Diagnoser.GOOD){
+        if(severeOEs.size() == 0){ //No severe OE
             LOG.info("Current healthiness is Good");
             //Try scale in
             //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
@@ -1133,7 +1133,7 @@ public class LatencyGuarantor extends StreamSwitch {
         else{
             LOG.info("Current healthiness is Severe");
 
-            Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
+            //Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
             System.out.println("Number of severe OEs: " + severeOEs.size());
             LOG.info("Try load-balance and scale out");
             Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, migrationTime);
