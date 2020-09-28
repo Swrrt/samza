@@ -728,6 +728,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
                 //Consider these OEs independently
                 long numberToScaleOut = 0;
+                int numberOfOE = executorMapping.size();
                 for(String oe: severeOEs){
                     //Try to satisfy requirement
                     double service = examiner.model.executorServiceRate.get(oe);
@@ -748,7 +749,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     //Debugging
                     LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog);
 
-                    int numberOfOE = executorMapping.size();
+
                     //Move out substreams until: 1) src is ok or 2) it's the last substream
                     while ((srcArrival >= service * conservativeFactor || (srcBacklog / service + migrationTime) >= latencyReq) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
                         //Debugging
