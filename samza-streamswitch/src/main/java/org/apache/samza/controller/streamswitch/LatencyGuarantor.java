@@ -685,104 +685,217 @@ public class LatencyGuarantor extends StreamSwitch {
                 return new Pair<>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
             }
 
+
             //Scale out OEs that will violate requirement
-            //Try to preserve guarantee, but if not possible, try to minimize violation time
-            private Pair<Prescription, Map<String, Double>> scaleOutByBacklog(Set<String> oes){
-                LOG.info("Scale out using backlog");
-                //Find all oes that will violate requirement
-                List<String> srcs = new LinkedList<>();
-                List<String> tgts = new LinkedList<>();
-                Map<String, Map.Entry<String, String>> migratingSubstreams = new TreeMap<>();
-                for(String oe: oes){
-                    double arrival = examiner.model.executorArrivalRate.get(oe), service = examiner.model.executorServiceRate.get(oe);
+            private Set<String> findSevereOEs(Set<String> activatedOEs, double migrationTime){
+                LOG.info("Finding severe oes");
+                Set<String> severeOEs = new HashSet<>();
+                for(String oe: activatedOEs){
                     double backlogDelay = examiner.model.executorBacklogDelay.get(oe);
-                    if(arrival >= service || backlogDelay >= latencyReq){
-                        srcs.add(oe);
+                    if(backlogDelay + migrationTime > latencyReq){
+                        severeOEs.add(oe);
                     }
                 }
-                LOG.info("Scale out from " + srcs);
-                if(srcs.size() == 0){
+                LOG.info("Severe oes:" + severeOEs);
+                return severeOEs;
+            }
+            //Try to preserve guarantee, but if not possible, try to minimize violation time
+            private Pair<Prescription, Map<String, Double>> loadBalanceAndScaleOut(Set<String> activatedOEs, Set<String> severeOEs, double migrationTime){
+                LOG.info("Scale out using backlog");
+                //Find all oes that will violate requirement
+                Set<String> tgts = new HashSet<>();
+                Map<String, Map.Entry<String, String>> migratingSubstreams = new TreeMap<>();
+                LOG.info("Scale out from " + severeOEs);
+                if(severeOEs.size() == 0){
                     LOG.info("No OE violate, do nothing");
                     return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
+
+                //Find potential targets
+                Map<String, List<Object>> potentialTgts = new HashMap<>();
+                for(String oe: activatedOEs){
+                    if(!severeOEs.contains(oe)){
+                        double instantDelay = examiner.model.executorInstantaneousDelay.get(oe);
+                        if(instantDelay + migrationTime < latencyReq){ //TODO: add migration time here?
+                            List<Object> tlist = new ArrayList<>();
+                            tlist.add(examiner.model.executorBacklog.get(oe));
+                            tlist.add(examiner.model.executorArrivalRate.get(oe));
+                            tlist.add(examiner.model.executorServiceRate.get(oe));
+                            potentialTgts.put(oe, tlist);
+                        }
+                    }
+                }
+
                 //Consider these OEs independently
-                for(String oe: srcs){
+                long numberToScaleOut = 0;
+                int numberOfOE = executorMapping.size();
+                for(String oe: severeOEs){
                     //Try to satisfy requirement
                     double service = examiner.model.executorServiceRate.get(oe);
                     long srcBacklog = examiner.model.executorBacklog.get(oe);
                     double srcArrival = examiner.model.executorArrivalRate.get(oe);
-                    //Check whether it is possible to satisfy requirement if one substream per OE
-                    //Excluded those cannot be satisfied.
+
+                    //Sort substreams according to instant delay
                     TreeMap<Double, List<String>> sortedSubstream = new TreeMap<>();
-                    long numberToScaleOut = 0;
                     for(String sub: executorMapping.get(oe)){
-                        long backlog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
-                        double sarrival = examiner.model.substreamArrivalRate.get(sub);
-                        double sinstant = examiner.model.executorInstantaneousDelay.get(sub);
-                        if(sarrival >= service || backlog / service >= latencyReq){ //For those cannot be satisfied, allocate entire OE for each of them.
+                        double sinstant = examiner.state.getSubstreamLatency(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) /
+                                ((double) examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex - 1));
+                        if(!sortedSubstream.containsKey(sinstant)){
+                            sortedSubstream.put(sinstant, new LinkedList<>());
+                        }
+                        sortedSubstream.get(sinstant).add(sub);
+                    }
+
+                    //Debugging
+                    LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog);
+
+
+                    //Move out substreams until: 1) src is ok or 2) it's the last substream
+                    while ((srcArrival >= service * conservativeFactor || (srcBacklog / service + migrationTime) >= latencyReq) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
+                        //Debugging
+                        LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog + " substreams=" + sortedSubstream.values());
+
+                        String sub = sortedSubstream.firstEntry().getValue().get(0);
+                        long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
+                        double subArrival = examiner.model.substreamArrivalRate.get(sub);
+                        //Find a suitable OE
+                        String finalTgt = "";
+                        for(String tgt: potentialTgts.keySet()){
+                            long tBacklog = (Long)potentialTgts.get(tgt).get(0);
+                            double tArrival = (Double)potentialTgts.get(tgt).get(1);
+                            double tService = (Double)potentialTgts.get(tgt).get(2);
+                            if((tBacklog + subBacklog) / tService < latencyReq && tArrival + subArrival < tService * conservativeFactor){
+                                finalTgt = tgt;
+                                break;
+                            }
+                        }
+                        if(!finalTgt.equals("")){ //No need to scale out
                             //Debugging
-                            LOG.info("Impossible to satisfy requirement, substream " + sub);
-                            numberToScaleOut ++;
-                            if(numberToScaleOut < executorMapping.get(oe).size()) {
+                            LOG.info("Migrate " + sub + " to " + finalTgt);
+                            long tBacklog = (Long)potentialTgts.get(finalTgt).get(0);
+                            double tArrival = (Double)potentialTgts.get(finalTgt).get(1);
+                            potentialTgts.get(finalTgt).set(0, tBacklog + subBacklog);
+                            potentialTgts.get(finalTgt).set(1, tArrival + subArrival);
+                            if(!tgts.contains(finalTgt))tgts.add(finalTgt);
+                            migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, finalTgt));
+                        }else{ //Need to scale out
+                            //OK to Scale out
+                            if(numberOfOE < maxNumberOfExecutors) {
                                 long newExecutorId = nextExecutorID.get();
                                 String tgtExecutor = String.format("%06d", newExecutorId);
                                 if (newExecutorId + 1 > nextExecutorID.get()) {
                                     nextExecutorID.set(newExecutorId + 1);
                                 }
+                                LOG.info("Scale out " + sub + " to " + tgtExecutor);
+                                List<Object> tlist = new ArrayList<>();
+                                tlist.add(subBacklog);
+                                tlist.add(subArrival);
+                                tlist.add(service);
+                                potentialTgts.put(tgtExecutor, tlist);
                                 tgts.add(tgtExecutor);
                                 migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
-                                srcArrival -= sarrival;
-                                srcBacklog -= backlog;
-                            }else{//Remain one substream in source
-                                LOG.info("All substreams cannot be satisfied.");
+                                numberOfOE ++;
+                            }else{ //Reach OE number limitation
+                                LOG.info("Cannot scale out more OEs");
+                                return new Pair<>(new Prescription(new ArrayList<String>(severeOEs), new ArrayList<String>(tgts), migratingSubstreams), null);
                             }
-                        }else{
-                            if(!sortedSubstream.containsKey(sinstant)){
-                                sortedSubstream.put(sinstant, new LinkedList<>());
-                            }
-                            sortedSubstream.get(sinstant).add(sub);
+                        }
+                        srcArrival -= subArrival;
+                        srcBacklog -= subBacklog;
+                        sortedSubstream.firstEntry().getValue().remove(0);
+                        if(sortedSubstream.firstEntry().getValue().size() == 0){
+                            sortedSubstream.pollFirstEntry();
                         }
                     }
-                    //Debugging
-                    LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog);
-                    if(sortedSubstream.size() > 0) {
-                        while (srcArrival >= service || srcBacklog / service >= latencyReq) {
-                            //Debugging
-                            LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog + " substreams=" + sortedSubstream.values());
-                            long newExecutorId = nextExecutorID.get();
-                            String tgtExecutor = String.format("%06d", newExecutorId);
-                            if (newExecutorId + 1 > nextExecutorID.get()) {
-                                nextExecutorID.set(newExecutorId + 1);
-                            }
-                            tgts.add(tgtExecutor);
-                            long tgtBacklog = 0;
-                            double tgtArrival = 0;
-                            while (sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
-                                String sub = sortedSubstream.firstEntry().getValue().get(0);
-                                long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
-                                double subArrival = examiner.model.substreamArrivalRate.get(sub);
-                                if (tgtArrival + subArrival < service && (tgtBacklog + subBacklog) / service < latencyReq) {
-                                    tgtArrival += subArrival;
-                                    srcArrival -= subArrival;
-                                    tgtBacklog += subBacklog;
-                                    srcBacklog -= subBacklog;
-                                    migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
-                                    sortedSubstream.firstEntry().getValue().remove(0);
-                                    if (sortedSubstream.firstEntry().getValue().size() == 0) {
-                                        sortedSubstream.pollFirstEntry();
-                                    }
-                                } else {
-                                    break;
-                                }
-                            }
-                            if(tgtBacklog == 0){
-                                LOG.warn("Something happened, no substream is migrated " + sortedSubstream.firstEntry() + " srcarrival: " + srcArrival);
+
+                }
+                return new Pair<>(new Prescription(new ArrayList<String>(severeOEs), new ArrayList<String>(tgts), migratingSubstreams), null);
+            }
+
+            /*Doing following until no OE is find:
+              Find minimal backlog OE
+              Try to distribute its substreams
+              If ok to distribute, then migrate.
+            */
+            private Pair<Prescription, Map<String, Double>> scaleInByBacklog(Set<String> oes, double migrationTime){
+                LOG.info("Try to scale in");
+                if(oes.size() <= 1){
+                    LOG.info("Not enough executor to merge");
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
+                }
+                HashMap<String, List<Object>> activeOEs = new HashMap<>();
+                Set<String> tgts = new HashSet<>();
+                List<String> srcs = new LinkedList<>();
+                Map<String, Map.Entry<String, String>> migratingSubstreams = new TreeMap<>();
+                for(String oe: oes){
+                    long backlog = examiner.model.executorBacklog.get(oe);
+                    double arrival = examiner.model.executorArrivalRate.get(oe);
+                    double service = examiner.model.executorServiceRate.get(oe);
+                    List<Object> tlist = new ArrayList<>();
+                    tlist.add(backlog);
+                    tlist.add(arrival);
+                    tlist.add(service);
+                    activeOEs.put(oe, tlist);
+                }
+                //Be conservative, only scale in by one
+                //do{
+                //Find minimum backlog delay oe as src
+                String minSrc = null;
+                for(String oe: activeOEs.keySet()){
+                    if(!tgts.contains(oe)){
+                        long backlog = examiner.model.executorBacklog.get(oe);
+                        if(examiner.model.executorInstantaneousDelay.get(oe) < latencyReq && (minSrc == null || backlog < examiner.model.executorBacklog.get(minSrc))){
+                            minSrc = oe;
+                        }
+                    }
+                }
+                if(minSrc == null){
+                    LOG.info("No oe to scaled in");
+                    //break;
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
+                }
+                LOG.info("Try to scale in " + minSrc);
+                //Try to distribute its substreams
+                Map<String, String> dest = new HashMap<>();
+                boolean possible = true;
+                for(String sub: executorMapping.get(minSrc)){
+                    long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
+                    double subArrival = examiner.model.substreamArrivalRate.get(sub);
+                    String tgtOE = "";
+                    for(String oe: activeOEs.keySet()){
+                        if(!oe.equals(minSrc)){
+                            long tBacklog = (Long)activeOEs.get(oe).get(0);
+                            double tArrival = (Double)activeOEs.get(oe).get(1);
+                            double tService = (Double) activeOEs.get(oe).get(2);
+                            if(tArrival + subArrival < tService * conservativeFactor && (tBacklog + subBacklog) / tService + migrationTime < latencyReq){
+                                tgtOE = oe;
+                                dest.put(sub, tgtOE);
+                                activeOEs.get(oe).set(0, tBacklog + subBacklog);
+                                activeOEs.get(oe).set(1, tArrival + subArrival);
                                 break;
                             }
                         }
                     }
+                    if(tgtOE.equals("")) {
+                        LOG.info("Cannot find way to scale in anymore");
+                        possible = false;
+                        break;
+                    }
                 }
-                return new Pair<>(new Prescription(srcs, tgts, migratingSubstreams), null);
+                //if(!possible)break;
+                if(!possible){
+                    return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
+                }
+                LOG.info("OK to scale in " + dest);
+                srcs.add(minSrc);
+                for(String sub: dest.keySet()){
+                    tgts.add(dest.get(sub));
+                    migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(minSrc, dest.get(sub)));
+                }
+                dest.clear();
+                activeOEs.remove(minSrc);
+                //}while(true);
+                return new Pair<>(new Prescription(srcs, new ArrayList<String>(tgts), migratingSubstreams), null);
             }
 
 
@@ -980,6 +1093,8 @@ public class LatencyGuarantor extends StreamSwitch {
         HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
         unlockedOEs.removeAll(oeUnlockTime.keySet());
 
+        double migrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500); //TODO: use real migration time?
+        //Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
         int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
         //Use crossing
         //int healthiness = diagnoser.isBacklogCrossing(examiner.getInstantDelay(), examiner.getBacklogDelay(), unlockedOEs);
@@ -1000,23 +1115,30 @@ public class LatencyGuarantor extends StreamSwitch {
 
         //Good
         if(healthiness == Diagnoser.GOOD){
+            //if(severeOEs.size() == 0){ //No severe OE
             LOG.info("Current healthiness is Good");
             //Try scale in
-            Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
-            if(result.getValue() != null) {
-                int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
-                if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
-                    LOG.info("Scale-in is OK");
-                    return result.getKey();
-                }
-            }
+            //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
+            Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
+            //if(result.getValue() != null) {
+            //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
+            //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
+            //LOG.info("Scale-in is OK");
+            return result.getKey();
+            //}
+            //}
             //Do nothing
-            return pres;
+            //return pres;
         }
         //Severe
         else{
             LOG.info("Current healthiness is Severe");
-            System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
+
+            Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
+            System.out.println("Number of severe OEs: " + severeOEs.size());
+            LOG.info("Try load-balance and scale out");
+            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, migrationTime);
+            /*//System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
             //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
@@ -1029,8 +1151,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
             //Scale out
             LOG.info("Cannot load-balance, need to scale out");
-            result = diagnoser.scaleOut(unlockedOEs);
-            //result = diagnoser.scaleOutByBacklog(unlockedOEs);
+            //result = diagnoser.scaleOut(unlockedOEs);*/
             return result.getKey();
         }
     }
@@ -1072,18 +1193,31 @@ public class LatencyGuarantor extends StreamSwitch {
         System.out.println("New mapping at time: " + examiner.state.currentTimeIndex + " mapping: " + newAssignment);
 
         //Scale out
-        if (!executorMapping.containsKey(pres.targets.get(0))) {
+        boolean isScaleOut = false;
+        for(String tgt: pres.targets){
+            if(!executorMapping.containsKey(tgt)) {
+                isScaleOut = true;
+            }
+        }
+        if (isScaleOut) {
             LOG.info("Scale out");
             //For drawing figure
-            System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
+            List<String> newOEs = new LinkedList<>();
+            for(String tgt: pres.targets){
+                if(!executorMapping.containsKey(tgt)) {
+                    isScaleOut = true;
+                    newOEs.add(tgt);
+                }
+            }
+            System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets + " ,new executors " + newOEs);
 
             listener.scale(newAssignment.size(), newAssignment);
         }
-        //Scale in
         else {
             int total = 0;
             for(String src: pres.sources)
                 total += executorMapping.get(src).size();
+            //Scale in
             if(total == pres.migratingSubstreams.size()) {
                 LOG.info("Scale in");
                 //For drawing figure
@@ -1161,14 +1295,19 @@ public class LatencyGuarantor extends StreamSwitch {
                     totalSubstreams += executorMapping.get(oe).size();
                 }
                 if(pendingPres.migratingSubstreams.size() == totalSubstreams){
-                    examiner.model.executorServiceRate.remove(pendingPres.sources.get(0));
-                    examiner.model.executorInstantaneousDelay.remove(pendingPres.sources.get(0));
-                    examiner.model.executorBacklogDelay.remove(pendingPres.sources.get(0));
-                    examiner.model.executorBacklog.remove(pendingPres.sources.get(0));
+                    for(String src: pendingPres.sources) {
+                        examiner.model.executorServiceRate.remove(src);
+                        examiner.model.executorInstantaneousDelay.remove(src);
+                        examiner.model.executorBacklogDelay.remove(src);
+                        examiner.model.executorBacklog.remove(src);
+                    }
                     migrationType = "scale-in";
                 }
-                if(!executorMapping.containsKey(pendingPres.targets.get(0))){
-                    migrationType = "scale-out";
+                for(String tgt: pendingPres.targets) {
+                    if (!executorMapping.containsKey(tgt)) {
+                        migrationType = "scale-out";
+                        break;
+                    }
                 }
                 //For drawing figre
                 LOG.info("Migrating " + pendingPres.migratingSubstreams + " from " + pendingPres.sources + " to " + pendingPres.targets);
@@ -1181,8 +1320,18 @@ public class LatencyGuarantor extends StreamSwitch {
                     oeUnlockTime.put(target, unlockTime);
                 }
                 isMigrating = false;
-                System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets);
-
+                if(migrationType.equals("scale-out")){
+                    List newOEs = new LinkedList();
+                    for(String tgt: pendingPres.targets) {
+                        if (!executorMapping.containsKey(tgt)) {
+                            newOEs.add(tgt);
+                        }
+                    }
+                    System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets + " ,new " + newOEs);
+                    newOEs.clear();
+                }else {
+                    System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets);
+                }
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
             }
