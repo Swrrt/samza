@@ -1118,26 +1118,27 @@ public class LatencyGuarantor extends StreamSwitch {
         if(severeOEs.size() == 0){ //No severe OE
             LOG.info("Current healthiness is Good");
             //Try scale in
-            Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
-            //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
-            if(result.getValue() != null) {
-                int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
-                if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
-                    LOG.info("Scale-in is OK");
-                    return result.getKey();
-                }
-            }
+            //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
+            Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
+            //if(result.getValue() != null) {
+            //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
+            //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
+            //LOG.info("Scale-in is OK");
+            return result.getKey();
+            //}
+            //}
             //Do nothing
-            return pres;
+            //return pres;
         }
         //Severe
         else{
             LOG.info("Current healthiness is Severe");
 
+            //Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
             System.out.println("Number of severe OEs: " + severeOEs.size());
             LOG.info("Try load-balance and scale out");
-            //Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, migrationTime);
-            //System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
+            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, migrationTime);
+            /*//System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
             //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
@@ -1150,7 +1151,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
             //Scale out
             LOG.info("Cannot load-balance, need to scale out");
-            result = diagnoser.scaleOut(unlockedOEs);
+            //result = diagnoser.scaleOut(unlockedOEs);*/
             return result.getKey();
         }
     }
