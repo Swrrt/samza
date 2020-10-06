@@ -17,7 +17,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private double l_low, l_high; // Check instantDelay  < l and longtermDelay < req
     private double initialServiceRate, decayFactor, conservativeFactor; // Initial prediction by user or system on service rate.
     long migrationInterval;
-    private boolean isStarted;
+    private boolean isStarted, isFreshed;
     private Prescription pendingPres;
     private Examiner examiner;
 
@@ -34,6 +34,7 @@ public class LatencyGuarantor extends StreamSwitch {
         examiner = new Examiner();
         pendingPres = null;
         isStarted = false;
+        isFreshed = false;
     }
 
     @Override
@@ -1117,14 +1118,19 @@ public class LatencyGuarantor extends StreamSwitch {
         //if(healthiness == Diagnoser.GOOD){
         if(severeOEs.size() == 0){ //No severe OE
             LOG.info("Current healthiness is Good");
-            //Try scale in
-            //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
-            Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
-            //if(result.getValue() != null) {
-            //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
-            //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
-            //LOG.info("Scale-in is OK");
-            return result.getKey();
+            if(isFreshed) {
+                //Try scale in
+                //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
+                Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
+                //if(result.getValue() != null) {
+                //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
+                //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
+                //LOG.info("Scale-in is OK");
+                return result.getKey();
+            }else {
+                LOG.info("Some substreams not freshed, cannot scale-in");
+                return pres;
+            }
             //}
             //}
             //Do nothing
@@ -1165,6 +1171,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 (HashMap<String, Long>) (metrics.get("Processed"));
         Map<String, Boolean> substreamValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
+        isFreshed = (Boolean)metrics.getOrDefault("Freshed", true);
         Map<String, Double> executorServiceRate =
                 (HashMap<String, Double>) (metrics.get("ServiceRate"));
         //Memory usage
