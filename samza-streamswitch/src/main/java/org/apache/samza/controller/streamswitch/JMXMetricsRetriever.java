@@ -485,7 +485,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         executorRunning.clear();
         executorServiceRate.clear();
         partitionValid.clear();
-        boolean partitionFreshed = false;
+        boolean partitionFreshed = true;
         metrics.put("Arrived", partitionArrived);
         metrics.put("Processed", partitionProcessed);
         metrics.put("Utilization", executorUtilization);
