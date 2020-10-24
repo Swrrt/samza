@@ -287,7 +287,7 @@ public class LatencyGuarantor extends StreamSwitch {
             Map<String, Double> substreamArrivalRate, executorArrivalRate, executorServiceRate, executorInstantaneousDelay; //Longterm delay could be calculated from arrival rate and service rate
             //For testing
             Map<String, Double> executorBacklogDelay;
-            Map<String, Long>executorBacklog;
+            Map<String, Long>executorBacklog, executorArrived;
             Map<String, Long> executorCompleted; //For debugging instant delay
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
@@ -296,6 +296,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 executorInstantaneousDelay = new HashMap<>();
                 executorBacklogDelay = new HashMap<>();
                 executorBacklog = new HashMap<>();
+                executorArrived  = new HashMap<>();
                 executorCompleted = new HashMap<>();
                 this.state = state;
             }
@@ -324,7 +325,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             private double calculateExecutorBacklogDelay(String executorId, long timeIndex){
-                long totalBacklog = 0;
+                long totalBacklog = 0, totalArrived = 0;
                 //long n0 = timeIndex - windowReq + 1;
                 long n0 = timeIndex;
                 if(n0<1){
@@ -334,11 +335,14 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(long i = n0; i <= timeIndex; i++) {
                     if (state.getMapping(i).containsKey(state.executorIdFromStringToInt(executorId))) {
                         for (int substream : state.getMapping(i).get(state.executorIdFromStringToInt(executorId))) {
+                            totalArrived += state.getSubstreamArrived(substream, i);
                             totalBacklog += state.getSubstreamArrived(substream, i) - state.getSubstreamCompleted(substream, i);
+
                         }
                     }
                 }
                 executorBacklog.put(executorId, totalBacklog);
+                executorArrived.put(executorId, totalArrived);
                 if( (timeIndex - n0 + 1) > 0 && executorServiceRate.getOrDefault(executorId, 0.0) > 0.0)return totalBacklog / (executorServiceRate.get(executorId) * (timeIndex - n0 + 1));
                 return 1e100;
             }
@@ -483,6 +487,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 System.out.println("Model, time " + timeIndex  + " , executors completed: " + model.executorCompleted);
                 System.out.println("Model, time " + timeIndex  + " , Longterm Delay: " + longtermDelay);
                 System.out.println("Model, time " + timeIndex  + " , Partition Arrival Rate: " + model.substreamArrivalRate);
+                System.out.println("Model, time " + timeIndex  + " , Arrived: " + model.executorArrived);
                 System.out.println("Model, time " + timeIndex  + " , Backlog: " + model.executorBacklog);
                 System.out.println("Model, time " + timeIndex  + " , Backlog Delay: " + model.executorBacklogDelay);
             }
@@ -1307,6 +1312,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         examiner.model.executorInstantaneousDelay.remove(src);
                         examiner.model.executorBacklogDelay.remove(src);
                         examiner.model.executorBacklog.remove(src);
+                        examiner.model.executorArrived.remove(src);
                     }
                     migrationType = "scale-in";
                 }
