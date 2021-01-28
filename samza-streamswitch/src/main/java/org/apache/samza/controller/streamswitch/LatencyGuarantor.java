@@ -1222,6 +1222,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
             }
             System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets + " ,new executors " + newOEs);
+            // For drawing substream level figures.
+            Set<String> involvedSubstreams = new HashSet<>();
+            for(String oe: pres.sources){
+                involvedSubstreams.addAll(executorMapping.get(oe));
+            }
+            for(String oe: pres.targets){
+                involvedSubstreams.addAll(executorMapping.get(oe));
+            }
+            involvedSubstreams.removeAll(pres.migratingSubstreams.keySet());
+            System.out.println("Migration!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
 
             listener.scale(newAssignment.size(), newAssignment);
         }
@@ -1234,6 +1244,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Scale in");
                 //For drawing figure
                 System.out.println("Migration! Scale in prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
+                // For drawing substream level figures.
+                Set<String> involvedSubstreams = new HashSet<>();
+                for(String oe: pres.sources){
+                    involvedSubstreams.addAll(executorMapping.get(oe));
+                }
+                for(String oe: pres.targets){
+                    involvedSubstreams.addAll(executorMapping.get(oe));
+                }
+                involvedSubstreams.removeAll(pres.migratingSubstreams.keySet());
+                System.out.println("Migration!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
 
                 listener.scale(newAssignment.size(), newAssignment);
             }
@@ -1242,6 +1262,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Load balance");
                 //For drawing figure
                 System.out.println("Migration! Load balance prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
+                // For drawing substream level figures.
+                Set<String> involvedSubstreams = new HashSet<>();
+                for(String oe: pres.sources){
+                    involvedSubstreams.addAll(executorMapping.get(oe));
+                }
+                for(String oe: pres.targets){
+                    involvedSubstreams.addAll(executorMapping.get(oe));
+                }
+                involvedSubstreams.removeAll(pres.migratingSubstreams.keySet());
+                System.out.println("Migration!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
 
                 listener.remap(newAssignment);
             }
