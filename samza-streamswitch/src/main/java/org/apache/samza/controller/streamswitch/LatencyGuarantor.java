@@ -1225,10 +1225,10 @@ public class LatencyGuarantor extends StreamSwitch {
             // For drawing substream level figures.
             Set<String> involvedSubstreams = new HashSet<>();
             for(String oe: pres.sources){
-                involvedSubstreams.addAll(executorMapping.get(oe));
+                involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
             }
             for(String oe: pres.targets){
-                involvedSubstreams.addAll(executorMapping.get(oe));
+                involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
             }
             involvedSubstreams.removeAll(pres.migratingSubstreams.keySet());
             System.out.println("Migration!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
@@ -1247,10 +1247,10 @@ public class LatencyGuarantor extends StreamSwitch {
                 // For drawing substream level figures.
                 Set<String> involvedSubstreams = new HashSet<>();
                 for(String oe: pres.sources){
-                    involvedSubstreams.addAll(executorMapping.get(oe));
+                    involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
                 }
                 for(String oe: pres.targets){
-                    involvedSubstreams.addAll(executorMapping.get(oe));
+                    involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
                 }
                 involvedSubstreams.removeAll(pres.migratingSubstreams.keySet());
                 System.out.println("Migration!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
@@ -1265,10 +1265,10 @@ public class LatencyGuarantor extends StreamSwitch {
                 // For drawing substream level figures.
                 Set<String> involvedSubstreams = new HashSet<>();
                 for(String oe: pres.sources){
-                    involvedSubstreams.addAll(executorMapping.get(oe));
+                    involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
                 }
                 for(String oe: pres.targets){
-                    involvedSubstreams.addAll(executorMapping.get(oe));
+                    involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
                 }
                 involvedSubstreams.removeAll(pres.migratingSubstreams.keySet());
                 System.out.println("Migration!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
@@ -1371,9 +1371,28 @@ public class LatencyGuarantor extends StreamSwitch {
                         }
                     }
                     System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets + " ,new " + newOEs);
+                    Set<String> involvedSubstreams = new HashSet<>();
+                    for(String oe: pendingPres.sources){
+                        involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                    }
+                    for(String oe: pendingPres.targets){
+                        involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                    }
+                    involvedSubstreams.removeAll(pendingPres.migratingSubstreams.keySet());
+                    System.out.println("Executors stopped!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pendingPres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
+
                     newOEs.clear();
                 }else {
                     System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets);
+                    Set<String> involvedSubstreams = new HashSet<>();
+                    for(String oe: pendingPres.sources){
+                        involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                    }
+                    for(String oe: pendingPres.targets){
+                        involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                    }
+                    involvedSubstreams.removeAll(pendingPres.migratingSubstreams.keySet());
+                    System.out.println("Executors stopped!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pendingPres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
                 }
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
