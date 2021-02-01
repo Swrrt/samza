@@ -421,7 +421,6 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         executorServiceRate = new HashMap<>();
         executorRunning = new HashMap<>();
         partitionValid = new HashMap<>();
-
     }
     /*
         Currently, metrics retriever only support one topic metrics
@@ -486,6 +485,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         executorRunning.clear();
         executorServiceRate.clear();
         partitionValid.clear();
+        boolean partitionFreshed = true;
         metrics.put("Arrived", partitionArrived);
         metrics.put("Processed", partitionProcessed);
         metrics.put("Utilization", executorUtilization);
@@ -586,6 +586,7 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                         }else{
                             LOG.warn(partitionId + "'s processed is still smaller then last: processed=" + partitionProcessed.get(partitionId) + " offset=" + val);
                             partitionValid.put(partitionId, true); //partitionValid.put(partitionId, false);
+                            partitionFreshed = false;
                         }
                     }
                 }
@@ -628,7 +629,10 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
                 if (arrived < processed) {
                     LOG.warn("Attention, partition " + partitionId + "'s arrival is smaller than processed, arrival: " + arrived + " processed: " + processed);
                     arrived = processed;
-                    if(arrived + 1 < processed)partitionValid.put("Partition " + partitionId, false);
+                    if(arrived + 1 < processed){
+                        partitionValid.put("Partition " + partitionId, false);
+
+                    }
                 }
                 partitionArrived.put("Partition " + partitionId, arrived);
 
@@ -640,7 +644,8 @@ public class JMXMetricsRetriever implements StreamSwitchMetricsRetriever {
         LOG.info("Debugging, processed: " + debugProcessed);
         LOG.info("Debugging, begin: " + partitionBeginOffset);
         LOG.info("Debugging, valid: " + partitionValid);*/
-        LOG.info("Retrieved Metrics: " + metrics);
+        metrics.put("Freshed", partitionFreshed);
+        //LOG.info("Retrieved Metrics: " + metrics);
         //Check CPU usage
         System.out.println("Process CPU Usage: " + processCpuUsage);
         //System.out.println("System CPU Usage: " + systemCpuUsage);

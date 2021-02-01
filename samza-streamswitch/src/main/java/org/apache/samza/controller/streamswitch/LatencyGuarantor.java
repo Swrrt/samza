@@ -17,7 +17,7 @@ public class LatencyGuarantor extends StreamSwitch {
     private double l_low, l_high; // Check instantDelay  < l and longtermDelay < req
     private double initialServiceRate, decayFactor, conservativeFactor; // Initial prediction by user or system on service rate.
     long migrationInterval;
-    private boolean isStarted;
+    private boolean isStarted, isFreshed;
     private Prescription pendingPres;
     private Examiner examiner;
 
@@ -34,6 +34,7 @@ public class LatencyGuarantor extends StreamSwitch {
         examiner = new Examiner();
         pendingPres = null;
         isStarted = false;
+        isFreshed = false;
     }
 
     @Override
@@ -286,7 +287,7 @@ public class LatencyGuarantor extends StreamSwitch {
             Map<String, Double> substreamArrivalRate, executorArrivalRate, executorServiceRate, executorInstantaneousDelay; //Longterm delay could be calculated from arrival rate and service rate
             //For testing
             Map<String, Double> executorBacklogDelay;
-            Map<String, Long>executorBacklog;
+            Map<String, Long>executorBacklog, executorArrived;
             Map<String, Long> executorCompleted; //For debugging instant delay
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
@@ -295,6 +296,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 executorInstantaneousDelay = new HashMap<>();
                 executorBacklogDelay = new HashMap<>();
                 executorBacklog = new HashMap<>();
+                executorArrived  = new HashMap<>();
                 executorCompleted = new HashMap<>();
                 this.state = state;
             }
@@ -323,7 +325,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             private double calculateExecutorBacklogDelay(String executorId, long timeIndex){
-                long totalBacklog = 0;
+                long totalBacklog = 0, totalArrived = 0;
                 //long n0 = timeIndex - windowReq + 1;
                 long n0 = timeIndex;
                 if(n0<1){
@@ -333,11 +335,14 @@ public class LatencyGuarantor extends StreamSwitch {
                 for(long i = n0; i <= timeIndex; i++) {
                     if (state.getMapping(i).containsKey(state.executorIdFromStringToInt(executorId))) {
                         for (int substream : state.getMapping(i).get(state.executorIdFromStringToInt(executorId))) {
+                            totalArrived += state.getSubstreamArrived(substream, i);
                             totalBacklog += state.getSubstreamArrived(substream, i) - state.getSubstreamCompleted(substream, i);
+
                         }
                     }
                 }
                 executorBacklog.put(executorId, totalBacklog);
+                executorArrived.put(executorId, totalArrived);
                 if( (timeIndex - n0 + 1) > 0 && executorServiceRate.getOrDefault(executorId, 0.0) > 0.0)return totalBacklog / (executorServiceRate.get(executorId) * (timeIndex - n0 + 1));
                 return 1e100;
             }
@@ -482,6 +487,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 System.out.println("Model, time " + timeIndex  + " , executors completed: " + model.executorCompleted);
                 System.out.println("Model, time " + timeIndex  + " , Longterm Delay: " + longtermDelay);
                 System.out.println("Model, time " + timeIndex  + " , Partition Arrival Rate: " + model.substreamArrivalRate);
+                System.out.println("Model, time " + timeIndex  + " , Arrived: " + model.executorArrived);
                 System.out.println("Model, time " + timeIndex  + " , Backlog: " + model.executorBacklog);
                 System.out.println("Model, time " + timeIndex  + " , Backlog Delay: " + model.executorBacklogDelay);
             }
@@ -1117,27 +1123,33 @@ public class LatencyGuarantor extends StreamSwitch {
         //if(healthiness == Diagnoser.GOOD){
         if(severeOEs.size() == 0){ //No severe OE
             LOG.info("Current healthiness is Good");
-            //Try scale in
-            Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
-            //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
-            if(result.getValue() != null) {
-                int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
-                if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
-                    LOG.info("Scale-in is OK");
-                    return result.getKey();
-                }
+            if(isFreshed) {
+                //Try scale in
+                //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
+                Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
+                //if(result.getValue() != null) {
+                //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
+                //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
+                //LOG.info("Scale-in is OK");
+                return result.getKey();
+            }else {
+                LOG.info("Some substreams not freshed, cannot scale-in");
+                return pres;
             }
+            //}
+            //}
             //Do nothing
-            return pres;
+            //return pres;
         }
         //Severe
         else{
             LOG.info("Current healthiness is Severe");
 
+            //Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
             System.out.println("Number of severe OEs: " + severeOEs.size());
             LOG.info("Try load-balance and scale out");
-            //Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, migrationTime);
-            //System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
+            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, migrationTime);
+            /*//System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
             //LOG.info("The result of load-balance: " + result.getValue());
             if(result.getValue() != null) {
@@ -1150,7 +1162,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
             //Scale out
             LOG.info("Cannot load-balance, need to scale out");
-            result = diagnoser.scaleOut(unlockedOEs);
+            //result = diagnoser.scaleOut(unlockedOEs);*/
             return result.getKey();
         }
     }
@@ -1164,6 +1176,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 (HashMap<String, Long>) (metrics.get("Processed"));
         Map<String, Boolean> substreamValid =
                 (HashMap<String,Boolean>)metrics.getOrDefault("Validity", null);
+        isFreshed = (Boolean)metrics.getOrDefault("Freshed", true);
         Map<String, Double> executorServiceRate =
                 (HashMap<String, Double>) (metrics.get("ServiceRate"));
         //Memory usage
@@ -1209,6 +1222,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
             }
             System.out.println("Migration! Scale out prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets + " ,new executors " + newOEs);
+            // For drawing substream level figures.
+            Set<String> involvedSubstreams = new HashSet<>();
+            for(String oe: pres.sources){
+                involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+            }
+            for(String oe: pres.targets){
+                involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+            }
+            involvedSubstreams.removeAll(pres.migratingSubstreams.keySet());
+            System.out.println("Migration!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
 
             listener.scale(newAssignment.size(), newAssignment);
         }
@@ -1221,6 +1244,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Scale in");
                 //For drawing figure
                 System.out.println("Migration! Scale in prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
+                // For drawing substream level figures.
+                Set<String> involvedSubstreams = new HashSet<>();
+                for(String oe: pres.sources){
+                    involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                }
+                for(String oe: pres.targets){
+                    involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                }
+                involvedSubstreams.removeAll(pres.migratingSubstreams.keySet());
+                System.out.println("Migration!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
 
                 listener.scale(newAssignment.size(), newAssignment);
             }
@@ -1229,6 +1262,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.info("Load balance");
                 //For drawing figure
                 System.out.println("Migration! Load balance prescription at time: " + examiner.state.currentTimeIndex + " from executor " + pres.sources + " to executor " + pres.targets);
+                // For drawing substream level figures.
+                Set<String> involvedSubstreams = new HashSet<>();
+                for(String oe: pres.sources){
+                    involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                }
+                for(String oe: pres.targets){
+                    involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                }
+                involvedSubstreams.removeAll(pres.migratingSubstreams.keySet());
+                System.out.println("Migration!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
 
                 listener.remap(newAssignment);
             }
@@ -1299,6 +1342,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         examiner.model.executorInstantaneousDelay.remove(src);
                         examiner.model.executorBacklogDelay.remove(src);
                         examiner.model.executorBacklog.remove(src);
+                        examiner.model.executorArrived.remove(src);
                     }
                     migrationType = "scale-in";
                 }
@@ -1327,9 +1371,28 @@ public class LatencyGuarantor extends StreamSwitch {
                         }
                     }
                     System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets + " ,new " + newOEs);
+                    Set<String> involvedSubstreams = new HashSet<>();
+                    for(String oe: pendingPres.sources){
+                        involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                    }
+                    for(String oe: pendingPres.targets){
+                        involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                    }
+                    involvedSubstreams.removeAll(pendingPres.migratingSubstreams.keySet());
+                    // For drawing substream mapped OE on figure.
+                    System.out.println("Executors stopped!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pendingPres.migratingSubstreams + " ,involved substreams: " + involvedSubstreams);
                     newOEs.clear();
                 }else {
                     System.out.println("Executors stopped at time " + examiner.state.currentTimeIndex + " : " + migrationType + " from " + pendingPres.sources + " to " + pendingPres.targets);
+                    Set<String> involvedSubstreams = new HashSet<>();
+                    for(String oe: pendingPres.sources){
+                        involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                    }
+                    for(String oe: pendingPres.targets){
+                        involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
+                    }
+                    involvedSubstreams.removeAll(pendingPres.migratingSubstreams.keySet());
+                    System.out.println("Executors stopped!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pendingPres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
                 }
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
