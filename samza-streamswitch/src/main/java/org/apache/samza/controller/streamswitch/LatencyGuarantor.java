@@ -1392,7 +1392,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         involvedSubstreams.addAll(executorMapping.getOrDefault(oe, new LinkedList<>()));
                     }
                     involvedSubstreams.removeAll(pendingPres.migratingSubstreams.keySet());
-                    System.out.println("Executors stopped!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pendingPres.migratingSubstreams.keySet() + " ,involved substreams: " + involvedSubstreams);
+                    System.out.println("Executors stopped!! Time: " + examiner.state.currentTimeIndex + " migrated substreams: " + pendingPres.migratingSubstreams + " ,involved substreams: " + involvedSubstreams);
                 }
                 executorMapping = pendingPres.generateNewSubstreamAssignment(executorMapping);
                 pendingPres = null;
