@@ -70,5 +70,6 @@ public interface JobCoordinatorListener {
   }
   default void onAddPartitions(Map<TaskName, TaskModel> partitions, JobModel jobModel){
   }
-
+  default void onForceCommitOffset(){
+  }
 }

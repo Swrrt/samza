@@ -410,6 +410,8 @@ public class FollowerJobCoordinator implements JobCoordinator {
                         LOG.info("New JobModel does not contain pid={}. Stopping this processor. New JobModel: {}",
                                 processorId, newJobModel);
                         isStopped = true; //TODO: possible un-checkpointed offset
+                        // Force commit offset. (update checkpoint)
+                        coordinatorListener.onForceCommitOffset();
                         barrier.join(jobModelVersion, processorId);
                         stop();
                     } else if (oldJobModel != null && oldJobModel.getContainers().containsKey(processorId)

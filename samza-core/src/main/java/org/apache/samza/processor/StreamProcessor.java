@@ -411,6 +411,12 @@ public class StreamProcessor {
         container.removePartitions(new LinkedList<TaskName>(partitions));
       }
 
+      // For scaled-in OEs updating checkpoint offset before join-barrier.
+      @Override
+      public void onForceCommitOffset(){
+        container.commitOffset();
+      }
+
       @Override
       public void onCoordinatorStop() {
         synchronized (lock) {
