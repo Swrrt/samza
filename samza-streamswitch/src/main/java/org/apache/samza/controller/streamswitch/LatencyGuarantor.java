@@ -770,7 +770,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             long tBacklog = (Long)potentialTgts.get(tgt).get(0);
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
-                            if((tBacklog + subBacklog) / tService < latencyReq && tArrival + subArrival < tService * conservativeFactor){
+                            if((tBacklog + subBacklog) / tService + migrationTime < latencyReq && tArrival + subArrival < tService * conservativeFactor){
                                 finalTgt = tgt;
                                 break;
                             }
