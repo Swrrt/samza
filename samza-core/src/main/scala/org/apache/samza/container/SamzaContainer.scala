@@ -795,7 +795,9 @@ class SamzaContainer(
 
     try {
       info("Starting container.")
-      println("Starting run loop. " + System.currentTimeMillis())
+
+      val restoreStartTime = System.currentTimeMillis()
+      println("Starting run loop. " + restoreStartTime)
       //Add manual delay here
       val delayStart = System.currentTimeMillis()
       val manualDelay = config.getInt("task.manual_restore_delay", 0)
@@ -839,13 +841,15 @@ class SamzaContainer(
 
       addShutdownHook
       info("Entering run loop.")
-      println("Entering run loop. " + System.currentTimeMillis())
       status = SamzaContainerStatus.STARTED
       if (containerListener != null) {
         containerListener.afterStart()
       }
       metrics.containerStartupTime.update(System.nanoTime() - startTime)
       metrics.isRunning.set(true)
+      val runloopStartTime = System.currentTimeMillis()
+      println("Entering run loop. " + runloopStartTime)
+      print("Total restore time: %s, tasks %s\n" format (runloopStartTime - restoreStartTime, taskInstances.size))
       runLoop.run
     } catch {
       case e: Throwable =>
@@ -948,7 +952,8 @@ class SamzaContainer(
     info("Remove partitions " + taskNames)
     pauseRunloop()
     info("Remove partition lock acquired")
-    print("Src pause at: %s\n" format(System.currentTimeMillis()))
+    val removeStartTime = System.currentTimeMillis()
+    print("Src pause at: %s\n" format(removeStartTime))
     try {
       info("Start removing...")
       var removedTasks = new util.HashSet[TaskName]()
@@ -1012,7 +1017,9 @@ class SamzaContainer(
     }finally {
       resumeRunloop()
       info("Remove partitions lock released")
-      print("Src resume at: %s\n" format(System.currentTimeMillis()))
+      val removeCompleteTime = System.currentTimeMillis()
+      print("Src resume at: %s\n" format(removeCompleteTime))
+      print("Remove substreams, time %s , substreams %s\n" format(removeCompleteTime - removeStartTime, taskNames.size()))
     }
   }
 
@@ -1027,7 +1034,8 @@ class SamzaContainer(
     info("Add partitions " + tasks.keySet())
     pauseRunloop()
     info("Add partitions lock acquired")
-    print("Tgt pause at: %s\n" format(System.currentTimeMillis()))
+    val addStartTime = System.currentTimeMillis()
+    print("Tgt pause at: %s\n" format(addStartTime))
     try{
 
       //Add input SSPs
@@ -1366,7 +1374,9 @@ class SamzaContainer(
     }finally {
       resumeRunloop()
       info("Add partitions lock released")
-      print("Tgt resume at: %s\n" format(System.currentTimeMillis()))
+      val addCompleteTime = System.currentTimeMillis()
+      print("Tgt resume at: %s\n" format(addCompleteTime))
+      print("Add substreams, time %s , substreams %s\n" format(addCompleteTime - addStartTime, tasks.size()))
     }
   }
   //Asynchronous pause
