@@ -18,6 +18,7 @@ public abstract class StreamSwitch implements OperatorController{
     protected StreamSwitchMetricsRetriever metricsRetriever;
     protected Map<String, List<String>> executorMapping;
     protected Map<String, Long> oeUnlockTime;
+    protected Map<String, Long> substreamUnlockTime;
     protected long metricsRetreiveInterval;
     protected int maxNumberOfExecutors;
     protected boolean isMigrating;
@@ -42,6 +43,7 @@ public abstract class StreamSwitch implements OperatorController{
         LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
         executorMapping = new HashedMap();
         oeUnlockTime = new HashMap<>();
+        substreamUnlockTime = new HashMap<>();
         nextExecutorID = new AtomicLong();
         Iterator<String> iterator = partitions.iterator();
         for(String executor: executors){
