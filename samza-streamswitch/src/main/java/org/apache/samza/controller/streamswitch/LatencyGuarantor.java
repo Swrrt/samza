@@ -744,12 +744,14 @@ public class LatencyGuarantor extends StreamSwitch {
                     //Sort substreams according to instant delay
                     TreeMap<Double, List<String>> sortedSubstream = new TreeMap<>();
                     for(String sub: executorMapping.get(oe)){
-                        double sinstant = examiner.state.getSubstreamLatency(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) /
-                                ((double) examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex - 1));
-                        if(!sortedSubstream.containsKey(sinstant)){
-                            sortedSubstream.put(sinstant, new LinkedList<>());
+                        if(substreamUnlockTime.getOrDefault(sub, -100L) < examiner.state.currentTimeIndex) {
+                            double sinstant = examiner.state.getSubstreamLatency(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) /
+                                    ((double) examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex - 1));
+                            if (!sortedSubstream.containsKey(sinstant)) {
+                                sortedSubstream.put(sinstant, new LinkedList<>());
+                            }
+                            sortedSubstream.get(sinstant).add(sub);
                         }
-                        sortedSubstream.get(sinstant).add(sub);
                     }
 
                     //Debugging
@@ -770,7 +772,9 @@ public class LatencyGuarantor extends StreamSwitch {
                             long tBacklog = (Long)potentialTgts.get(tgt).get(0);
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
-                            if((tBacklog + subBacklog) / tService + migrationTime < latencyReq && tArrival + subArrival < tService * conservativeFactor){
+                            if((tBacklog + subBacklog) / tService + migrationTime < latencyReq // Current backlog condition
+                                && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / service + migrationTime < latencyReq // Backlog after migration condition
+                                && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
                                 finalTgt = tgt;
                                 break;
                             }
@@ -865,6 +869,11 @@ public class LatencyGuarantor extends StreamSwitch {
                 Map<String, String> dest = new HashMap<>();
                 boolean possible = true;
                 for(String sub: executorMapping.get(minSrc)){
+                    if(substreamUnlockTime.containsKey(sub)){
+                        LOG.info("Source has locked substream, cannot scale-in.");
+                        possible = false;
+                        break;
+                    }
                     long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
                     double subArrival = examiner.model.substreamArrivalRate.get(sub);
                     String tgtOE = "";
@@ -873,7 +882,9 @@ public class LatencyGuarantor extends StreamSwitch {
                             long tBacklog = (Long)activeOEs.get(oe).get(0);
                             double tArrival = (Double)activeOEs.get(oe).get(1);
                             double tService = (Double) activeOEs.get(oe).get(2);
-                            if(tArrival + subArrival < tService * conservativeFactor && (tBacklog + subBacklog) / tService + migrationTime < latencyReq){
+                            if(tArrival + subArrival < tService * conservativeFactor
+                               && (tBacklog + subBacklog) / tService + migrationTime < latencyReq
+                               && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService + migrationTime < latencyReq){
                                 tgtOE = oe;
                                 dest.put(sub, tgtOE);
                                 activeOEs.get(oe).set(0, tBacklog + subBacklog);
@@ -1352,7 +1363,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         break;
                     }
                 }
-                //For drawing figre
+                //For drawing figure
                 LOG.info("Migrating " + pendingPres.migratingSubstreams + " from " + pendingPres.sources + " to " + pendingPres.targets);
 
                 long unlockTime = examiner.state.currentTimeIndex + (migrationInterval / metricsRetreiveInterval);
@@ -1361,6 +1372,11 @@ public class LatencyGuarantor extends StreamSwitch {
                 }
                 for(String target: pendingPres.targets) {
                     oeUnlockTime.put(target, unlockTime);
+                }
+
+                long substreamsUnlockTime = examiner.state.currentTimeIndex + (config.getLong("streamswitch.system.maxmigrationtime", 500) / metricsRetreiveInterval);
+                for(String substream: pendingPres.migratingSubstreams.keySet()){
+                    substreamUnlockTime.put(substream, substreamsUnlockTime);
                 }
                 isMigrating = false;
                 if(migrationType.equals("scale-out")){
