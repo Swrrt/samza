@@ -869,7 +869,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 Map<String, String> dest = new HashMap<>();
                 boolean possible = true;
                 for(String sub: executorMapping.get(minSrc)){
-                    if(substreamUnlockTime.containsKey(sub)){
+                    if(substreamUnlockTime.getOrDefault(sub, -100000l) >= examiner.state.currentTimeIndex){
                         LOG.info("Source has locked substream, cannot scale-in.");
                         possible = false;
                         break;
