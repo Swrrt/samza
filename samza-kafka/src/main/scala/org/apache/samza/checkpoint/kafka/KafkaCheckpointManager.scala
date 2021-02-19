@@ -238,7 +238,8 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
       }
 
       if (batch.size() > batchSize){
-        for(entry : Entry[Array[Byte], Array[Byte]] <- batch){
+        import scala.collection.JavaConverters._
+        for(entry <- batch.asScala){
           val keyBytes = entry.getKey
           val valBytes = entry.getValue
 
@@ -285,7 +286,8 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
 
     }
     if (batch.size() > 0) {
-      for(entry : Entry[Array[Byte], Array[Byte]] <- batch){
+      import scala.collection.JavaConverters._
+      for(entry <- batch.asScala){
         val keyBytes = entry.getKey
         val valBytes = entry.getValue
 
