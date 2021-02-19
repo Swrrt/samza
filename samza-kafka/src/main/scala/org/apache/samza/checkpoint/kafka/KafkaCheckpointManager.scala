@@ -219,8 +219,8 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     // Trying batch reading to increasing update speed...
     val batchSize = 500
     val batch = new java.util.ArrayList[Entry[Array[Byte], Array[Byte]]](batchSize)
-
-    for (checkpointEnvelope:IncomingMessageEnvelope <- iterator) {
+    import scala.collection.JavaConverters._
+    for (checkpointEnvelope <- iterator.asInstanceOf[java.util.Iterator[IncomingMessageEnvelope]].asScala) {
       val offset = checkpointEnvelope.getOffset
 
       numMessagesRead += 1
