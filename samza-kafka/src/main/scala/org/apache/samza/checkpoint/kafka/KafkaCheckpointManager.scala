@@ -237,7 +237,8 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
           s"Offset:$offset")
       }
 
-      if (batch.size() > batchSize){
+      batch.add(new Entry(keyBytes, valBytes))
+      if (batch.size() >= batchSize){
         import scala.collection.JavaConverters._
         for(entry <- batch.asScala){
           val keyBytes = entry.getKey
