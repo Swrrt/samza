@@ -411,15 +411,11 @@ object SamzaContainer extends Logging {
     }
     info("Got security manager: %s" format securityManager)
 
-    val checkpointManager = if (precheckpointManager == null) {
-        config.getCheckpointManagerFactory()
-        .filterNot(_.isEmpty)
-        .map(Util.getObj(_, classOf[CheckpointManagerFactory])
-          .getCheckpointManager(config, samzaContainerMetrics.registry))
-        .orNull
-      } else {
-      precheckpointManager
-    }
+    val checkpointManager = config.getCheckpointManagerFactory()
+      .filterNot(_.isEmpty)
+      .map(Util.getObj(_, classOf[CheckpointManagerFactory])
+        .getCheckpointManager(config, samzaContainerMetrics.registry))
+      .orNull
     info("Got checkpoint manager: %s" format checkpointManager)
 
     // create a map of consumers with callbacks to pass to the OffsetManager
