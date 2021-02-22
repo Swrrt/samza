@@ -269,7 +269,11 @@ public class StreamProcessor {
         jobCoordinator.start();
 
         // Start pre-reading Checkpoint!
+        LOGGER.info("Start pre-reading checkpoint...");
+        checkpointManager.start();
         checkpointManager.readLastCheckpoint(new TaskName("ForceReading"));
+        checkpointManager.stop();
+        LOGGER.info("Pre-reading checkpoint completed.");
       } else {
         LOGGER.info("Start is no-op, since the current state is {} and not {}.", state, State.NEW);
       }
