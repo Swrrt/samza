@@ -243,11 +243,11 @@ public class StreamProcessor {
     this.processorId = this.jobCoordinator.getProcessorId();
     this.processorListener = listenerFactory.createInstance(this);
 
-    String checkpointManagerFactoryName = ((TaskConfigJava)config).getCheckpointManagerFactoryName();
+    String checkpointManagerFactoryName = (new TaskConfigJava(config)).getCheckpointManagerFactoryName();
     if (!checkpointManagerFactoryName.isEmpty()) {
       // TODO: check whether it is KafkaCheckpointManager.
       // Should only used for Kafka Checkpoint!
-      this.checkpointManager = Util.getObj(checkpointManagerFactoryName, CheckpointManagerFactory.class).getCheckpointManager(config, null);
+      this.checkpointManager = Util.getObj(checkpointManagerFactoryName, CheckpointManagerFactory.class).getCheckpointManager(new TaskConfigJava(config), null);
     } else {
       this.checkpointManager = null;
     }
