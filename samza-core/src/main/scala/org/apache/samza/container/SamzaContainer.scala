@@ -128,8 +128,7 @@ object SamzaContainer extends Logging {
     taskFactory: TaskFactory[_],
     jobContext: JobContext,
     applicationContainerContextFactoryOption: Option[ApplicationContainerContextFactory[ApplicationContainerContext]],
-    applicationTaskContextFactoryOption: Option[ApplicationTaskContextFactory[ApplicationTaskContext]],
-    precheckpointManager: CheckpointManager = null
+    applicationTaskContextFactoryOption: Option[ApplicationTaskContextFactory[ApplicationTaskContext]]
   ) = {
     val config = jobContext.getConfig
     val containerModel = jobModel.getContainers.get(containerId)
@@ -1464,6 +1463,10 @@ class SamzaContainer(
     info("Starting offset manager.")
 
     offsetManager.start
+  }
+
+  def setCheckpoint(checkpoints: util.Map[TaskName, Checkpoint]): Unit ={
+    offsetManager.checkpointManager.addCheckpoints(checkpoints)
   }
 
   def storeContainerLocality {

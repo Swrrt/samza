@@ -21,6 +21,8 @@ package org.apache.samza.checkpoint;
 
 import org.apache.samza.container.TaskName;
 
+import java.util.Map;
+
 /**
  * CheckpointManagers read and write {@link org.apache.samza.checkpoint.Checkpoint} to some
  * implementation-specific location.
@@ -66,4 +68,7 @@ public interface CheckpointManager {
    * Clear the checkpoints in the checkpoint stream.
    */
   default void clearCheckpoints() { }
+
+  default Map<TaskName, Checkpoint> outputCheckpoints(){return null;}
+  default void addCheckpoints(Map<TaskName, Checkpoint> checkpointMap){}
 }

@@ -19,6 +19,7 @@
 
 package org.apache.samza.checkpoint.kafka
 
+import java.util
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 
@@ -191,6 +192,19 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     info("Clear checkpoint stream %s in system %s" format(checkpointTopic, checkpointSystem))
     systemAdmin.clearStream(checkpointSpec)
   }
+
+  override def outputCheckpoints(): util.Map[TaskName, Checkpoint] = {
+    scala.collection.JavaConverters.mapAsJavaMapConverter(taskNamesToCheckpoints).asJava
+  }
+
+  override def addCheckpoints(checkpointMap: util.Map[TaskName, Checkpoint]): Unit = {
+    if(taskNamesToCheckpoints == null) {
+      taskNamesToCheckpoints = Map()
+    }
+    import scala.collection.JavaConverters._
+    taskNamesToCheckpoints ++= checkpointMap.asScala
+  }
+
 
   override def stop = {
     systemAdmin.stop()

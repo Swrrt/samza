@@ -338,8 +338,7 @@ public class StreamProcessor {
     return SamzaContainer.apply(processorId, jobModel, ScalaJavaUtil.toScalaMap(this.customMetricsReporter),
         this.taskFactory, JobContextImpl.fromConfigWithDefaults(this.config),
         Option.apply(this.applicationDefinedContainerContextFactoryOptional.orElse(null)),
-        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)),
-        this.checkpointManager);
+        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)));
   }
 
   private JobCoordinator createJobCoordinator() {
@@ -409,6 +408,12 @@ public class StreamProcessor {
             containerShutdownLatch = new CountDownLatch(1);
             container = createSamzaContainer(processorId, jobModel);
             container.setContainerListener(new ContainerListener());
+
+            // Pass pre-loading checkpoint to container
+            if (checkpointManager != null){
+              container.setCheckpoint(checkpointManager.outputCheckpoints());
+            }
+
             LOGGER.info("Starting the container: {} for the stream processor: {}.", container, processorId);
             containerExcecutorService.submit(container);
           } else {
