@@ -34,6 +34,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.samza.annotation.InterfaceStability;
+import org.apache.samza.checkpoint.CheckpointManager;
+import org.apache.samza.checkpoint.CheckpointManagerFactory;
 import org.apache.samza.config.Config;
 import org.apache.samza.config.JobCoordinatorConfig;
 import org.apache.samza.config.TaskConfigJava;
@@ -127,6 +129,7 @@ public class StreamProcessor {
   private final String processorId;
   private final ExecutorService containerExcecutorService;
   private final Object lock = new Object();
+  private final CheckpointManager checkpointManager;
 
   private volatile Throwable containerException = null;
 
@@ -239,6 +242,15 @@ public class StreamProcessor {
     // TODO: remove the dependency on jobCoordinator for processorId after fixing SAMZA-1835
     this.processorId = this.jobCoordinator.getProcessorId();
     this.processorListener = listenerFactory.createInstance(this);
+
+    String checkpointManagerFactoryName = ((TaskConfigJava)config).getCheckpointManagerFactoryName();
+    if (!checkpointManagerFactoryName.isEmpty()) {
+      // TODO: check whether it is KafkaCheckpointManager.
+      // Should only used for Kafka Checkpoint!
+      this.checkpointManager = Util.getObj(checkpointManagerFactoryName, CheckpointManagerFactory.class).getCheckpointManager(config, null);
+    } else {
+      this.checkpointManager = null;
+    }
   }
 
   /**
@@ -255,6 +267,9 @@ public class StreamProcessor {
         processorListener.beforeStart();
         state = State.STARTED;
         jobCoordinator.start();
+
+        // Start pre-reading Checkpoint!
+        checkpointManager.readLastCheckpoint(new TaskName("ForceReading"));
       } else {
         LOGGER.info("Start is no-op, since the current state is {} and not {}.", state, State.NEW);
       }
@@ -323,7 +338,8 @@ public class StreamProcessor {
     return SamzaContainer.apply(processorId, jobModel, ScalaJavaUtil.toScalaMap(this.customMetricsReporter),
         this.taskFactory, JobContextImpl.fromConfigWithDefaults(this.config),
         Option.apply(this.applicationDefinedContainerContextFactoryOptional.orElse(null)),
-        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)));
+        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)),
+        this.checkpointManager);
   }
 
   private JobCoordinator createJobCoordinator() {

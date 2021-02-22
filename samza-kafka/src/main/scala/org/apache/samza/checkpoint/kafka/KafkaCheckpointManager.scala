@@ -120,7 +120,7 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     * @inheritdoc
     */
   override def readLastCheckpoint(taskName: TaskName): Checkpoint = {
-    if (!taskNames.contains(taskName)) {
+    if (!taskNames.contains(taskName) && !taskNames.equals("ForceReading")) {
       throw new SamzaException(s"Task: $taskName is not registered with this CheckpointManager")
     }
 
@@ -132,6 +132,11 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     } else {
       debug("Updating existing checkpoint mappings")
       taskNamesToCheckpoints ++= readCheckpoints()
+    }
+
+    if (taskNames.equals("ForceReading")){
+      info("Force reading Checkpoint completed.")
+      return null;
     }
 
     val checkpoint: Checkpoint = taskNamesToCheckpoints.getOrElse(taskName, null)
