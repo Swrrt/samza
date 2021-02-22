@@ -129,7 +129,7 @@ object SamzaContainer extends Logging {
     jobContext: JobContext,
     applicationContainerContextFactoryOption: Option[ApplicationContainerContextFactory[ApplicationContainerContext]],
     applicationTaskContextFactoryOption: Option[ApplicationTaskContextFactory[ApplicationTaskContext]],
-    precheckpointManager: CheckpointManager
+    precheckpointManager: CheckpointManager = null
   ) = {
     val config = jobContext.getConfig
     val containerModel = jobModel.getContainers.get(containerId)
