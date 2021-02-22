@@ -121,7 +121,7 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     * @inheritdoc
     */
   override def readLastCheckpoint(taskName: TaskName): Checkpoint = {
-    if (!taskNames.contains(taskName) && !taskNames.equals("ForceReading")) {
+    if (!taskNames.contains(taskName) && taskName.getTaskName != "ForceReading") {
       throw new SamzaException(s"Task: $taskName is not registered with this CheckpointManager")
     }
 
