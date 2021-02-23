@@ -75,7 +75,7 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
   var taskNamesToCheckpoints: Map[TaskName, Checkpoint] = null
 
   // For pre-loading checkpoint
-  var loadedOffset: BigInt = BigInt(0)
+  var loadedOffset: BigInt = BigInt(-1)
   var nextOffset: String = ""
 
   /**
@@ -115,7 +115,7 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
       info(s"Starting checkpoint SystemConsumer after pre-loaded offset $nextOffset")
       nextOffset
     }
-    loadedOffset = BigInt(offset)
+    loadedOffset = BigInt(offset) - 1 
 
     systemConsumer.register(checkpointSsp, offset)
     systemConsumer.start
