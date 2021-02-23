@@ -19,6 +19,7 @@
 
 package org.apache.samza.checkpoint.kafka
 
+import java.math.BigInteger
 import java.util
 import java.util.Collections
 import java.util.concurrent.TimeUnit
@@ -73,6 +74,10 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
   var taskNames = Set[TaskName]()
   var taskNamesToCheckpoints: Map[TaskName, Checkpoint] = null
 
+  // For pre-loading checkpoint
+  var loadedOffset: BigInt = BigInt(0)
+  var nextOffset: String = ""
+
   /**
     * Create checkpoint stream prior to start.
     */
@@ -102,9 +107,17 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     systemProducer.start
 
     // register and start a consumer for the checkpoint topic
-    val oldestOffset = getOldestOffset(checkpointSsp)
-    info(s"Starting checkpoint SystemConsumer from oldest offset $oldestOffset")
-    systemConsumer.register(checkpointSsp, oldestOffset)
+    val offset = if(nextOffset == "") {
+      val oldestOffset = getOldestOffset(checkpointSsp)
+      info(s"Starting checkpoint SystemConsumer from oldest offset $oldestOffset")
+      oldestOffset
+    } else {
+      info(s"Starting checkpoint SystemConsumer after pre-loaded offset $nextOffset")
+      nextOffset
+    }
+    loadedOffset = BigInt(offset)
+
+    systemConsumer.register(checkpointSsp, offset)
     systemConsumer.start
   }
 
@@ -203,6 +216,14 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     }
     import scala.collection.JavaConverters._
     taskNamesToCheckpoints ++= checkpointMap.asScala
+  }
+
+  override def getNextCheckpoint: String = {
+    (loadedOffset + 1).toString()
+  }
+
+  override def setNextOffset(offset: String): Unit = {
+    nextOffset = offset
   }
 
 
@@ -350,6 +371,7 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
 
       batch.clear()
     }
+    loadedOffset += numMessagesRead
 
     info(s"Read $numMessagesRead messages from system:$checkpointSystem topic:$checkpointTopic")
     checkpoints.toMap

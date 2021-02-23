@@ -1461,8 +1461,9 @@ class SamzaContainer(
     offsetManager.start
   }
 
-  def setCheckpoint(checkpoints: util.Map[TaskName, Checkpoint]): Unit ={
+  def setCheckpointAndNextOffset(checkpoints: util.Map[TaskName, Checkpoint], nextOffset: String): Unit ={
     offsetManager.checkpointManager.addCheckpoints(checkpoints)
+    offsetManager.checkpointManager.setNextOffset(nextOffset)
   }
 
   def storeContainerLocality {

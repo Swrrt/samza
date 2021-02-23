@@ -415,7 +415,7 @@ public class StreamProcessor {
 
             // Pass pre-loading checkpoint to container
             if (checkpointManager != null){
-              container.setCheckpoint(checkpointManager.outputCheckpoints());
+              container.setCheckpointAndNextOffset(checkpointManager.outputCheckpoints(), checkpointManager.getNextCheckpoint());
             }
 
             LOGGER.info("Starting the container: {} for the stream processor: {}.", container, processorId);

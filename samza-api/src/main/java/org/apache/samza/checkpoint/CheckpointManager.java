@@ -21,6 +21,7 @@ package org.apache.samza.checkpoint;
 
 import org.apache.samza.container.TaskName;
 
+import java.math.BigInteger;
 import java.util.Map;
 
 /**
@@ -71,4 +72,6 @@ public interface CheckpointManager {
 
   default Map<TaskName, Checkpoint> outputCheckpoints(){return null;}
   default void addCheckpoints(Map<TaskName, Checkpoint> checkpointMap){}
+  default String getNextCheckpoint(){return "";}
+  default void setNextOffset(String offset){}
 }
