@@ -3,7 +3,6 @@ package org.apache.samza.controller.streamswitch;
 import javafx.util.Pair;
 import org.apache.samza.config.Config;
 import org.apache.samza.controller.OperatorControllerListener;
-import org.mortbay.util.MultiMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -692,8 +691,12 @@ public class LatencyGuarantor extends StreamSwitch {
                 return new Pair<>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
             }
 
-            private boolean isBacklogDelayViolated(long backlog, double serviceRate, double migrationTime){
-                return backlog/serviceRate + migrationTime > latencyReq;
+            private boolean isCurrentBacklogDelayViolated(long backlog, double serviceRate, double migrationTime){
+                return backlog/(serviceRate * conservativeFactor) + migrationTime > latencyReq;
+            }
+
+            private boolean isFutureBacklogDelayViolated(long backlog, double serviceRate, double migrationTime, double arrivalRate){
+                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) + migrationTime > latencyReq;
             }
 
             //Scale out OEs that will violate requirement
@@ -704,7 +707,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     //double backlogDelay = examiner.model.executorBacklogDelay.get(oe);
                     long backlog = examiner.model.executorBacklog.get(oe);
                     double serviceRate = examiner.model.executorServiceRate.get(oe);
-                    if(isBacklogDelayViolated(backlog, serviceRate, migrationTime)){
+                    if(isCurrentBacklogDelayViolated(backlog, serviceRate, migrationTime)){
                         severeOEs.add(oe);
                     }
                 }
@@ -726,9 +729,19 @@ public class LatencyGuarantor extends StreamSwitch {
                 //Find potential targets
                 Map<String, List<Object>> potentialTgts = new HashMap<>();
                 for(String oe: activatedOEs){
-                    if(!severeOEs.contains(oe)){
+                    if(!severeOEs.contains(oe)) {
                         double instantDelay = examiner.model.executorInstantaneousDelay.get(oe);
-                        if(instantDelay + migrationTime < latencyReq){ //TODO: add migration time here?
+                        /*if(instantDelay + migrationTime < latencyReq){ //TODO: add migration time here?
+                            List<Object> tlist = new ArrayList<>();
+                            tlist.add(examiner.model.executorBacklog.get(oe));
+                            tlist.add(examiner.model.executorArrivalRate.get(oe));
+                            tlist.add(examiner.model.executorServiceRate.get(oe));
+                            potentialTgts.put(oe, tlist);
+                        }*/
+                        long backlog = examiner.model.executorBacklog.get(oe);
+                        double serviceRate = examiner.model.executorServiceRate.get(oe);
+                        double arrivalRate = examiner.model.executorArrivalRate.get(oe);
+                        if(isFutureBacklogDelayViolated(backlog, serviceRate, migrationTime, arrivalRate)){
                             List<Object> tlist = new ArrayList<>();
                             tlist.add(examiner.model.executorBacklog.get(oe));
                             tlist.add(examiner.model.executorArrivalRate.get(oe));
@@ -778,9 +791,9 @@ public class LatencyGuarantor extends StreamSwitch {
                             long tBacklog = (Long)potentialTgts.get(tgt).get(0);
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
-                            if((tBacklog + subBacklog) / tService + migrationTime < latencyReq // Current backlog condition
-                                    && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / service + migrationTime < latencyReq // Backlog after migration condition
-                                    && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
+                            if(isCurrentBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime)
+                                && isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, (tArrival + subArrival))
+                                && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
                                 finalTgt = tgt;
                                 break;
                             }
@@ -889,8 +902,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             double tArrival = (Double)activeOEs.get(oe).get(1);
                             double tService = (Double) activeOEs.get(oe).get(2);
                             if(tArrival + subArrival < tService * conservativeFactor
-                                    && (tBacklog + subBacklog) / tService + migrationTime < latencyReq
-                                    && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService + migrationTime < latencyReq){
+                                    && isCurrentBacklogDelayViolated (tBacklog + subBacklog, tService,  migrationTime)
+                                    && isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, tService, tArrival + subArrival)){
                                 tgtOE = oe;
                                 dest.put(sub, tgtOE);
                                 activeOEs.get(oe).set(0, tBacklog + subBacklog);
