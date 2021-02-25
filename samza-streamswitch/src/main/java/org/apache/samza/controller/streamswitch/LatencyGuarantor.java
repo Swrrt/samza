@@ -741,7 +741,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         long backlog = examiner.model.executorBacklog.get(oe);
                         double serviceRate = examiner.model.executorServiceRate.get(oe);
                         double arrivalRate = examiner.model.executorArrivalRate.get(oe);
-                        if(isFutureBacklogDelayViolated(backlog, serviceRate, migrationTime, arrivalRate)){
+                        if(!isFutureBacklogDelayViolated(backlog, serviceRate, migrationTime, arrivalRate)){
                             List<Object> tlist = new ArrayList<>();
                             tlist.add(examiner.model.executorBacklog.get(oe));
                             tlist.add(examiner.model.executorArrivalRate.get(oe));
@@ -791,8 +791,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             long tBacklog = (Long)potentialTgts.get(tgt).get(0);
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
-                            if(isCurrentBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime)
-                                && isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, (tArrival + subArrival))
+                            if(!isCurrentBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime)
+                                && !isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, (tArrival + subArrival))
                                 && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
                                 finalTgt = tgt;
                                 break;
@@ -902,8 +902,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             double tArrival = (Double)activeOEs.get(oe).get(1);
                             double tService = (Double) activeOEs.get(oe).get(2);
                             if(tArrival + subArrival < tService * conservativeFactor
-                                    && isCurrentBacklogDelayViolated (tBacklog + subBacklog, tService,  migrationTime)
-                                    && isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, tService, tArrival + subArrival)){
+                                    && !isCurrentBacklogDelayViolated (tBacklog + subBacklog, tService,  migrationTime)
+                                    && !isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, tArrival + subArrival)){
                                 tgtOE = oe;
                                 dest.put(sub, tgtOE);
                                 activeOEs.get(oe).set(0, tBacklog + subBacklog);
