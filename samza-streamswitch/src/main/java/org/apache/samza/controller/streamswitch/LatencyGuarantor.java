@@ -407,8 +407,9 @@ public class LatencyGuarantor extends StreamSwitch {
                     double oldInstantaneousDelay = executorInstantaneousDelay.getOrDefault(executor, 0.0);
                     double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);
                     executorInstantaneousDelay.put(executor, newInstantaneousDelay);
-                    double oldBacklogDelay = executorBacklogDelay.getOrDefault(executor, 0.0);
-                    double newBacklogDelay = oldBacklogDelay * decayFactor + calculateExecutorBacklogDelay(executor, timeIndex) * (1.0 - decayFactor);
+                    //double oldBacklogDelay = executorBacklogDelay.getOrDefault(executor, 0.0);
+                    //double newBacklogDelay = oldBacklogDelay * decayFactor + calculateExecutorBacklogDelay(executor, timeIndex) * (1.0 - decayFactor);
+                    double newBacklogDelay = calculateExecutorBacklogDelay(executor, timeIndex);
                     executorBacklogDelay.put(executor, newBacklogDelay);
                 }
                 //Debugging
@@ -691,14 +692,19 @@ public class LatencyGuarantor extends StreamSwitch {
                 return new Pair<>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
             }
 
+            private boolean isBacklogDelayViolated(long backlog, double serviceRate, double migrationTime){
+                return backlog/serviceRate + migrationTime > latencyReq;
+            }
 
             //Scale out OEs that will violate requirement
             private Set<String> findSevereOEs(Set<String> activatedOEs, double migrationTime){
                 LOG.info("Finding severe oes");
                 Set<String> severeOEs = new HashSet<>();
                 for(String oe: activatedOEs){
-                    double backlogDelay = examiner.model.executorBacklogDelay.get(oe);
-                    if(backlogDelay + migrationTime > latencyReq){
+                    //double backlogDelay = examiner.model.executorBacklogDelay.get(oe);
+                    long backlog = examiner.model.executorBacklog.get(oe);
+                    double serviceRate = examiner.model.executorServiceRate.get(oe);
+                    if(isBacklogDelayViolated(backlog, serviceRate, migrationTime)){
                         severeOEs.add(oe);
                     }
                 }
@@ -773,8 +779,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
                             if((tBacklog + subBacklog) / tService + migrationTime < latencyReq // Current backlog condition
-                                && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / service + migrationTime < latencyReq // Backlog after migration condition
-                                && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
+                                    && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / service + migrationTime < latencyReq // Backlog after migration condition
+                                    && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
                                 finalTgt = tgt;
                                 break;
                             }
@@ -883,8 +889,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             double tArrival = (Double)activeOEs.get(oe).get(1);
                             double tService = (Double) activeOEs.get(oe).get(2);
                             if(tArrival + subArrival < tService * conservativeFactor
-                               && (tBacklog + subBacklog) / tService + migrationTime < latencyReq
-                               && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService + migrationTime < latencyReq){
+                                    && (tBacklog + subBacklog) / tService + migrationTime < latencyReq
+                                    && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService + migrationTime < latencyReq){
                                 tgtOE = oe;
                                 dest.put(sub, tgtOE);
                                 activeOEs.get(oe).set(0, tBacklog + subBacklog);

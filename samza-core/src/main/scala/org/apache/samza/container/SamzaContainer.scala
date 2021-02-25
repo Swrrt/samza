@@ -31,7 +31,7 @@ import java.util.concurrent.{ExecutorService, Executors, ScheduledExecutorServic
 
 import com.google.common.annotations.VisibleForTesting
 import com.google.common.util.concurrent.ThreadFactoryBuilder
-import org.apache.samza.checkpoint.{CheckpointListener, CheckpointManagerFactory, OffsetManager, OffsetManagerMetrics}
+import org.apache.samza.checkpoint._
 import org.apache.samza.config.JobConfig.Config2Job
 import org.apache.samza.config.MetricsConfig.Config2Metrics
 import org.apache.samza.config.SerializerConfig.Config2Serializer
@@ -1430,6 +1430,11 @@ class SamzaContainer(
     info("Starting offset manager.")
 
     offsetManager.start
+  }
+
+  def setCheckpointAndNextOffset(checkpoints: util.Map[TaskName, Checkpoint], nextOffset: String): Unit ={
+    offsetManager.checkpointManager.addCheckpoints(checkpoints)
+    offsetManager.checkpointManager.setNextOffset(nextOffset)
   }
 
   def storeContainerLocality {

@@ -34,6 +34,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.samza.annotation.InterfaceStability;
+import org.apache.samza.checkpoint.CheckpointManager;
+import org.apache.samza.checkpoint.CheckpointManagerFactory;
 import org.apache.samza.config.Config;
 import org.apache.samza.config.JobCoordinatorConfig;
 import org.apache.samza.config.TaskConfigJava;
@@ -127,6 +129,7 @@ public class StreamProcessor {
   private final String processorId;
   private final ExecutorService containerExcecutorService;
   private final Object lock = new Object();
+  private final CheckpointManager checkpointManager;
 
   private volatile Throwable containerException = null;
 
@@ -180,7 +183,7 @@ public class StreamProcessor {
    */
   @Deprecated
   public StreamProcessor(Config config, Map<String, MetricsReporter> customMetricsReporters, TaskFactory taskFactory,
-      ProcessorLifecycleListener processorListener) {
+                         ProcessorLifecycleListener processorListener) {
     this(config, customMetricsReporters, taskFactory, processorListener, null);
   }
 
@@ -204,9 +207,9 @@ public class StreamProcessor {
    */
   @Deprecated
   public StreamProcessor(Config config, Map<String, MetricsReporter> customMetricsReporters, TaskFactory taskFactory,
-      ProcessorLifecycleListener processorListener, JobCoordinator jobCoordinator) {
+                         ProcessorLifecycleListener processorListener, JobCoordinator jobCoordinator) {
     this(config, customMetricsReporters, taskFactory, Optional.empty(), Optional.empty(), sp -> processorListener,
-        jobCoordinator);
+            jobCoordinator);
   }
 
   /**
@@ -221,9 +224,9 @@ public class StreamProcessor {
    * @param jobCoordinator the instance of {@link JobCoordinator}
    */
   public StreamProcessor(Config config, Map<String, MetricsReporter> customMetricsReporters, TaskFactory taskFactory,
-      Optional<ApplicationContainerContextFactory<ApplicationContainerContext>> applicationDefinedContainerContextFactoryOptional,
-      Optional<ApplicationTaskContextFactory<ApplicationTaskContext>> applicationDefinedTaskContextFactoryOptional,
-      StreamProcessorLifecycleListenerFactory listenerFactory, JobCoordinator jobCoordinator) {
+                         Optional<ApplicationContainerContextFactory<ApplicationContainerContext>> applicationDefinedContainerContextFactoryOptional,
+                         Optional<ApplicationTaskContextFactory<ApplicationTaskContext>> applicationDefinedTaskContextFactoryOptional,
+                         StreamProcessorLifecycleListenerFactory listenerFactory, JobCoordinator jobCoordinator) {
     Preconditions.checkNotNull(listenerFactory, "StreamProcessorListenerFactory cannot be null.");
     this.config = config;
     this.customMetricsReporter = customMetricsReporters;
@@ -239,6 +242,15 @@ public class StreamProcessor {
     // TODO: remove the dependency on jobCoordinator for processorId after fixing SAMZA-1835
     this.processorId = this.jobCoordinator.getProcessorId();
     this.processorListener = listenerFactory.createInstance(this);
+
+    String checkpointManagerFactoryName = (new TaskConfigJava(config)).getCheckpointManagerFactoryName();
+    if (!checkpointManagerFactoryName.isEmpty()) {
+      // TODO: check whether it is KafkaCheckpointManager.
+      // Should only used for Kafka Checkpoint!
+      this.checkpointManager = Util.getObj(checkpointManagerFactoryName, CheckpointManagerFactory.class).getCheckpointManager(new TaskConfigJava(config), null);
+    } else {
+      this.checkpointManager = null;
+    }
   }
 
   /**
@@ -255,6 +267,13 @@ public class StreamProcessor {
         processorListener.beforeStart();
         state = State.STARTED;
         jobCoordinator.start();
+
+        // Start pre-reading Checkpoint!
+        LOGGER.info("Start pre-reading checkpoint...");
+        checkpointManager.start();
+        checkpointManager.readLastCheckpoint(new TaskName("ForceReading"));
+        checkpointManager.stop();
+        LOGGER.info("Pre-reading checkpoint completed.");
       } else {
         LOGGER.info("Start is no-op, since the current state is {} and not {}.", state, State.NEW);
       }
@@ -321,9 +340,9 @@ public class StreamProcessor {
   @VisibleForTesting
   SamzaContainer createSamzaContainer(String processorId, JobModel jobModel) {
     return SamzaContainer.apply(processorId, jobModel, ScalaJavaUtil.toScalaMap(this.customMetricsReporter),
-        this.taskFactory, JobContextImpl.fromConfigWithDefaults(this.config),
-        Option.apply(this.applicationDefinedContainerContextFactoryOptional.orElse(null)),
-        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)));
+            this.taskFactory, JobContextImpl.fromConfigWithDefaults(this.config),
+            Option.apply(this.applicationDefinedContainerContextFactoryOptional.orElse(null)),
+            Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)));
   }
 
   private JobCoordinator createJobCoordinator() {
@@ -393,6 +412,12 @@ public class StreamProcessor {
             containerShutdownLatch = new CountDownLatch(1);
             container = createSamzaContainer(processorId, jobModel);
             container.setContainerListener(new ContainerListener());
+
+            // Pass pre-loading checkpoint to container
+            if (checkpointManager != null){
+              container.setCheckpointAndNextOffset(checkpointManager.outputCheckpoints(), checkpointManager.getNextCheckpoint());
+            }
+
             LOGGER.info("Starting the container: {} for the stream processor: {}.", container, processorId);
             containerExcecutorService.submit(container);
           } else {
