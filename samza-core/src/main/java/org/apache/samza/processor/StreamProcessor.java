@@ -183,7 +183,7 @@ public class StreamProcessor {
    */
   @Deprecated
   public StreamProcessor(Config config, Map<String, MetricsReporter> customMetricsReporters, TaskFactory taskFactory,
-      ProcessorLifecycleListener processorListener) {
+                         ProcessorLifecycleListener processorListener) {
     this(config, customMetricsReporters, taskFactory, processorListener, null);
   }
 
@@ -207,9 +207,9 @@ public class StreamProcessor {
    */
   @Deprecated
   public StreamProcessor(Config config, Map<String, MetricsReporter> customMetricsReporters, TaskFactory taskFactory,
-      ProcessorLifecycleListener processorListener, JobCoordinator jobCoordinator) {
+                         ProcessorLifecycleListener processorListener, JobCoordinator jobCoordinator) {
     this(config, customMetricsReporters, taskFactory, Optional.empty(), Optional.empty(), sp -> processorListener,
-        jobCoordinator);
+            jobCoordinator);
   }
 
   /**
@@ -224,9 +224,9 @@ public class StreamProcessor {
    * @param jobCoordinator the instance of {@link JobCoordinator}
    */
   public StreamProcessor(Config config, Map<String, MetricsReporter> customMetricsReporters, TaskFactory taskFactory,
-      Optional<ApplicationContainerContextFactory<ApplicationContainerContext>> applicationDefinedContainerContextFactoryOptional,
-      Optional<ApplicationTaskContextFactory<ApplicationTaskContext>> applicationDefinedTaskContextFactoryOptional,
-      StreamProcessorLifecycleListenerFactory listenerFactory, JobCoordinator jobCoordinator) {
+                         Optional<ApplicationContainerContextFactory<ApplicationContainerContext>> applicationDefinedContainerContextFactoryOptional,
+                         Optional<ApplicationTaskContextFactory<ApplicationTaskContext>> applicationDefinedTaskContextFactoryOptional,
+                         StreamProcessorLifecycleListenerFactory listenerFactory, JobCoordinator jobCoordinator) {
     Preconditions.checkNotNull(listenerFactory, "StreamProcessorListenerFactory cannot be null.");
     this.config = config;
     this.customMetricsReporter = customMetricsReporters;
@@ -340,9 +340,9 @@ public class StreamProcessor {
   @VisibleForTesting
   SamzaContainer createSamzaContainer(String processorId, JobModel jobModel) {
     return SamzaContainer.apply(processorId, jobModel, ScalaJavaUtil.toScalaMap(this.customMetricsReporter),
-        this.taskFactory, JobContextImpl.fromConfigWithDefaults(this.config),
-        Option.apply(this.applicationDefinedContainerContextFactoryOptional.orElse(null)),
-        Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)));
+            this.taskFactory, JobContextImpl.fromConfigWithDefaults(this.config),
+            Option.apply(this.applicationDefinedContainerContextFactoryOptional.orElse(null)),
+            Option.apply(this.applicationDefinedTaskContextFactoryOptional.orElse(null)));
   }
 
   private JobCoordinator createJobCoordinator() {

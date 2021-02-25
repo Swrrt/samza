@@ -779,8 +779,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
                             if((tBacklog + subBacklog) / tService + migrationTime < latencyReq // Current backlog condition
-                                && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / service + migrationTime < latencyReq // Backlog after migration condition
-                                && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
+                                    && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / service + migrationTime < latencyReq // Backlog after migration condition
+                                    && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
                                 finalTgt = tgt;
                                 break;
                             }
@@ -889,8 +889,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             double tArrival = (Double)activeOEs.get(oe).get(1);
                             double tService = (Double) activeOEs.get(oe).get(2);
                             if(tArrival + subArrival < tService * conservativeFactor
-                               && (tBacklog + subBacklog) / tService + migrationTime < latencyReq
-                               && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService + migrationTime < latencyReq){
+                                    && (tBacklog + subBacklog) / tService + migrationTime < latencyReq
+                                    && (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService + migrationTime < latencyReq){
                                 tgtOE = oe;
                                 dest.put(sub, tgtOE);
                                 activeOEs.get(oe).set(0, tBacklog + subBacklog);
