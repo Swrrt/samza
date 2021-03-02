@@ -481,7 +481,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 //state.calculate(timeIndex);
                 //state.drop(timeIndex);
                 return true;
-            }else return false;
+            }else return true;
         }
 
         private void updateModel(long timeIndex, Map<String, Double> serviceRate, Map<String, Boolean> substreamValid, Map<String, List<String>> executorMapping){
