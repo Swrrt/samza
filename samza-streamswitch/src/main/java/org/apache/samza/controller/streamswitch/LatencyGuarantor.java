@@ -286,8 +286,9 @@ public class LatencyGuarantor extends StreamSwitch {
             Map<String, Double> substreamArrivalRate, executorArrivalRate, executorServiceRate, executorInstantaneousDelay; //Longterm delay could be calculated from arrival rate and service rate
             //For testing
             Map<String, Double> executorBacklogDelay;
-            Map<String, Long>executorBacklog, executorArrived;
+            Map<String, Long> executorBacklog, executorArrived;
             Map<String, Long> executorCompleted; //For debugging instant delay
+            Set<String> invalidExecutors; // For multi-migrations
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
@@ -297,6 +298,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 executorBacklog = new HashMap<>();
                 executorArrived  = new HashMap<>();
                 executorCompleted = new HashMap<>();
+                invalidExecutors = new HashSet<>();
                 this.state = state;
             }
 
@@ -370,7 +372,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             //Calculate model snapshot from state
-            private void update(long timeIndex, Map<String, Double> serviceRate, Map<String, List<String>> executorMapping){
+            private void update(long timeIndex, Map<String, Double> serviceRate, Map<String, Boolean> substreamValidity, Map<String, List<String>> executorMapping){
                 LOG.info("Updating model snapshot, clear old data...");
                 //substreamArrivalRate.clear();
                 executorArrivalRate.clear();
@@ -379,37 +381,48 @@ public class LatencyGuarantor extends StreamSwitch {
                 Map<String, Double> utils = new HashMap<>();
                 for(String executor: executorMapping.keySet()){
                     double arrivalRate = 0;
+                    boolean isValid = true;
                     for(String substream: executorMapping.get(executor)){
-                        double oldArrivalRate = substreamArrivalRate.getOrDefault(substream, 0.0);
-                        double t = oldArrivalRate * decayFactor + calculateSubstreamArrivalRate(substream, timeIndex - windowReq, timeIndex) * (1.0 - decayFactor);
-                        substreamArrivalRate.put(substream, t);
-                        arrivalRate += t;
+                        if(substreamValidity.getOrDefault(substream, false)) {
+                            double oldArrivalRate = substreamArrivalRate.getOrDefault(substream, 0.0);
+                            double t = oldArrivalRate * decayFactor + calculateSubstreamArrivalRate(substream, timeIndex - windowReq, timeIndex) * (1.0 - decayFactor);
+                            substreamArrivalRate.put(substream, t);
+                            arrivalRate += t;
+                        }else{
+                            isValid = false;
+                        }
                     }
-                    executorArrivalRate.put(executor, arrivalRate);
-                    //double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
-                    //utils.put(executor, util);
-                    //double mu = calculateExecutorServiceRate(executor, util, timeIndex);
+                    if(isValid) {
+                        invalidExecutors.remove(executor);
+                        executorArrivalRate.put(executor, arrivalRate);
+
+                        //double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
+                        //utils.put(executor, util);
+                        //double mu = calculateExecutorServiceRate(executor, util, timeIndex);
                     /*if(util > 0.5 && util <= 1){ //Only update true service rate (capacity when utilization > 50%, so the error will be smaller)
                         mu /= util;
                         executorServiceRate.put(executor, mu);
                     }else if(!executorServiceRate.containsKey(executor) || (util < 0.3 && executorServiceRate.get(executor) < arrivalRate * 1.5))executorServiceRate.put(executor, arrivalRate * 1.5); //Only calculate the service rate when no historical service rate*/
 
-                    if(!executorServiceRate.containsKey(executor)){
-                        executorServiceRate.put(executor, initialServiceRate);
-                    }
-                    if(serviceRate.containsKey(executor)) {
-                        double oldServiceRate = executorServiceRate.get(executor);
-                        double newServiceRate = oldServiceRate * decayFactor + serviceRate.get(executor) * (1 - decayFactor);
-                        executorServiceRate.put(executor, newServiceRate);
-                    }
+                        if (!executorServiceRate.containsKey(executor)) {
+                            executorServiceRate.put(executor, initialServiceRate);
+                        }
+                        if (serviceRate.containsKey(executor)) {
+                            double oldServiceRate = executorServiceRate.get(executor);
+                            double newServiceRate = oldServiceRate * decayFactor + serviceRate.get(executor) * (1 - decayFactor);
+                            executorServiceRate.put(executor, newServiceRate);
+                        }
 
-                    double oldInstantaneousDelay = executorInstantaneousDelay.getOrDefault(executor, 0.0);
-                    double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);
-                    executorInstantaneousDelay.put(executor, newInstantaneousDelay);
-                    //double oldBacklogDelay = executorBacklogDelay.getOrDefault(executor, 0.0);
-                    //double newBacklogDelay = oldBacklogDelay * decayFactor + calculateExecutorBacklogDelay(executor, timeIndex) * (1.0 - decayFactor);
-                    double newBacklogDelay = calculateExecutorBacklogDelay(executor, timeIndex);
-                    executorBacklogDelay.put(executor, newBacklogDelay);
+                        double oldInstantaneousDelay = executorInstantaneousDelay.getOrDefault(executor, 0.0);
+                        double newInstantaneousDelay = oldInstantaneousDelay * decayFactor + calculateExecutorInstantaneousDelay(executor, timeIndex) * (1.0 - decayFactor);
+                        executorInstantaneousDelay.put(executor, newInstantaneousDelay);
+                        //double oldBacklogDelay = executorBacklogDelay.getOrDefault(executor, 0.0);
+                        //double newBacklogDelay = oldBacklogDelay * decayFactor + calculateExecutorBacklogDelay(executor, timeIndex) * (1.0 - decayFactor);
+                        double newBacklogDelay = calculateExecutorBacklogDelay(executor, timeIndex);
+                        executorBacklogDelay.put(executor, newBacklogDelay);
+                    }else{
+                        invalidExecutors.add(executor);
+                    }
                 }
                 //Debugging
                 LOG.info("Debugging, avg utilization: " + utils);
@@ -471,16 +484,19 @@ public class LatencyGuarantor extends StreamSwitch {
             }else return false;
         }
 
-        private void updateModel(long timeIndex, Map<String, Double> serviceRate, Map<String, List<String>> executorMapping){
+        private void updateModel(long timeIndex, Map<String, Double> serviceRate, Map<String, Boolean> substreamValid, Map<String, List<String>> executorMapping){
             LOG.info("Updating Model");
-            model.update(timeIndex, serviceRate, executorMapping);
+            model.update(timeIndex, serviceRate, substreamValid, executorMapping);
             //Debug & Statistics
             if(true){
                 HashMap<String, Double> longtermDelay = new HashMap<>();
                 for(String executorId: executorMapping.keySet()){
-                    double delay = model.getLongTermDelay(executorId);
-                    longtermDelay.put(executorId, delay);
+                    if(!model.invalidExecutors.contains(executorId)) {
+                        double delay = model.getLongTermDelay(executorId);
+                        longtermDelay.put(executorId, delay);
+                    }
                 }
+                System.out.println("Model, time " + timeIndex  + " , invalid OEs: " + model.invalidExecutors);
                 System.out.println("Model, time " + timeIndex  + " , Arrival Rate: " + model.executorArrivalRate);
                 System.out.println("Model, time " + timeIndex  + " , Service Rate: " + model.executorServiceRate);
                 System.out.println("Model, time " + timeIndex  + " , Instantaneous Delay: " + model.executorInstantaneousDelay);
@@ -1128,6 +1144,9 @@ public class LatencyGuarantor extends StreamSwitch {
         //Only consider unlocked oes
         HashSet<String> unlockedOEs = new HashSet<String>(executorMapping.keySet());
         unlockedOEs.removeAll(oeUnlockTime.keySet());
+        // Remove invalid OEs.
+        unlockedOEs.removeAll(examiner.model.invalidExecutors);
+
 
         double migrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500); //TODO: use real migration time?
         Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
@@ -1212,7 +1231,7 @@ public class LatencyGuarantor extends StreamSwitch {
         //Memory usage
         //LOG.info("Metrics size arrived size=" + substreamArrived.size() + " processed size=" + substreamProcessed.size() + " valid size=" + substreamValid.size() + " utilization size=" + executorUtilization.size());
         if(examiner.updateState(timeIndex, substreamArrived, substreamProcessed, substreamValid, executorMapping)){
-            examiner.updateModel(timeIndex, executorServiceRate, executorMapping);
+            examiner.updateModel(timeIndex, executorServiceRate, substreamValid, executorMapping);
             return true;
         }
         return false;
@@ -1321,6 +1340,9 @@ public class LatencyGuarantor extends StreamSwitch {
             }
         }
         LOG.info("Locked OEs: " + oeUnlockTime);
+
+        // Check valid OEs:
+        LOG.info("Invalid OEs: " + examiner.model.invalidExecutors);
 
         //Check is started
         if(!isStarted){
