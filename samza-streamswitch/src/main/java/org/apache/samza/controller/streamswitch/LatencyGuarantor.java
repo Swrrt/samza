@@ -519,7 +519,9 @@ public class LatencyGuarantor extends StreamSwitch {
         private Map<String, Double> getLongtermDelay(){
             HashMap<String, Double> delay = new HashMap<>();
             for(String executor: executorMapping.keySet()){
-                delay.put(executor, model.getLongTermDelay(executor));
+                if(!model.invalidExecutors.contains(executor)) {
+                    delay.put(executor, model.getLongTermDelay(executor));
+                }
             }
             return delay;
         }
