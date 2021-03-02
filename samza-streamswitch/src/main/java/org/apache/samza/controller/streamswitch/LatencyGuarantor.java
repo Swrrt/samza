@@ -378,6 +378,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 executorArrivalRate.clear();
                 //executorInstantaneousDelay.clear();
                 executorCompleted.clear();
+                invalidExecutors.clear();
                 Map<String, Double> utils = new HashMap<>();
                 for(String executor: executorMapping.keySet()){
                     double arrivalRate = 0;
@@ -393,7 +394,6 @@ public class LatencyGuarantor extends StreamSwitch {
                         }
                     }
                     if(isValid) {
-                        invalidExecutors.remove(executor);
                         executorArrivalRate.put(executor, arrivalRate);
 
                         //double util = state.getExecutorUtilization(state.executorIdFromStringToInt(executor));
@@ -1171,24 +1171,29 @@ public class LatencyGuarantor extends StreamSwitch {
         //Good
         //if(healthiness == Diagnoser.GOOD){
         if(severeOEs.size() == 0){ //No severe OE
-            LOG.info("Current healthiness is Good");
-            if(isFreshed) {
-                //Try scale in
-                //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
-                Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
-                //if(result.getValue() != null) {
-                //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
-                //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
-                //LOG.info("Scale-in is OK");
-                return result.getKey();
-            }else {
-                LOG.info("Some substreams not freshed, cannot scale-in");
+            if(examiner.model.invalidExecutors.isEmpty()) {
+                LOG.info("Current healthiness is Good");
+                if (isFreshed) {
+                    //Try scale in
+                    //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
+                    Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
+                    //if(result.getValue() != null) {
+                    //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
+                    //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
+                    //LOG.info("Scale-in is OK");
+                    return result.getKey();
+                } else {
+                    LOG.info("Some substreams not freshed, cannot scale-in");
+                    return pres;
+                }
+                //}
+                //}
+                //Do nothing
+                //return pres;
+            }else{
+                LOG.info("Current healthiness is Good. But some substreams are invalid, do nothing");
                 return pres;
             }
-            //}
-            //}
-            //Do nothing
-            //return pres;
         }
         //Severe
         else{
