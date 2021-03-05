@@ -19,6 +19,8 @@
 
 package org.apache.samza.checkpoint.kafka
 
+import java.math.BigInteger
+import java.util
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 
@@ -29,6 +31,7 @@ import org.apache.samza.container.TaskName
 import org.apache.samza.serializers.Serde
 import org.apache.samza.metrics.MetricsRegistry
 import org.apache.samza.serializers.CheckpointSerde
+import org.apache.samza.storage.kv.Entry
 import org.apache.samza.system._
 import org.apache.samza.system.kafka.KafkaStreamSpec
 import org.apache.samza.util.{ExponentialSleepStrategy, Logging}
@@ -71,6 +74,10 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
   var taskNames = Set[TaskName]()
   var taskNamesToCheckpoints: Map[TaskName, Checkpoint] = null
 
+  // For pre-loading checkpoint
+  var loadedOffset: BigInt = BigInt(-1)
+  var nextOffset: String = ""
+
   /**
     * Create checkpoint stream prior to start.
     */
@@ -100,9 +107,17 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     systemProducer.start
 
     // register and start a consumer for the checkpoint topic
-    val oldestOffset = getOldestOffset(checkpointSsp)
-    info(s"Starting checkpoint SystemConsumer from oldest offset $oldestOffset")
-    systemConsumer.register(checkpointSsp, oldestOffset)
+    val offset = if(nextOffset == "") {
+      val oldestOffset = getOldestOffset(checkpointSsp)
+      info(s"Starting checkpoint SystemConsumer from oldest offset $oldestOffset")
+      oldestOffset
+    } else {
+      info(s"Starting checkpoint SystemConsumer after pre-loaded offset $nextOffset")
+      nextOffset
+    }
+    loadedOffset = BigInt(offset) - 1
+
+    systemConsumer.register(checkpointSsp, offset)
     systemConsumer.start
   }
 
@@ -119,7 +134,7 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     * @inheritdoc
     */
   override def readLastCheckpoint(taskName: TaskName): Checkpoint = {
-    if (!taskNames.contains(taskName)) {
+    if (!taskNames.contains(taskName) && taskName.getTaskName != "ForceReading") {
       throw new SamzaException(s"Task: $taskName is not registered with this CheckpointManager")
     }
 
@@ -131,6 +146,11 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     } else {
       debug("Updating existing checkpoint mappings")
       taskNamesToCheckpoints ++= readCheckpoints()
+    }
+
+    if (taskNames.equals("ForceReading")){
+      info("Force reading Checkpoint completed.")
+      return null;
     }
 
     val checkpoint: Checkpoint = taskNamesToCheckpoints.getOrElse(taskName, null)
@@ -186,6 +206,27 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     systemAdmin.clearStream(checkpointSpec)
   }
 
+  override def outputCheckpoints(): util.Map[TaskName, Checkpoint] = {
+    scala.collection.JavaConverters.mapAsJavaMapConverter(taskNamesToCheckpoints).asJava
+  }
+
+  override def addCheckpoints(checkpointMap: util.Map[TaskName, Checkpoint]): Unit = {
+    if(taskNamesToCheckpoints == null) {
+      taskNamesToCheckpoints = Map()
+    }
+    import scala.collection.JavaConverters._
+    taskNamesToCheckpoints ++= checkpointMap.asScala
+  }
+
+  override def getNextCheckpoint: String = {
+    (loadedOffset + 1).toString()
+  }
+
+  override def setNextOffset(offset: String): Unit = {
+    nextOffset = offset
+  }
+
+
   override def stop = {
     systemAdmin.stop()
 
@@ -215,6 +256,7 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
     val iterator = new SystemStreamPartitionIterator(systemConsumer, checkpointSsp)
     var numMessagesRead = 0
 
+    // Trying batch reading to increasing update speed...
     while (iterator.hasNext) {
       val checkpointEnvelope: IncomingMessageEnvelope = iterator.next
       val offset = checkpointEnvelope.getOffset
@@ -267,6 +309,8 @@ class KafkaCheckpointManager(checkpointSpec: KafkaStreamSpec,
         }
       }
     }
+    loadedOffset += numMessagesRead
+
     info(s"Read $numMessagesRead messages from system:$checkpointSystem topic:$checkpointTopic")
     checkpoints.toMap
   }
