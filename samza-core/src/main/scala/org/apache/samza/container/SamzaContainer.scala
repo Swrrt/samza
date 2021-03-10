@@ -795,6 +795,8 @@ class SamzaContainer(
 
     try {
       info("Starting container.")
+      val restoreStartTime = System.currentTimeMillis()
+      println("Starting run loop. " + restoreStartTime)
       metrics.isRunning.set(false);
 
       if (containerListener != null) {
@@ -832,13 +834,15 @@ class SamzaContainer(
 
       addShutdownHook
       info("Entering run loop.")
-      println("Entering run loop. " + System.currentTimeMillis())
       status = SamzaContainerStatus.STARTED
       if (containerListener != null) {
         containerListener.afterStart()
       }
       metrics.containerStartupTime.update(System.nanoTime() - startTime)
       metrics.isRunning.set(true)
+      val runloopStartTime = System.currentTimeMillis()
+      println("Entering run loop. " + runloopStartTime)
+      print("Total restore time: %s, tasks %s\n" format (runloopStartTime - restoreStartTime, taskInstances.size))
       runLoop.run
     } catch {
       case e: Throwable =>
