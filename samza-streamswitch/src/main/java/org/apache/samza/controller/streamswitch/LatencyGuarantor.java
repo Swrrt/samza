@@ -289,6 +289,8 @@ public class LatencyGuarantor extends StreamSwitch {
             Map<String, Long> executorBacklog, executorArrived;
             Map<String, Long> executorCompleted; //For debugging instant delay
             Set<String> invalidExecutors; // For multi-migrations
+            private long maximumMigrationTime; // For self-adaptive migration time.
+            private final boolean selfAdaptiveMigrationTimeFlag;
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
@@ -299,6 +301,8 @@ public class LatencyGuarantor extends StreamSwitch {
                 executorArrived  = new HashMap<>();
                 executorCompleted = new HashMap<>();
                 invalidExecutors = new HashSet<>();
+                maximumMigrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500);
+                selfAdaptiveMigrationTimeFlag = config.getBoolean("streamswitch.system.selfadaptivemigrationtime", false);
                 this.state = state;
             }
 
@@ -372,7 +376,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             //Calculate model snapshot from state
-            private void update(long timeIndex, Map<String, Double> serviceRate, Map<String, Boolean> substreamValidity, Map<String, List<String>> executorMapping){
+            private void update(final long timeIndex, Map<String, Double> serviceRate, Map<String, Boolean> substreamValidity, Map<String, List<String>> executorMapping){
                 LOG.info("Updating model snapshot, clear old data...");
                 //substreamArrivalRate.clear();
                 executorArrivalRate.clear();
@@ -424,6 +428,25 @@ public class LatencyGuarantor extends StreamSwitch {
                         invalidExecutors.add(executor);
                     }
                 }
+
+                // Update self-adaptive maximum migration time
+                if (selfAdaptiveMigrationTimeFlag){
+                    for(String executor: executorMapping.keySet()){
+                        for(String substream: executorMapping.get(executor)){
+                            long tTimeIndex = timeIndex;
+                            int substreamId = state.substreamIdFromStringToInt(substream);
+                            while(tTimeIndex > 0 && state.getSubstreamArrived(substreamId, tTimeIndex) == state.getSubstreamArrived(substreamId, timeIndex)
+                                    && state.getSubstreamCompleted(substreamId, tTimeIndex) == state.getSubstreamCompleted(substreamId, timeIndex)) {
+                                tTimeIndex --;
+                            }
+                            if(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex) > maximumMigrationTime){
+                                maximumMigrationTime = state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex);
+                            }
+                        }
+                    }
+                    LOG.info("Debugging, maximumMigrationTime: " + maximumMigrationTime);
+                }
+
                 //Debugging
                 LOG.info("Debugging, avg utilization: " + utils);
                 LOG.info("Debugging, partition arrival rate: " + substreamArrivalRate);
@@ -709,16 +732,16 @@ public class LatencyGuarantor extends StreamSwitch {
                 return new Pair<>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
             }
 
-            private boolean isCurrentBacklogDelayViolated(long backlog, double serviceRate, double migrationTime){
+            private boolean isCurrentBacklogDelayViolated(long backlog, double serviceRate, long migrationTime){
                 return backlog/(serviceRate * conservativeFactor) + migrationTime > latencyReq;
             }
 
-            private boolean isFutureBacklogDelayViolated(long backlog, double serviceRate, double migrationTime, double arrivalRate){
+            private boolean isFutureBacklogDelayViolated(long backlog, double serviceRate, long migrationTime, double arrivalRate){
                 return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) + migrationTime > latencyReq;
             }
 
             //Scale out OEs that will violate requirement
-            private Set<String> findSevereOEs(Set<String> activatedOEs, double migrationTime){
+            private Set<String> findSevereOEs(Set<String> activatedOEs, long migrationTime){
                 LOG.info("Finding severe oes");
                 Set<String> severeOEs = new HashSet<>();
                 for(String oe: activatedOEs){
@@ -733,7 +756,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 return severeOEs;
             }
             //Try to preserve guarantee, but if not possible, try to minimize violation time
-            private Pair<Prescription, Map<String, Double>> loadBalanceAndScaleOut(Set<String> activatedOEs, Set<String> severeOEs, double migrationTime){
+            private Pair<Prescription, Map<String, Double>> loadBalanceAndScaleOut(Set<String> activatedOEs, Set<String> severeOEs, long migrationTime){
                 LOG.info("Scale out using backlog");
                 //Find all oes that will violate requirement
                 Set<String> tgts = new HashSet<>();
@@ -864,7 +887,7 @@ public class LatencyGuarantor extends StreamSwitch {
               Try to distribute its substreams
               If ok to distribute, then migrate.
             */
-            private Pair<Prescription, Map<String, Double>> scaleInByBacklog(Set<String> oes, double migrationTime){
+            private Pair<Prescription, Map<String, Double>> scaleInByBacklog(Set<String> oes, long migrationTime){
                 LOG.info("Try to scale in");
                 if(oes.size() <= 1){
                     LOG.info("Not enough executor to merge");
@@ -1150,8 +1173,9 @@ public class LatencyGuarantor extends StreamSwitch {
         unlockedOEs.removeAll(examiner.model.invalidExecutors);
 
 
-        double migrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500); //TODO: use real migration time?
-        Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
+        // double migrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500); //TODO: use real migration time?
+
+        Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, examiner.model.maximumMigrationTime);
         //int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
         //Use crossing
         //int healthiness = diagnoser.isBacklogCrossing(examiner.getInstantDelay(), examiner.getBacklogDelay(), unlockedOEs);
@@ -1178,7 +1202,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 if (isFreshed) {
                     //Try scale in
                     //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
-                    Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
+                    Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, examiner.model.maximumMigrationTime);
                     //if(result.getValue() != null) {
                     //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
                     //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
@@ -1204,7 +1228,7 @@ public class LatencyGuarantor extends StreamSwitch {
             //Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
             System.out.println("Number of severe OEs: " + severeOEs.size());
             LOG.info("Try load-balance and scale out");
-            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, migrationTime);
+            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, examiner.model.maximumMigrationTime);
             /*//System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
             //LOG.info("The result of load-balance: " + result.getValue());
