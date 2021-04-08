@@ -292,6 +292,7 @@ public class LatencyGuarantor extends StreamSwitch {
             private long maximumMigrationTime; // For self-adaptive migration time.
             private final boolean selfAdaptiveMigrationTimeFlag;
             private Map<String, Long> substreamLastValidTime;
+            private Map<String, Long> substreamLastDecisionTime; // Use negative integer to indicate before synchronization
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
@@ -305,6 +306,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 maximumMigrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500);
                 selfAdaptiveMigrationTimeFlag = config.getBoolean("streamswitch.system.selfadaptivemigrationtime", false);
                 substreamLastValidTime = new HashMap<>();
+                substreamLastDecisionTime = new HashMap<>();
                 this.state = state;
             }
 
@@ -439,8 +441,17 @@ public class LatencyGuarantor extends StreamSwitch {
                             if(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex) > maximumMigrationTime){
                                 maximumMigrationTime = state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex);
                             }
+                            if(substreamLastDecisionTime.containsKey(substream)){
+                                tTimeIndex = substreamLastDecisionTime.get(substream);
+                                if(tTimeIndex > 0 && state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex) > maximumMigrationTime){
+                                    maximumMigrationTime = state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex);
+                                }
+                            }
                             if(substreamValidity.getOrDefault(substream, false)){
                                 substreamLastValidTime.put(substream, timeIndex);
+                                if(substreamLastDecisionTime.containsKey(substream) && substreamLastDecisionTime.get(substream) > 0){
+                                    substreamLastDecisionTime.remove(substream);
+                                }
                             }
                         }
                     }
@@ -1284,6 +1295,13 @@ public class LatencyGuarantor extends StreamSwitch {
         LOG.info("New mapping: " + newAssignment);
         System.out.println("New mapping at time: " + examiner.state.currentTimeIndex + " mapping: " + newAssignment);
 
+        //For self-adaptive maximum migration time
+        if(examiner.model.selfAdaptiveMigrationTimeFlag){
+            for(String substream: pres.migratingSubstreams.keySet()){
+                examiner.model.substreamLastDecisionTime.put(substream, -examiner.state.currentTimeIndex);
+            }
+        }
+
         //Scale out
         boolean isScaleOut = false;
         for(String tgt: pres.targets){
@@ -1414,6 +1432,17 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.warn("There is no pending migration, please checkout");
             } else {
                 String migrationType = "migration";
+                // For self-adaptive maximum migration time
+                if(examiner.model.selfAdaptiveMigrationTimeFlag){
+                    for(String substream: pendingPres.migratingSubstreams.keySet()){
+                        if(!examiner.model.substreamLastDecisionTime.containsKey(substream)) {
+                            LOG.warn("Cannot find last decision time for substream " + substream + ", please checkout!");
+                        }
+                        long tTimeIndex = examiner.model.substreamLastDecisionTime.getOrDefault(substream, examiner.state.currentTimeIndex);
+                        examiner.model.substreamLastDecisionTime.put(substream, -tTimeIndex);
+                    }
+                }
+
                 //Scale in, remove useless information
                 int totalSubstreams = 0;
                 for(String oe: pendingPres.sources){
