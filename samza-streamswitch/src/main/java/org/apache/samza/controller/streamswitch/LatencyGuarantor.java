@@ -291,6 +291,7 @@ public class LatencyGuarantor extends StreamSwitch {
             Set<String> invalidExecutors; // For multi-migrations
             private long maximumMigrationTime; // For self-adaptive migration time.
             private final boolean selfAdaptiveMigrationTimeFlag;
+            private Map<String, Long> substreamLastValidTime;
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
@@ -303,6 +304,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 invalidExecutors = new HashSet<>();
                 maximumMigrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500);
                 selfAdaptiveMigrationTimeFlag = config.getBoolean("streamswitch.system.selfadaptivemigrationtime", false);
+                substreamLastValidTime = new HashMap<>();
                 this.state = state;
             }
 
@@ -433,14 +435,12 @@ public class LatencyGuarantor extends StreamSwitch {
                 if (selfAdaptiveMigrationTimeFlag){
                     for(String executor: executorMapping.keySet()){
                         for(String substream: executorMapping.get(executor)){
-                            long tTimeIndex = timeIndex;
-                            int substreamId = state.substreamIdFromStringToInt(substream);
-                            while(tTimeIndex > 0 && state.getSubstreamArrived(substreamId, tTimeIndex) == state.getSubstreamArrived(substreamId, timeIndex)
-                                    && state.getSubstreamCompleted(substreamId, tTimeIndex) == state.getSubstreamCompleted(substreamId, timeIndex)) {
-                                tTimeIndex --;
-                            }
+                            long tTimeIndex = substreamLastValidTime.getOrDefault(substream, 0l);
                             if(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex) > maximumMigrationTime){
                                 maximumMigrationTime = state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex);
+                            }
+                            if(substreamValidity.get(substream)){
+                                substreamLastValidTime.put(substream, timeIndex);
                             }
                         }
                     }
