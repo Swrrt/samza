@@ -291,7 +291,7 @@ public class LatencyGuarantor extends StreamSwitch {
             Set<String> invalidExecutors; // For multi-migrations
             private long maximumMigrationTime; // For self-adaptive migration time.
             private final boolean selfAdaptiveMigrationTimeFlag;
-            private Map<String, Long> substreamLastValidTime;
+            private Map<String, Long> substreamLastRunningTime;
             private Map<String, Long> substreamLastDecisionTime; // Use negative integer to indicate before synchronization
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
@@ -305,7 +305,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 invalidExecutors = new HashSet<>();
                 maximumMigrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500);
                 selfAdaptiveMigrationTimeFlag = config.getBoolean("streamswitch.system.selfadaptivemigrationtime", false);
-                substreamLastValidTime = new HashMap<>();
+                substreamLastRunningTime = new HashMap<>();
                 substreamLastDecisionTime = new HashMap<>();
                 this.state = state;
             }
@@ -437,20 +437,28 @@ public class LatencyGuarantor extends StreamSwitch {
                 if (selfAdaptiveMigrationTimeFlag){
                     for(String executor: executorMapping.keySet()){
                         for(String substream: executorMapping.get(executor)){
-                            long tTimeIndex = substreamLastValidTime.getOrDefault(substream, 0l);
+                            long tTimeIndex = substreamLastRunningTime.getOrDefault(substream, 0l);
                             if(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex) > maximumMigrationTime){
                                 maximumMigrationTime = state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex);
                             }
+
                             if(substreamLastDecisionTime.containsKey(substream)){
                                 tTimeIndex = substreamLastDecisionTime.get(substream);
                                 if(tTimeIndex > 0 && state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex) > maximumMigrationTime){
                                     maximumMigrationTime = state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex);
                                 }
                             }
-                            if(substreamValidity.getOrDefault(substream, false)){
-                                substreamLastValidTime.put(substream, timeIndex);
-                                if(substreamLastDecisionTime.containsKey(substream) && substreamLastDecisionTime.get(substream) > 0){
-                                    substreamLastDecisionTime.remove(substream);
+                            // Consider the time between decision to completed instead of only validity.
+                            if(substreamValidity.getOrDefault(substream, false) && timeIndex > 0){
+                                tTimeIndex = substreamLastRunningTime.getOrDefault(substream, 0l);
+                                long oldArrived = state.getSubstreamArrived(state.substreamIdFromStringToInt(substream), tTimeIndex);
+                                long oldCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), tTimeIndex);
+                                long newCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), tTimeIndex);
+                                if(newCompleted > oldCompleted || oldArrived == oldCompleted) {
+                                    substreamLastRunningTime.put(substream, timeIndex);
+                                    if (substreamLastDecisionTime.containsKey(substream) && substreamLastDecisionTime.get(substream) > 0) {
+                                        substreamLastDecisionTime.remove(substream);
+                                    }
                                 }
                             }
                         }
