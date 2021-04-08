@@ -439,7 +439,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             if(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex) > maximumMigrationTime){
                                 maximumMigrationTime = state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex);
                             }
-                            if(substreamValidity.get(substream)){
+                            if(substreamValidity.getOrDefault(substream, false)){
                                 substreamLastValidTime.put(substream, timeIndex);
                             }
                         }
