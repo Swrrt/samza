@@ -752,11 +752,15 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             private boolean isCurrentBacklogDelayViolated(long backlog, double serviceRate, long migrationTime){
-                return backlog/(serviceRate * conservativeFactor) + migrationTime > latencyReq;
+                long threshold = latencyReq - migrationTime;
+                if(threshold < 500l)threshold = 500l;
+                return backlog/(serviceRate * conservativeFactor) > threshold;
             }
 
             private boolean isFutureBacklogDelayViolated(long backlog, double serviceRate, long migrationTime, double arrivalRate){
-                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) + migrationTime > latencyReq;
+                long threshold = latencyReq - migrationTime;
+                if(threshold < 500l)threshold = 500l;
+                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) > threshold;
             }
 
             //Scale out OEs that will violate requirement
@@ -838,7 +842,7 @@ public class LatencyGuarantor extends StreamSwitch {
 
 
                     //Move out substreams until: 1) src is ok or 2) it's the last substream
-                    while ((srcArrival >= service * conservativeFactor || (srcBacklog / service + migrationTime) >= latencyReq) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
+                    while ((srcArrival >= service * conservativeFactor || isCurrentBacklogDelayViolated(srcBacklog, service, migrationTime)) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
                         //Debugging
                         LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog + " substreams=" + sortedSubstream.values());
 
