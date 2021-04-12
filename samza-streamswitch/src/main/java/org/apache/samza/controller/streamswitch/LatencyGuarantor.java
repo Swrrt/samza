@@ -752,15 +752,13 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             private boolean isCurrentBacklogDelayViolated(long backlog, double serviceRate, long migrationTime){
-                long threshold = latencyReq - migrationTime;
-                if(threshold < 1000l)threshold = 1000l;
-                return backlog/(serviceRate * conservativeFactor) > threshold;
+                if(migrationTime > latencyReq - 1000l) migrationTime = latencyReq - 1000l;
+                return backlog/(serviceRate * conservativeFactor) > latencyReq - migrationTime;
             }
 
             private boolean isFutureBacklogDelayViolated(long backlog, double serviceRate, long migrationTime, double arrivalRate){
-                long threshold = latencyReq - migrationTime;
-                if(threshold < 1000l)threshold = 1000l;
-                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) > threshold;
+                if(migrationTime > latencyReq - 1000l) migrationTime = latencyReq - 1000l;
+                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) > latencyReq - migrationTime;
             }
 
             //Scale out OEs that will violate requirement
@@ -935,11 +933,9 @@ public class LatencyGuarantor extends StreamSwitch {
                 //Find minimum backlog delay oe as src
                 String minSrc = null;
                 for(String oe: activeOEs.keySet()){
-                    if(!tgts.contains(oe)){
-                        long backlog = examiner.model.executorBacklog.get(oe);
-                        if(examiner.model.executorInstantaneousDelay.get(oe) < latencyReq && (minSrc == null || backlog < examiner.model.executorBacklog.get(minSrc))){
-                            minSrc = oe;
-                        }
+                    long backlog = examiner.model.executorBacklog.get(oe);
+                    if(examiner.model.executorInstantaneousDelay.get(oe) < latencyReq && (minSrc == null || backlog < examiner.model.executorBacklog.get(minSrc))){
+                        minSrc = oe;
                     }
                 }
                 if(minSrc == null){
