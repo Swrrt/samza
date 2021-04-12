@@ -753,13 +753,13 @@ public class LatencyGuarantor extends StreamSwitch {
 
             private boolean isCurrentBacklogDelayViolated(long backlog, double serviceRate, long migrationTime){
                 long threshold = latencyReq - migrationTime;
-                if(threshold < 500l)threshold = 500l;
+                if(threshold < 1000l)threshold = 1000l;
                 return backlog/(serviceRate * conservativeFactor) > threshold;
             }
 
             private boolean isFutureBacklogDelayViolated(long backlog, double serviceRate, long migrationTime, double arrivalRate){
                 long threshold = latencyReq - migrationTime;
-                if(threshold < 500l)threshold = 500l;
+                if(threshold < 1000l)threshold = 1000l;
                 return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) > threshold;
             }
 
