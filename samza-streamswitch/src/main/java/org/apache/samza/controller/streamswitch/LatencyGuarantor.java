@@ -290,6 +290,8 @@ public class LatencyGuarantor extends StreamSwitch {
             Map<String, Long> executorCompleted; //For debugging instant delay
             Set<String> invalidExecutors; // For multi-migrations
             private long maximumMigrationTime; // For self-adaptive migration time.
+            private long maximumMigrationTimeWindow; // For sliding window of self-adaptive migration time
+            private Deque<Map.Entry<Long, Long>> potentialMaximumMigrationTimes; // For sliding window of self-adaptive migration time
             private final boolean selfAdaptiveMigrationTimeFlag;
             private Map<String, Long> substreamLastRunningTime;
             private Map<String, Long> substreamLastDecisionTime; // Use negative integer to indicate before synchronization
@@ -305,9 +307,21 @@ public class LatencyGuarantor extends StreamSwitch {
                 invalidExecutors = new HashSet<>();
                 maximumMigrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500);
                 selfAdaptiveMigrationTimeFlag = config.getBoolean("streamswitch.system.selfadaptivemigrationtime", false);
+                maximumMigrationTimeWindow = config.getLong("streamswitch.system.maxmigrationtimewindow", 86400); // Unit: second, 1 day
+                potentialMaximumMigrationTimes = new LinkedList<>();
                 substreamLastRunningTime = new HashMap<>();
                 substreamLastDecisionTime = new HashMap<>();
                 this.state = state;
+            }
+            private void updateMaximumMigrationTime(long migrationTime, long timeIndex){
+                while(!potentialMaximumMigrationTimes.isEmpty() && potentialMaximumMigrationTimes.peekFirst().getValue() < timeIndex){
+                    potentialMaximumMigrationTimes.pollFirst();
+                }
+                while(!potentialMaximumMigrationTimes.isEmpty() && potentialMaximumMigrationTimes.peekLast().getKey() <= migrationTime){
+                    potentialMaximumMigrationTimes.pollLast();
+                }
+                potentialMaximumMigrationTimes.addLast(new AbstractMap.SimpleEntry<Long, Long>(migrationTime, timeIndex + maximumMigrationTimeWindow * (1000 / metricsRetreiveInterval)));
+                maximumMigrationTime = potentialMaximumMigrationTimes.getFirst().getKey();
             }
 
             private double calculateLongTermDelay(double arrival, double service){
@@ -438,14 +452,12 @@ public class LatencyGuarantor extends StreamSwitch {
                     for(String executor: executorMapping.keySet()){
                         for(String substream: executorMapping.get(executor)){
                             long tTimeIndex = substreamLastRunningTime.getOrDefault(substream, 0l);
-                            if(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex) > maximumMigrationTime){
-                                maximumMigrationTime = state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex);
-                            }
+                            updateMaximumMigrationTime(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex), timeIndex);
 
                             if(substreamLastDecisionTime.containsKey(substream)){
                                 tTimeIndex = substreamLastDecisionTime.get(substream);
-                                if(tTimeIndex > 0 && state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex) > maximumMigrationTime){
-                                    maximumMigrationTime = state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex);
+                                if(tTimeIndex > 0){
+                                    updateMaximumMigrationTime(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex), timeIndex);
                                 }
                             }
                             // Consider the time between decision to completed instead of only validity.
