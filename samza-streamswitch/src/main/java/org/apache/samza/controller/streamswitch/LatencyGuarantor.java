@@ -764,13 +764,15 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             private boolean isCurrentBacklogDelayViolated(long backlog, double serviceRate, long migrationTime){
-                if(migrationTime > latencyReq - 1000l) migrationTime = latencyReq - 1000l;
                 return backlog/(serviceRate * conservativeFactor) > latencyReq - migrationTime;
             }
 
+            private double calculateFutureBacklogDelay(long backlog, double serviceRate, long migrationTime, double arrivalRate) {
+                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor);
+            }
+
             private boolean isFutureBacklogDelayViolated(long backlog, double serviceRate, long migrationTime, double arrivalRate){
-                if(migrationTime > latencyReq - 1000l) migrationTime = latencyReq - 1000l;
-                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) > latencyReq - migrationTime;
+                return calculateFutureBacklogDelay(backlog, serviceRate, migrationTime, arrivalRate) > latencyReq - migrationTime;
             }
 
             //Scale out OEs that will violate requirement
@@ -859,17 +861,21 @@ public class LatencyGuarantor extends StreamSwitch {
                         String sub = sortedSubstream.firstEntry().getValue().get(0);
                         long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
                         double subArrival = examiner.model.substreamArrivalRate.get(sub);
-                        //Find a suitable OE
+                        //Find a suitable OE, if multiple targets exist, choose the one with minimum futureBacklogDelay
                         String finalTgt = "";
+                        double minFutureBacklogDelay = 0;
                         for(String tgt: potentialTgts.keySet()){
                             long tBacklog = (Long)potentialTgts.get(tgt).get(0);
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
                             if(!isCurrentBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime)
-                                && !isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, (tArrival + subArrival))
-                                && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
-                                finalTgt = tgt;
-                                break;
+                                    && !isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, (tArrival + subArrival))
+                                    && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
+                                double futureBacklogDelay = calculateFutureBacklogDelay(tBacklog + subBacklog, tService, migrationTime, (tArrival + subArrival));
+                                if(finalTgt.equals("") || futureBacklogDelay < minFutureBacklogDelay){
+                                    finalTgt = tgt;
+                                    minFutureBacklogDelay = futureBacklogDelay;
+                                }
                             }
                         }
                         if(!finalTgt.equals("")){ //No need to scale out
@@ -968,6 +974,8 @@ public class LatencyGuarantor extends StreamSwitch {
                     long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
                     double subArrival = examiner.model.substreamArrivalRate.get(sub);
                     String tgtOE = "";
+                    // If there is multiple targets, choose the OE with minimum future backlog latency.
+                    double minFutureBacklogLatency = 0;
                     for(String oe: activeOEs.keySet()){
                         if(!oe.equals(minSrc)){
                             long tBacklog = (Long)activeOEs.get(oe).get(0);
@@ -976,11 +984,11 @@ public class LatencyGuarantor extends StreamSwitch {
                             if(tArrival + subArrival < tService * conservativeFactor
                                     && !isCurrentBacklogDelayViolated (tBacklog + subBacklog, tService,  migrationTime)
                                     && !isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, tArrival + subArrival)){
-                                tgtOE = oe;
-                                dest.put(sub, tgtOE);
-                                activeOEs.get(oe).set(0, tBacklog + subBacklog);
-                                activeOEs.get(oe).set(1, tArrival + subArrival);
-                                break;
+                                double futureBacklogDelay = calculateFutureBacklogDelay(tBacklog + subBacklog, tService, migrationTime, tArrival + subArrival);
+                                if(tgtOE.equals("") || futureBacklogDelay < minFutureBacklogLatency){
+                                    tgtOE = oe;
+                                    minFutureBacklogLatency = futureBacklogDelay;
+                                }
                             }
                         }
                     }
@@ -988,6 +996,10 @@ public class LatencyGuarantor extends StreamSwitch {
                         LOG.info("Cannot find way to scale in anymore");
                         possible = false;
                         break;
+                    }else{
+                        dest.put(sub, tgtOE);
+                        activeOEs.get(tgtOE).set(0, (Long)activeOEs.get(tgtOE).get(0) + subBacklog);
+                        activeOEs.get(tgtOE).set(1, (Double)activeOEs.get(tgtOE).get(1) + subArrival);
                     }
                 }
                 //if(!possible)break;
