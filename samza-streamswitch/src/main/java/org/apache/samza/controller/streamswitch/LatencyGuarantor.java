@@ -555,11 +555,14 @@ public class LatencyGuarantor extends StreamSwitch {
                 System.out.println("Model, time " + timeIndex  + " , Service Rate: " + model.executorServiceRate);
                 System.out.println("Model, time " + timeIndex  + " , Instantaneous Delay: " + model.executorInstantaneousDelay);
                 System.out.println("Model, time " + timeIndex  + " , executors completed: " + model.executorCompleted);
-                System.out.println("Model, time " + timeIndex  + " , Longterm Delay: " + longtermDelay);
+                //System.out.println("Model, time " + timeIndex  + " , Longterm Delay: " + longtermDelay);
                 System.out.println("Model, time " + timeIndex  + " , Partition Arrival Rate: " + model.substreamArrivalRate);
                 System.out.println("Model, time " + timeIndex  + " , Arrived: " + model.executorArrived);
                 System.out.println("Model, time " + timeIndex  + " , Backlog: " + model.executorBacklog);
                 System.out.println("Model, time " + timeIndex  + " , Backlog Delay: " + model.executorBacklogDelay);
+                if(model.selfAdaptiveMigrationTimeFlag){
+                    System.out.println("Model, time " + timeIndex  + " , MaxMigrationTime: " + model.maximumMigrationTime);
+                }
             }
         }
         private Map<String, Double> getInstantDelay(){
