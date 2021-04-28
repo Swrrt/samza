@@ -1443,7 +1443,7 @@ public class LatencyGuarantor extends StreamSwitch {
             LOG.info("Diagnose...");
             //Diagnose
             Prescription pres = diagnose(examiner);
-            if (pres.migratingSubstreams != null) {
+            if (pres.migratingSubstreams != null && pres.migratingSubstreams.size() > 0) {
                 //Treatment
                 treat(pres);
             } else {
