@@ -281,10 +281,11 @@ class RunLoop (
   private def commit {
     activeNs += updateTimerAndGetDuration(metrics.commitNs) ((currentTimeNs: Long) => {
       if (commitMs >= 0 && lastCommitNs + commitMs * metricsMsOffset < currentTimeNs) {
-        info("Committing task instances because the commit interval has elapsed.")
+        info("Committing task instances because the commit interval has elapsed. tasks: " + taskInstances.keySet.toString())
         lastCommitNs = currentTimeNs
         metrics.commits.inc
         taskInstances.values.foreach(_.commit)
+        System.gc()
       } else if (!coordinatorRequests.commitRequests.isEmpty){
         trace("Committing due to explicit commit request.")
         metrics.commits.inc
