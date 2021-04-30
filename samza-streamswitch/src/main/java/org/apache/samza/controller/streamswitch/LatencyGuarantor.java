@@ -561,7 +561,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 System.out.println("Model, time " + timeIndex  + " , Backlog: " + model.executorBacklog);
                 System.out.println("Model, time " + timeIndex  + " , Backlog Delay: " + model.executorBacklogDelay);
                 if(model.selfAdaptiveMigrationTimeFlag){
-                    System.out.println("Model, time " + timeIndex  + " , MaxMigrationTime: " + model.maximumMigrationTime);
+                    System.out.println("Model, time " + timeIndex  + " , MaxMigrationTime: " + model.maximumMigrationTime + " , " + model.potentialMaximumMigrationTimes.peekFirst().getValue());
                 }
             }
         }
