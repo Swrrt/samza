@@ -320,7 +320,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 while(!potentialMaximumMigrationTimes.isEmpty() && potentialMaximumMigrationTimes.peekLast().getKey() <= migrationTime){
                     potentialMaximumMigrationTimes.pollLast();
                 }
-                potentialMaximumMigrationTimes.addLast(new AbstractMap.SimpleEntry<Long, Long>(migrationTime, time + maximumMigrationTimeWindow));
+                potentialMaximumMigrationTimes.addLast(new AbstractMap.SimpleEntry<Long, Long>(migrationTime, time + maximumMigrationTimeWindow * 1000));
                 maximumMigrationTime = potentialMaximumMigrationTimes.getFirst().getKey();
             }
 
