@@ -465,7 +465,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                 tTimeIndex = substreamLastRunningTime.getOrDefault(substream, 0l);
                                 long oldArrived = state.getSubstreamArrived(state.substreamIdFromStringToInt(substream), tTimeIndex);
                                 long oldCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), tTimeIndex);
-                                long newCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), tTimeIndex);
+                                long newCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), timeIndex);
                                 if(newCompleted > oldCompleted || oldArrived == oldCompleted) {
                                     substreamLastRunningTime.put(substream, timeIndex);
                                     if (substreamLastDecisionTime.containsKey(substream) && substreamLastDecisionTime.get(substream) > 0) {
