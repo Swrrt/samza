@@ -313,14 +313,14 @@ public class LatencyGuarantor extends StreamSwitch {
                 substreamLastDecisionTime = new HashMap<>();
                 this.state = state;
             }
-            private void updateMaximumMigrationTime(long migrationTime, long timeIndex){
-                while(!potentialMaximumMigrationTimes.isEmpty() && potentialMaximumMigrationTimes.peekFirst().getValue() < timeIndex){
+            private void updateMaximumMigrationTime(long migrationTime, long time){
+                while(!potentialMaximumMigrationTimes.isEmpty() && potentialMaximumMigrationTimes.peekFirst().getValue() < time){
                     potentialMaximumMigrationTimes.pollFirst();
                 }
                 while(!potentialMaximumMigrationTimes.isEmpty() && potentialMaximumMigrationTimes.peekLast().getKey() <= migrationTime){
                     potentialMaximumMigrationTimes.pollLast();
                 }
-                potentialMaximumMigrationTimes.addLast(new AbstractMap.SimpleEntry<Long, Long>(migrationTime, timeIndex + maximumMigrationTimeWindow * (1000 / metricsRetreiveInterval)));
+                potentialMaximumMigrationTimes.addLast(new AbstractMap.SimpleEntry<Long, Long>(migrationTime, time + maximumMigrationTimeWindow));
                 maximumMigrationTime = potentialMaximumMigrationTimes.getFirst().getKey();
             }
 
@@ -452,12 +452,12 @@ public class LatencyGuarantor extends StreamSwitch {
                     for(String executor: executorMapping.keySet()){
                         for(String substream: executorMapping.get(executor)){
                             long tTimeIndex = substreamLastRunningTime.getOrDefault(substream, 0l);
-                            updateMaximumMigrationTime(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex), timeIndex);
+                            updateMaximumMigrationTime(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex), state.getTimepoint(timeIndex));
 
                             if(substreamLastDecisionTime.containsKey(substream)){
                                 tTimeIndex = substreamLastDecisionTime.get(substream);
                                 if(tTimeIndex > 0){
-                                    updateMaximumMigrationTime(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex), timeIndex);
+                                    updateMaximumMigrationTime(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex), state.getTimepoint(timeIndex));
                                 }
                             }
                             // Consider the time between decision to completed instead of only validity.
@@ -465,7 +465,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                 tTimeIndex = substreamLastRunningTime.getOrDefault(substream, 0l);
                                 long oldArrived = state.getSubstreamArrived(state.substreamIdFromStringToInt(substream), tTimeIndex);
                                 long oldCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), tTimeIndex);
-                                long newCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), tTimeIndex);
+                                long newCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), timeIndex);
                                 if(newCompleted > oldCompleted || oldArrived == oldCompleted) {
                                     substreamLastRunningTime.put(substream, timeIndex);
                                     if (substreamLastDecisionTime.containsKey(substream) && substreamLastDecisionTime.get(substream) > 0) {
