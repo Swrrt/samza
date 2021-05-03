@@ -289,6 +289,12 @@ public class LatencyGuarantor extends StreamSwitch {
             Map<String, Long> executorBacklog, executorArrived;
             Map<String, Long> executorCompleted; //For debugging instant delay
             Set<String> invalidExecutors; // For multi-migrations
+            private long maximumMigrationTime; // For self-adaptive migration time.
+            private long maximumMigrationTimeWindow; // For sliding window of self-adaptive migration time
+            private Deque<Map.Entry<Long, Long>> potentialMaximumMigrationTimes; // For sliding window of self-adaptive migration time
+            private final boolean selfAdaptiveMigrationTimeFlag;
+            private Map<String, Long> substreamLastRunningTime;
+            private Map<String, Long> substreamLastDecisionTime; // Use negative integer to indicate before synchronization
             private Model(State state){
                 substreamArrivalRate = new HashMap<>();
                 executorArrivalRate = new HashMap<>();
@@ -299,7 +305,23 @@ public class LatencyGuarantor extends StreamSwitch {
                 executorArrived  = new HashMap<>();
                 executorCompleted = new HashMap<>();
                 invalidExecutors = new HashSet<>();
+                maximumMigrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500);
+                selfAdaptiveMigrationTimeFlag = config.getBoolean("streamswitch.system.selfadaptivemigrationtime", false);
+                maximumMigrationTimeWindow = config.getLong("streamswitch.system.maxmigrationtimewindow", 86400); // Unit: second, 1 day
+                potentialMaximumMigrationTimes = new LinkedList<>();
+                substreamLastRunningTime = new HashMap<>();
+                substreamLastDecisionTime = new HashMap<>();
                 this.state = state;
+            }
+            private void updateMaximumMigrationTime(long migrationTime, long time){
+                while(!potentialMaximumMigrationTimes.isEmpty() && potentialMaximumMigrationTimes.peekFirst().getValue() < time){
+                    potentialMaximumMigrationTimes.pollFirst();
+                }
+                while(!potentialMaximumMigrationTimes.isEmpty() && potentialMaximumMigrationTimes.peekLast().getKey() <= migrationTime){
+                    potentialMaximumMigrationTimes.pollLast();
+                }
+                potentialMaximumMigrationTimes.addLast(new AbstractMap.SimpleEntry<Long, Long>(migrationTime, time + maximumMigrationTimeWindow * 1000));
+                maximumMigrationTime = potentialMaximumMigrationTimes.getFirst().getKey();
             }
 
             private double calculateLongTermDelay(double arrival, double service){
@@ -372,7 +394,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             //Calculate model snapshot from state
-            private void update(long timeIndex, Map<String, Double> serviceRate, Map<String, Boolean> substreamValidity, Map<String, List<String>> executorMapping){
+            private void update(final long timeIndex, Map<String, Double> serviceRate, Map<String, Boolean> substreamValidity, Map<String, List<String>> executorMapping){
                 LOG.info("Updating model snapshot, clear old data...");
                 //substreamArrivalRate.clear();
                 executorArrivalRate.clear();
@@ -424,6 +446,38 @@ public class LatencyGuarantor extends StreamSwitch {
                         invalidExecutors.add(executor);
                     }
                 }
+
+                // Update self-adaptive maximum migration time
+                if (selfAdaptiveMigrationTimeFlag){
+                    for(String executor: executorMapping.keySet()){
+                        for(String substream: executorMapping.get(executor)){
+                            long tTimeIndex = substreamLastRunningTime.getOrDefault(substream, 0l);
+                            updateMaximumMigrationTime(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex), state.getTimepoint(timeIndex));
+
+                            if(substreamLastDecisionTime.containsKey(substream)){
+                                tTimeIndex = substreamLastDecisionTime.get(substream);
+                                if(tTimeIndex > 0){
+                                    updateMaximumMigrationTime(state.getTimepoint(timeIndex) - state.getTimepoint(tTimeIndex), state.getTimepoint(timeIndex));
+                                }
+                            }
+                            // Consider the time between decision to completed instead of only validity.
+                            if(substreamValidity.getOrDefault(substream, false) && timeIndex > 0){
+                                tTimeIndex = substreamLastRunningTime.getOrDefault(substream, 0l);
+                                long oldArrived = state.getSubstreamArrived(state.substreamIdFromStringToInt(substream), tTimeIndex);
+                                long oldCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), tTimeIndex);
+                                long newCompleted = state.getSubstreamCompleted(state.substreamIdFromStringToInt(substream), timeIndex);
+                                if(newCompleted > oldCompleted || oldArrived == oldCompleted) {
+                                    substreamLastRunningTime.put(substream, timeIndex);
+                                    if (substreamLastDecisionTime.containsKey(substream) && substreamLastDecisionTime.get(substream) > 0) {
+                                        substreamLastDecisionTime.remove(substream);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    LOG.info("Debugging, maximumMigrationTime: " + maximumMigrationTime);
+                }
+
                 //Debugging
                 LOG.info("Debugging, avg utilization: " + utils);
                 LOG.info("Debugging, partition arrival rate: " + substreamArrivalRate);
@@ -501,11 +555,14 @@ public class LatencyGuarantor extends StreamSwitch {
                 System.out.println("Model, time " + timeIndex  + " , Service Rate: " + model.executorServiceRate);
                 System.out.println("Model, time " + timeIndex  + " , Instantaneous Delay: " + model.executorInstantaneousDelay);
                 System.out.println("Model, time " + timeIndex  + " , executors completed: " + model.executorCompleted);
-                System.out.println("Model, time " + timeIndex  + " , Longterm Delay: " + longtermDelay);
+                //System.out.println("Model, time " + timeIndex  + " , Longterm Delay: " + longtermDelay);
                 System.out.println("Model, time " + timeIndex  + " , Partition Arrival Rate: " + model.substreamArrivalRate);
                 System.out.println("Model, time " + timeIndex  + " , Arrived: " + model.executorArrived);
                 System.out.println("Model, time " + timeIndex  + " , Backlog: " + model.executorBacklog);
                 System.out.println("Model, time " + timeIndex  + " , Backlog Delay: " + model.executorBacklogDelay);
+                if(model.selfAdaptiveMigrationTimeFlag){
+                    System.out.println("Model, time " + timeIndex  + " , MaxMigrationTime: " + model.maximumMigrationTime + " , " + model.potentialMaximumMigrationTimes.peekFirst().getValue());
+                }
             }
         }
         private Map<String, Double> getInstantDelay(){
@@ -709,16 +766,20 @@ public class LatencyGuarantor extends StreamSwitch {
                 return new Pair<>(new Prescription(srcExecutors, tgtExecutors, migratingSubstreams), null);
             }
 
-            private boolean isCurrentBacklogDelayViolated(long backlog, double serviceRate, double migrationTime){
-                return backlog/(serviceRate * conservativeFactor) + migrationTime > latencyReq;
+            private boolean isCurrentBacklogDelayViolated(long backlog, double serviceRate, long migrationTime){
+                return backlog/(serviceRate * conservativeFactor) > latencyReq - migrationTime;
             }
 
-            private boolean isFutureBacklogDelayViolated(long backlog, double serviceRate, double migrationTime, double arrivalRate){
-                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) + migrationTime > latencyReq;
+            private double calculateFutureBacklogDelay(long backlog, double serviceRate, long migrationTime, double arrivalRate) {
+                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor);
+            }
+
+            private boolean isFutureBacklogDelayViolated(long backlog, double serviceRate, long migrationTime, double arrivalRate){
+                return calculateFutureBacklogDelay(backlog, serviceRate, migrationTime, arrivalRate) > latencyReq - migrationTime;
             }
 
             //Scale out OEs that will violate requirement
-            private Set<String> findSevereOEs(Set<String> activatedOEs, double migrationTime){
+            private Set<String> findSevereOEs(Set<String> activatedOEs, long migrationTime){
                 LOG.info("Finding severe oes");
                 Set<String> severeOEs = new HashSet<>();
                 for(String oe: activatedOEs){
@@ -733,7 +794,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 return severeOEs;
             }
             //Try to preserve guarantee, but if not possible, try to minimize violation time
-            private Pair<Prescription, Map<String, Double>> loadBalanceAndScaleOut(Set<String> activatedOEs, Set<String> severeOEs, double migrationTime){
+            private Pair<Prescription, Map<String, Double>> loadBalanceAndScaleOut(Set<String> activatedOEs, Set<String> severeOEs, long migrationTime){
                 LOG.info("Scale out using backlog");
                 //Find all oes that will violate requirement
                 Set<String> tgts = new HashSet<>();
@@ -796,24 +857,28 @@ public class LatencyGuarantor extends StreamSwitch {
 
 
                     //Move out substreams until: 1) src is ok or 2) it's the last substream
-                    while ((srcArrival >= service * conservativeFactor || (srcBacklog / service + migrationTime) >= latencyReq) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
+                    while ((srcArrival >= service * conservativeFactor || isCurrentBacklogDelayViolated(srcBacklog, service, migrationTime)) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
                         //Debugging
                         LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog + " substreams=" + sortedSubstream.values());
 
                         String sub = sortedSubstream.firstEntry().getValue().get(0);
                         long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
                         double subArrival = examiner.model.substreamArrivalRate.get(sub);
-                        //Find a suitable OE
+                        //Find a suitable OE, if multiple targets exist, choose the one with minimum futureBacklogDelay
                         String finalTgt = "";
+                        double minFutureBacklogDelay = 0;
                         for(String tgt: potentialTgts.keySet()){
                             long tBacklog = (Long)potentialTgts.get(tgt).get(0);
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
                             if(!isCurrentBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime)
-                                && !isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, (tArrival + subArrival))
-                                && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
-                                finalTgt = tgt;
-                                break;
+                                    && !isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, (tArrival + subArrival))
+                                    && tArrival + subArrival < tService * conservativeFactor){  // Arrival rate condition
+                                double futureBacklogDelay = calculateFutureBacklogDelay(tBacklog + subBacklog, tService, migrationTime, (tArrival + subArrival));
+                                if(finalTgt.equals("") || futureBacklogDelay < minFutureBacklogDelay){
+                                    finalTgt = tgt;
+                                    minFutureBacklogDelay = futureBacklogDelay;
+                                }
                             }
                         }
                         if(!finalTgt.equals("")){ //No need to scale out
@@ -864,7 +929,7 @@ public class LatencyGuarantor extends StreamSwitch {
               Try to distribute its substreams
               If ok to distribute, then migrate.
             */
-            private Pair<Prescription, Map<String, Double>> scaleInByBacklog(Set<String> oes, double migrationTime){
+            private Pair<Prescription, Map<String, Double>> scaleInByBacklog(Set<String> oes, long migrationTime){
                 LOG.info("Try to scale in");
                 if(oes.size() <= 1){
                     LOG.info("Not enough executor to merge");
@@ -889,11 +954,9 @@ public class LatencyGuarantor extends StreamSwitch {
                 //Find minimum backlog delay oe as src
                 String minSrc = null;
                 for(String oe: activeOEs.keySet()){
-                    if(!tgts.contains(oe)){
-                        long backlog = examiner.model.executorBacklog.get(oe);
-                        if(examiner.model.executorInstantaneousDelay.get(oe) < latencyReq && (minSrc == null || backlog < examiner.model.executorBacklog.get(minSrc))){
-                            minSrc = oe;
-                        }
+                    long backlog = examiner.model.executorBacklog.get(oe);
+                    if(examiner.model.executorInstantaneousDelay.get(oe) < latencyReq && (minSrc == null || backlog < examiner.model.executorBacklog.get(minSrc))){
+                        minSrc = oe;
                     }
                 }
                 if(minSrc == null){
@@ -914,6 +977,8 @@ public class LatencyGuarantor extends StreamSwitch {
                     long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
                     double subArrival = examiner.model.substreamArrivalRate.get(sub);
                     String tgtOE = "";
+                    // If there is multiple targets, choose the OE with minimum future backlog latency.
+                    double minFutureBacklogLatency = 0;
                     for(String oe: activeOEs.keySet()){
                         if(!oe.equals(minSrc)){
                             long tBacklog = (Long)activeOEs.get(oe).get(0);
@@ -922,11 +987,11 @@ public class LatencyGuarantor extends StreamSwitch {
                             if(tArrival + subArrival < tService * conservativeFactor
                                     && !isCurrentBacklogDelayViolated (tBacklog + subBacklog, tService,  migrationTime)
                                     && !isFutureBacklogDelayViolated(tBacklog + subBacklog, tService, migrationTime, tArrival + subArrival)){
-                                tgtOE = oe;
-                                dest.put(sub, tgtOE);
-                                activeOEs.get(oe).set(0, tBacklog + subBacklog);
-                                activeOEs.get(oe).set(1, tArrival + subArrival);
-                                break;
+                                double futureBacklogDelay = calculateFutureBacklogDelay(tBacklog + subBacklog, tService, migrationTime, tArrival + subArrival);
+                                if(tgtOE.equals("") || futureBacklogDelay < minFutureBacklogLatency){
+                                    tgtOE = oe;
+                                    minFutureBacklogLatency = futureBacklogDelay;
+                                }
                             }
                         }
                     }
@@ -934,6 +999,10 @@ public class LatencyGuarantor extends StreamSwitch {
                         LOG.info("Cannot find way to scale in anymore");
                         possible = false;
                         break;
+                    }else{
+                        dest.put(sub, tgtOE);
+                        activeOEs.get(tgtOE).set(0, (Long)activeOEs.get(tgtOE).get(0) + subBacklog);
+                        activeOEs.get(tgtOE).set(1, (Double)activeOEs.get(tgtOE).get(1) + subArrival);
                     }
                 }
                 //if(!possible)break;
@@ -1150,8 +1219,9 @@ public class LatencyGuarantor extends StreamSwitch {
         unlockedOEs.removeAll(examiner.model.invalidExecutors);
 
 
-        double migrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500); //TODO: use real migration time?
-        Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
+        // double migrationTime = config.getLong("streamswitch.system.maxmigrationtime", 500); //TODO: use real migration time?
+
+        Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, examiner.model.maximumMigrationTime);
         //int healthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), examiner.getLongtermDelay(), unlockedOEs);
         //Use crossing
         //int healthiness = diagnoser.isBacklogCrossing(examiner.getInstantDelay(), examiner.getBacklogDelay(), unlockedOEs);
@@ -1178,7 +1248,7 @@ public class LatencyGuarantor extends StreamSwitch {
                 if (isFreshed) {
                     //Try scale in
                     //Pair<Prescription, Map<String, Double>> result = diagnoser.scaleIn(unlockedOEs);
-                    Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, migrationTime);
+                    Pair<Prescription, Map<String, Double>> result = diagnoser.scaleInByBacklog(unlockedOEs, examiner.model.maximumMigrationTime);
                     //if(result.getValue() != null) {
                     //int thealthiness = diagnoser.getHealthiness(examiner.getInstantDelay(), result.getValue(), unlockedOEs);
                     //if (thealthiness == Diagnoser.GOOD) {  //Scale in OK
@@ -1204,7 +1274,7 @@ public class LatencyGuarantor extends StreamSwitch {
             //Set<String> severeOEs = diagnoser.findSevereOEs(unlockedOEs, migrationTime);
             System.out.println("Number of severe OEs: " + severeOEs.size());
             LOG.info("Try load-balance and scale out");
-            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, migrationTime);
+            Pair<Prescription, Map<String, Double>> result = diagnoser.loadBalanceAndScaleOut(unlockedOEs, severeOEs, examiner.model.maximumMigrationTime);
             /*//System.out.println("Number of severe OEs: " + diagnoser.countSevereExecutors(examiner.getInstantDelay(),examiner.getLongtermDelay(), unlockedOEs));
             Pair<Prescription, Map<String, Double>> result = diagnoser.balanceLoad(unlockedOEs);
             //LOG.info("The result of load-balance: " + result.getValue());
@@ -1259,6 +1329,13 @@ public class LatencyGuarantor extends StreamSwitch {
         LOG.info("Prescription : srcs: " + pres.sources + " , tgts: " + pres.targets + " , migrating: " + pres.migratingSubstreams);
         LOG.info("New mapping: " + newAssignment);
         System.out.println("New mapping at time: " + examiner.state.currentTimeIndex + " mapping: " + newAssignment);
+
+        //For self-adaptive maximum migration time
+        if(examiner.model.selfAdaptiveMigrationTimeFlag){
+            for(String substream: pres.migratingSubstreams.keySet()){
+                examiner.model.substreamLastDecisionTime.put(substream, -examiner.state.currentTimeIndex);
+            }
+        }
 
         //Scale out
         boolean isScaleOut = false;
@@ -1366,7 +1443,7 @@ public class LatencyGuarantor extends StreamSwitch {
             LOG.info("Diagnose...");
             //Diagnose
             Prescription pres = diagnose(examiner);
-            if (pres.migratingSubstreams != null) {
+            if (pres.migratingSubstreams != null && pres.migratingSubstreams.size() > 0) {
                 //Treatment
                 treat(pres);
             } else {
@@ -1390,6 +1467,17 @@ public class LatencyGuarantor extends StreamSwitch {
                 LOG.warn("There is no pending migration, please checkout");
             } else {
                 String migrationType = "migration";
+                // For self-adaptive maximum migration time
+                if(examiner.model.selfAdaptiveMigrationTimeFlag){
+                    for(String substream: pendingPres.migratingSubstreams.keySet()){
+                        if(!examiner.model.substreamLastDecisionTime.containsKey(substream)) {
+                            LOG.warn("Cannot find last decision time for substream " + substream + ", please checkout!");
+                        }
+                        long tTimeIndex = examiner.model.substreamLastDecisionTime.getOrDefault(substream, examiner.state.currentTimeIndex);
+                        examiner.model.substreamLastDecisionTime.put(substream, -tTimeIndex);
+                    }
+                }
+
                 //Scale in, remove useless information
                 int totalSubstreams = 0;
                 for(String oe: pendingPres.sources){
