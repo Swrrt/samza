@@ -1393,7 +1393,10 @@ class SamzaContainer(
   def commitOffset() = {
     if (isAutoCommitEnabled) {
       info("Committing offsets for task instances")
+      // Pause runloop to avoid concurrent modification.
+      pauseRunloop()
       taskInstances.values.foreach(_.commit)
+      resumeRunloop()
     }
   }
 
