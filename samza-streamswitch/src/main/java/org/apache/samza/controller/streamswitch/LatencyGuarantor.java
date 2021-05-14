@@ -811,7 +811,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         long backlog = examiner.model.executorBacklog.get(oe);
                         double serviceRate = examiner.model.executorServiceRate.get(oe);
                         double arrivalRate = examiner.model.executorArrivalRate.get(oe);
-                        if(!isExecutorSafe(backlog, serviceRate, arrivalRate, migrationTime)){
+                        if(isExecutorSafe(backlog, serviceRate, arrivalRate, migrationTime)){
                             List<Object> tlist = new ArrayList<>();
                             tlist.add(examiner.model.executorBacklog.get(oe));
                             tlist.add(examiner.model.executorArrivalRate.get(oe));
