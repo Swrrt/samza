@@ -804,6 +804,9 @@ public class LatencyGuarantor extends StreamSwitch {
                     return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                 }
 
+                // For reaching maximum OE number, allow moderate OEs as targets flag.
+                boolean maximumReached = false;
+
                 //Find potential targets
                 Map<String, List<Object>> potentialTgts = new HashMap<>();
                 for(String oe: activatedOEs){
@@ -855,9 +858,11 @@ public class LatencyGuarantor extends StreamSwitch {
                     LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog);
 
                     //Move out substreams until: 1) src is not severe nor caution or 2) it's the last substream
-                    while ((isExecutorCaution(srcBacklog, service, srcArrival, migrationTime) || isExecutorSevere(srcBacklog, migrationTime)) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
+                    while ((isExecutorCaution(srcBacklog, service, srcArrival, migrationTime) || isExecutorSevere(srcBacklog, service)) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
                         //Debugging
                         LOG.info("srcArrival=" + srcArrival + " srcBacklog=" + srcBacklog + " substreams=" + sortedSubstream.values());
+
+                        boolean isMigrated = false;
 
                         String sub = sortedSubstream.firstEntry().getValue().get(0);
                         long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
@@ -870,7 +875,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             long tBacklog = (Long)potentialTgts.get(tgt).get(0);
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
-                            if(isExecutorSafe(tBacklog + subBacklog, tService, tArrival + subArrival, migrationTime)){
+                            if(isExecutorSafe(tBacklog + subBacklog, tService, tArrival + subArrival, migrationTime) || (maximumReached && !isExecutorSevere(tBacklog + subBacklog, tService) && !isExecutorCaution(tBacklog, tService, tArrival + subArrival, migrationTime))){
                                 double tBacklogDelay = (tBacklog + subBacklog)/tService;
                                 if(finalTgt.equals("") || tBacklogDelay < minBacklogDelay){
                                     finalTgt = tgt;
@@ -887,6 +892,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             potentialTgts.get(finalTgt).set(1, tArrival + subArrival);
                             if(!tgts.contains(finalTgt))tgts.add(finalTgt);
                             migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, finalTgt));
+                            isMigrated = true;
                         }else{ //Need to scale out
                             //OK to Scale out
                             if(numberOfOE < maxNumberOfExecutors) {
@@ -904,16 +910,31 @@ public class LatencyGuarantor extends StreamSwitch {
                                 tgts.add(tgtExecutor);
                                 migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
                                 numberOfOE ++;
-                            }else{ //Reach OE number limitation
+                                isMigrated = true;
+                            }else if(!maximumReached) { //Reach OE number limitation
+                                LOG.info("Cannot scale out, try allow moderate as target.");
+                                maximumReached = true;
+                                for (String toe : activatedOEs) {
+                                    if (!severeOEs.contains(toe) && !cautionOEs.contains(toe) && !potentialTgts.containsKey(toe)) {
+                                        List<Object> tlist = new ArrayList<>();
+                                        tlist.add(examiner.model.executorBacklog.get(toe));
+                                        tlist.add(examiner.model.executorArrivalRate.get(toe));
+                                        tlist.add(examiner.model.executorServiceRate.get(toe));
+                                        potentialTgts.put(oe, tlist);
+                                    }
+                                }
+                            }else{
                                 LOG.info("Cannot scale out more OEs");
                                 return new Pair<>(new Prescription(new ArrayList<String>(severeOEs), new ArrayList<String>(tgts), migratingSubstreams), null);
                             }
                         }
-                        srcArrival -= subArrival;
-                        srcBacklog -= subBacklog;
-                        sortedSubstream.firstEntry().getValue().remove(0);
-                        if(sortedSubstream.firstEntry().getValue().size() == 0){
-                            sortedSubstream.pollFirstEntry();
+                        if(isMigrated) {
+                            srcArrival -= subArrival;
+                            srcBacklog -= subBacklog;
+                            sortedSubstream.firstEntry().getValue().remove(0);
+                            if (sortedSubstream.firstEntry().getValue().size() == 0) {
+                                sortedSubstream.pollFirstEntry();
+                            }
                         }
                     }
 
