@@ -509,7 +509,10 @@ public class StockMetricsRetriever implements StreamSwitchMetricsRetriever {
         HashMap<String, Double> processCpuUsage = new HashMap<>(), systemCpuUsage = new HashMap<>();
         for(Map.Entry<String, String> entry: containerRMI.entrySet()){
             String containerId = entry.getKey();
+            //Debugging
+            LOG.info("Retrieving from:" + containerId);
             Map<String, Object> ret = jmxClient.retrieveMetrics(containerId, topics, entry.getValue());
+            LOG.info("Retrieved:" + containerId);
 
             if(ret.containsKey("PartitionCheckpoint")){
                 HashMap<String, HashMap<String, String>> checkpoint = (HashMap<String, HashMap<String, String>>)ret.get("PartitionCheckpoint");
