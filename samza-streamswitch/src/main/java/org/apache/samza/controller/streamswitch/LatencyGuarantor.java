@@ -911,7 +911,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                 migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(oe, tgtExecutor));
                                 numberOfOE ++;
                                 isMigrated = true;
-                            }else if(!maximumReached) { //Reach OE number limitation
+                            /*}else if(!maximumReached) { //Reach OE number limitation
                                 LOG.info("Cannot scale out, try allow moderate as target.");
                                 maximumReached = true;
                                 for (String toe : activatedOEs) {
@@ -922,7 +922,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                         tlist.add(examiner.model.executorServiceRate.get(toe));
                                         potentialTgts.put(oe, tlist);
                                     }
-                                }
+                                }*/
                             }else{
                                 LOG.info("Cannot scale out more OEs");
                                 return new Pair<>(new Prescription(new ArrayList<String>(severeOEs), new ArrayList<String>(tgts), migratingSubstreams), null);
