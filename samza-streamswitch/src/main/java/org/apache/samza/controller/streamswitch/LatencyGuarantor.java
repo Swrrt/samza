@@ -845,8 +845,8 @@ public class LatencyGuarantor extends StreamSwitch {
                         numberOfOE ++;
                         */
                         List<Object> tlist = new ArrayList<>();
-                        tlist.add(0);
-                        tlist.add(0);
+                        tlist.add(0L);
+                        tlist.add(0.0);
                         tlist.add(minServiceRate);
                         potentialTgts.put(tgtExecutor, tlist);
                     }
