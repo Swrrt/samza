@@ -893,7 +893,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             nextExecutorID.set(newExecutorId + scaleOutNumber);
                         }
                         return new Pair<>(new Prescription(new ArrayList<String>(sources), new ArrayList<String>(tgts), migratingSubstreams), null);
-                    }else if(scaleOutNumber + executorMapping.size() <= maxNumberOfExecutors){
+                    }else if(scaleOutNumber + executorMapping.size() == maxNumberOfExecutors){
                         LOG.info("Cannot find valid strategy, try to load-balance under maximum parallelism.");
                         long newExecutorId = nextExecutorID.get();
                         if (newExecutorId + scaleOutNumber > nextExecutorID.get()) {
