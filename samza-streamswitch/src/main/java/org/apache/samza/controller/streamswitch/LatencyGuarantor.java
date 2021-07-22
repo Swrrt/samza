@@ -817,7 +817,7 @@ public class LatencyGuarantor extends StreamSwitch {
                     Map<String, Map.Entry<String, String>> migratingSubstreams = new TreeMap<>();
                     //Find potential targets
                     Map<String, List<Object>> potentialTgts = new HashMap<>();
-                    double minServiceRate = Double.MAX_VALUE;
+                    double minServiceRate = examiner.model.executorServiceRate.get(sources.get(0));
                     for(String oe: activatedOEs){
                         if(!severeOEs.contains(oe)) {
                             long backlog = examiner.model.executorBacklog.get(oe);
@@ -850,12 +850,13 @@ public class LatencyGuarantor extends StreamSwitch {
                         tlist.add(minServiceRate);
                         potentialTgts.put(tgtExecutor, tlist);
                     }
+                    LOG.info("Potential Tgts: " + potentialTgts.keySet());
 
                     boolean allSubstreamsAreMigrated = true;
                     for(String sub: substreamsToMigrate.keySet()){
+                        LOG.info("Try find target for substream " + sub);
                         long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
                         double subArrival = examiner.model.substreamArrivalRate.get(sub);
-
                         //Find a suitable OE, if multiple targets exist, choose the one with minimum backlogDelay
                         String finalTgt = "";
                         double minBacklogDelay = 0;
@@ -864,7 +865,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
                             // Debug
-                            LOG.info("Tgt " + tgt + " b, a, s " + (tBacklog + subBacklog) + ", " + (tArrival + subArrival) + ", " + tService);
+                            //LOG.info("Tgt " + tgt + " b, a, s " + (tBacklog + subBacklog) + ", " + (tArrival + subArrival) + ", " + tService);
                             if(isExecutorSafe(tBacklog + subBacklog, tService, tArrival + subArrival, migrationTime)){
                                 double tBacklogDelay = (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime)/tService;
                                 if(finalTgt.equals("") || tBacklogDelay < minBacklogDelay){
