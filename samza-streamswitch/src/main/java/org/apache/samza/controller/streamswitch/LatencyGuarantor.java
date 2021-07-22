@@ -835,7 +835,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             }
                         }
                     }
-
+                    LOG.info("Scale out OEs with " + minServiceRate);
                     for(int i = 0; i < scaleOutNumber; i++){
                         long newExecutorId = nextExecutorID.get() + i;
                         String tgtExecutor = String.format("%06d", newExecutorId);
@@ -863,6 +863,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             long tBacklog = (Long)potentialTgts.get(tgt).get(0);
                             double tArrival = (Double)potentialTgts.get(tgt).get(1);
                             double tService = (Double)potentialTgts.get(tgt).get(2);
+                            // Debug
+                            LOG.info("Tgt " + tgt + " b, a, s " + (tBacklog + subBacklog) + ", " + (tArrival + subArrival) + ", " + tService);
                             if(isExecutorSafe(tBacklog + subBacklog, tService, tArrival + subArrival, migrationTime)){
                                 double tBacklogDelay = (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime)/tService;
                                 if(finalTgt.equals("") || tBacklogDelay < minBacklogDelay){
@@ -882,7 +884,6 @@ public class LatencyGuarantor extends StreamSwitch {
                             migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(substreamsToMigrate.get(sub), finalTgt));
                         }else{
                             allSubstreamsAreMigrated = false;
-                            break;
                         }
                     }
                     if(allSubstreamsAreMigrated){
@@ -899,6 +900,8 @@ public class LatencyGuarantor extends StreamSwitch {
                             nextExecutorID.set(newExecutorId + scaleOutNumber);
                         }
                         return new Pair<>(new Prescription(new ArrayList<String>(sources), new ArrayList<String>(tgts), migratingSubstreams), null);
+                    }else{
+                        LOG.info("Cannot find valid strategy, try more oes.");
                     }
                 }
                 LOG.info("Cannot find valid strategy under maximum parallelism, do nothing.");
