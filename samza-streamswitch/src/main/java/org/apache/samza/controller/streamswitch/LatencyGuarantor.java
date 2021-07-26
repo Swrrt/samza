@@ -801,13 +801,17 @@ public class LatencyGuarantor extends StreamSwitch {
                             sortedSubstream.get(sbacklog).add(sub);
                         }
                     }
-                    while (isExecutorSevere(backlog, serviceRate, arrivalRate, migrationTime) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
+                    while (!isExecutorSafe(backlog, serviceRate, arrivalRate, migrationTime) && sortedSubstream.size() > 0 && (sortedSubstream.size() > 1 || sortedSubstream.firstEntry().getValue().size() > 1)) {
                         String sub = sortedSubstream.firstEntry().getValue().get(0);
                         long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
                         double subArrival = examiner.model.substreamArrivalRate.get(sub);
                         substreamsToMigrate.put(sub, oe);
                         arrivalRate -= subArrival;
                         backlog -= subBacklog;
+                        sortedSubstream.firstEntry().getValue().remove(0);
+                        if (sortedSubstream.firstEntry().getValue().size() == 0) {
+                            sortedSubstream.pollFirstEntry();
+                        }
                     }
                 }
 
