@@ -938,34 +938,39 @@ public class LatencyGuarantor extends StreamSwitch {
                             potentialTgts.put(tgtExecutor, tlist);
                         }
                         LOG.info("Potential Tgts: " + potentialTgts.keySet());
-                        for(String sub: substreamsToMigrate.keySet()){
-                            long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
-                            double subArrival = examiner.model.substreamArrivalRate.get(sub);
-                            String finalTgt = "";
-                            double minBacklogDelay = 0;
-                            for (String tgt : potentialTgts.keySet()) {
-                                long tBacklog = (Long) potentialTgts.get(tgt).get(0);
-                                double tArrival = (Double) potentialTgts.get(tgt).get(1);
-                                double tService = (Double) potentialTgts.get(tgt).get(2);
-                                double tBacklogDelay = (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService;
-                                if (finalTgt.equals("") || tBacklogDelay < minBacklogDelay) {
-                                    finalTgt = tgt;
-                                    minBacklogDelay = tBacklogDelay;
+                        if(potentialTgts.size() > 0) {
+                            for (String sub : substreamsToMigrate.keySet()) {
+                                long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
+                                double subArrival = examiner.model.substreamArrivalRate.get(sub);
+                                String finalTgt = "";
+                                double minBacklogDelay = 0;
+                                for (String tgt : potentialTgts.keySet()) {
+                                    long tBacklog = (Long) potentialTgts.get(tgt).get(0);
+                                    double tArrival = (Double) potentialTgts.get(tgt).get(1);
+                                    double tService = (Double) potentialTgts.get(tgt).get(2);
+                                    double tBacklogDelay = (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService;
+                                    if (finalTgt.equals("") || tBacklogDelay < minBacklogDelay) {
+                                        finalTgt = tgt;
+                                        minBacklogDelay = tBacklogDelay;
+                                    }
                                 }
+                                LOG.info("Migrate " + sub + " to " + finalTgt);
+                                long tBacklog = (Long) potentialTgts.get(finalTgt).get(0);
+                                double tArrival = (Double) potentialTgts.get(finalTgt).get(1);
+                                potentialTgts.get(finalTgt).set(0, tBacklog + subBacklog);
+                                potentialTgts.get(finalTgt).set(1, tArrival + subArrival);
+                                if (!tgts.contains(finalTgt)) tgts.add(finalTgt);
+                                migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(substreamsToMigrate.get(sub), finalTgt));
                             }
-                            LOG.info("Migrate " + sub + " to " + finalTgt);
-                            long tBacklog = (Long) potentialTgts.get(finalTgt).get(0);
-                            double tArrival = (Double) potentialTgts.get(finalTgt).get(1);
-                            potentialTgts.get(finalTgt).set(0, tBacklog + subBacklog);
-                            potentialTgts.get(finalTgt).set(1, tArrival + subArrival);
-                            if (!tgts.contains(finalTgt)) tgts.add(finalTgt);
-                            migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(substreamsToMigrate.get(sub), finalTgt));
+                            long newExecutorId = nextExecutorID.get();
+                            if (newExecutorId + scaleOutNumber > nextExecutorID.get()) {
+                                nextExecutorID.set(newExecutorId + scaleOutNumber);
+                            }
+                            return new Pair<>(new Prescription(new ArrayList<String>(sources), new ArrayList<String>(tgts), migratingSubstreams), null);
+                        }else{
+                            LOG.info("Cannot find valid strategy under maximum parallelism, do nothing.");
+                            return new Pair<Prescription, Map<String, Double>>(new Prescription(), null);
                         }
-                        long newExecutorId = nextExecutorID.get();
-                        if (newExecutorId + scaleOutNumber > nextExecutorID.get()) {
-                            nextExecutorID.set(newExecutorId + scaleOutNumber);
-                        }
-                        return new Pair<>(new Prescription(new ArrayList<String>(sources), new ArrayList<String>(tgts), migratingSubstreams), null);
                     }else{
                         LOG.info("Cannot find valid strategy, try more oes.");
                     }
