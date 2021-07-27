@@ -734,7 +734,7 @@ public class LatencyGuarantor extends StreamSwitch {
             }
 
             private boolean isExecutorSafe(long backlog, double serviceRate, double arrivalRate, long migrationTime){
-                return backlog/(serviceRate * conservativeFactor) + migrationTime < latencyReq && arrivalRate < serviceRate * conservativeFactor;
+                return (backlog + arrivalRate * migrationTime) / (serviceRate * conservativeFactor) < latencyReq && arrivalRate < serviceRate * conservativeFactor;
             }
 
             //Find severe OEs: (b + lambda * Tm)/ mu > L && arrivalRate > serviceRate
@@ -858,37 +858,40 @@ public class LatencyGuarantor extends StreamSwitch {
 
                     boolean allSubstreamsAreMigrated = true;
                     for(String sub: substreamsToMigrate.keySet()){
-                        LOG.info("Try find target for substream " + sub);
-                        long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
-                        double subArrival = examiner.model.substreamArrivalRate.get(sub);
-                        //Find a suitable OE, if multiple targets exist, choose the one with minimum backlogDelay
-                        String finalTgt = "";
-                        double minBacklogDelay = 0;
-                        for(String tgt: potentialTgts.keySet()){
-                            long tBacklog = (Long)potentialTgts.get(tgt).get(0);
-                            double tArrival = (Double)potentialTgts.get(tgt).get(1);
-                            double tService = (Double)potentialTgts.get(tgt).get(2);
-                            // Debug
-                            //LOG.info("Tgt " + tgt + " b, a, s " + (tBacklog + subBacklog) + ", " + (tArrival + subArrival) + ", " + tService);
-                            if(isExecutorSafe(tBacklog + subBacklog, tService, tArrival + subArrival, migrationTime)){
-                                double tBacklogDelay = (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime)/tService;
-                                if(finalTgt.equals("") || tBacklogDelay < minBacklogDelay){
-                                    finalTgt = tgt;
-                                    minBacklogDelay = tBacklogDelay;
+                        if(allSubstreamsAreMigrated) {
+                            LOG.info("Try find target for substream " + sub);
+                            long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
+                            double subArrival = examiner.model.substreamArrivalRate.get(sub);
+                            //Find a suitable OE, if multiple targets exist, choose the one with minimum backlogDelay
+                            String finalTgt = "";
+                            double minBacklogDelay = 0;
+                            for (String tgt : potentialTgts.keySet()) {
+                                long tBacklog = (Long) potentialTgts.get(tgt).get(0);
+                                double tArrival = (Double) potentialTgts.get(tgt).get(1);
+                                double tService = (Double) potentialTgts.get(tgt).get(2);
+                                // Debug
+                                //LOG.info("Tgt " + tgt + " b, a, s " + (tBacklog + subBacklog) + ", " + (tArrival + subArrival) + ", " + tService);
+                                if (isExecutorSafe(tBacklog + subBacklog, tService, tArrival + subArrival, migrationTime)) {
+                                    double tBacklogDelay = (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService;
+                                    if (finalTgt.equals("") || tBacklogDelay < minBacklogDelay) {
+                                        finalTgt = tgt;
+                                        minBacklogDelay = tBacklogDelay;
+                                    }
                                 }
                             }
-                        }
-                        if(!finalTgt.equals("")){ // Find target.
-                            //Debugging
-                            LOG.info("Migrate " + sub + " to " + finalTgt);
-                            long tBacklog = (Long)potentialTgts.get(finalTgt).get(0);
-                            double tArrival = (Double)potentialTgts.get(finalTgt).get(1);
-                            potentialTgts.get(finalTgt).set(0, tBacklog + subBacklog);
-                            potentialTgts.get(finalTgt).set(1, tArrival + subArrival);
-                            if(!tgts.contains(finalTgt))tgts.add(finalTgt);
-                            migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(substreamsToMigrate.get(sub), finalTgt));
-                        }else{
-                            allSubstreamsAreMigrated = false;
+                            if (!finalTgt.equals("")) { // Find target.
+                                //Debugging
+                                LOG.info("Migrate " + sub + " to " + finalTgt);
+                                long tBacklog = (Long) potentialTgts.get(finalTgt).get(0);
+                                double tArrival = (Double) potentialTgts.get(finalTgt).get(1);
+                                potentialTgts.get(finalTgt).set(0, tBacklog + subBacklog);
+                                potentialTgts.get(finalTgt).set(1, tArrival + subArrival);
+                                if (!tgts.contains(finalTgt)) tgts.add(finalTgt);
+                                migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(substreamsToMigrate.get(sub), finalTgt));
+                            } else {
+                                LOG.info("Cannot find target oe for " + sub);
+                                allSubstreamsAreMigrated = false;
+                            }
                         }
                     }
                     if(allSubstreamsAreMigrated){
@@ -900,6 +903,64 @@ public class LatencyGuarantor extends StreamSwitch {
                         return new Pair<>(new Prescription(new ArrayList<String>(sources), new ArrayList<String>(tgts), migratingSubstreams), null);
                     }else if(scaleOutNumber + executorMapping.size() == maxNumberOfExecutors){
                         LOG.info("Cannot find valid strategy, try to load-balance under maximum parallelism.");
+                        tgts.clear();
+                        migratingSubstreams.clear();
+                        potentialTgts.clear();
+                        minServiceRate = examiner.model.executorServiceRate.get(sources.get(0));
+                        for(String oe: activatedOEs){
+                            if(!severeOEs.contains(oe)) {
+                                long backlog = examiner.model.executorBacklog.get(oe);
+                                double arrivalRate = examiner.model.executorArrivalRate.get(oe);
+                                double serviceRate = examiner.model.executorServiceRate.get(oe);
+                                if(isExecutorSafe(backlog, serviceRate, arrivalRate, migrationTime)) {
+                                    List<Object> tlist = new ArrayList<>();
+                                    tlist.add(backlog);
+                                    tlist.add(arrivalRate);
+                                    tlist.add(serviceRate);
+                                    potentialTgts.put(oe, tlist);
+                                    if (serviceRate < minServiceRate) {
+                                        minServiceRate = serviceRate;
+                                    }
+                                }
+                            }
+                        }
+                        if(scaleOutNumber > substreamsToMigrate.size()){
+                            scaleOutNumber = substreamsToMigrate.size();
+                        }
+                        LOG.info("Scale out OEs with " + minServiceRate);
+                        for(int i = 0; i < scaleOutNumber; i++){
+                            long newExecutorId = nextExecutorID.get() + i;
+                            String tgtExecutor = String.format("%06d", newExecutorId);
+                            List<Object> tlist = new ArrayList<>();
+                            tlist.add(0L);
+                            tlist.add(0.0);
+                            tlist.add(minServiceRate);
+                            potentialTgts.put(tgtExecutor, tlist);
+                        }
+                        LOG.info("Potential Tgts: " + potentialTgts.keySet());
+                        for(String sub: substreamsToMigrate.keySet()){
+                            long subBacklog = examiner.state.getSubstreamArrived(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex) - examiner.state.getSubstreamCompleted(examiner.state.substreamIdFromStringToInt(sub), examiner.state.currentTimeIndex);
+                            double subArrival = examiner.model.substreamArrivalRate.get(sub);
+                            String finalTgt = "";
+                            double minBacklogDelay = 0;
+                            for (String tgt : potentialTgts.keySet()) {
+                                long tBacklog = (Long) potentialTgts.get(tgt).get(0);
+                                double tArrival = (Double) potentialTgts.get(tgt).get(1);
+                                double tService = (Double) potentialTgts.get(tgt).get(2);
+                                double tBacklogDelay = (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService;
+                                if (finalTgt.equals("") || tBacklogDelay < minBacklogDelay) {
+                                    finalTgt = tgt;
+                                    minBacklogDelay = tBacklogDelay;
+                                }
+                            }
+                            LOG.info("Migrate " + sub + " to " + finalTgt);
+                            long tBacklog = (Long) potentialTgts.get(finalTgt).get(0);
+                            double tArrival = (Double) potentialTgts.get(finalTgt).get(1);
+                            potentialTgts.get(finalTgt).set(0, tBacklog + subBacklog);
+                            potentialTgts.get(finalTgt).set(1, tArrival + subArrival);
+                            if (!tgts.contains(finalTgt)) tgts.add(finalTgt);
+                            migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(substreamsToMigrate.get(sub), finalTgt));
+                        }
                         long newExecutorId = nextExecutorID.get();
                         if (newExecutorId + scaleOutNumber > nextExecutorID.get()) {
                             nextExecutorID.set(newExecutorId + scaleOutNumber);
