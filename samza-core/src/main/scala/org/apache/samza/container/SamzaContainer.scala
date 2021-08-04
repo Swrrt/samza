@@ -681,6 +681,14 @@ object SamzaContainer extends Logging {
       config,
       clock)
 
+    runLoop match {
+      case runLoop: RunLoop => {
+        val L = config.getLong("streamswitch.requirement.latency")
+        info("Setting latency requirement %d in container" format L)
+        runLoop.setLatencyRequirement(L)
+      }
+    }
+
     val memoryStatisticsMonitor : SystemStatisticsMonitor = new StatisticsMonitorImpl()
     memoryStatisticsMonitor.registerListener(new SystemStatisticsMonitor.Listener {
       override def onUpdate(sample: SystemMemoryStatistics): Unit = {

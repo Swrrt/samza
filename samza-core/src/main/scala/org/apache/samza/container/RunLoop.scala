@@ -57,13 +57,16 @@ class RunLoop (
   private var startTime = 0L
   // Ground truth
   private var lastGTTime = 0L
-  private var gtLatencyMap = new mutable.HashMap[Int, Long]()
+  private var gtViolationsMap = new mutable.HashMap[Int, Long]()
   private var gtTuplesMap = new mutable.HashMap[Int, Long]()
 
   @volatile private var shutdownNow = false
 
   //StreamSwitch
   @volatile var pauseLock = new ReentrantLock(true)
+
+  //StreamSluice
+  private var latencyRequirement = 0L
 
   private val coordinatorRequests: CoordinatorRequests = new CoordinatorRequests(taskInstances.keySet.asJava)
 
@@ -164,12 +167,12 @@ class RunLoop (
         //Average Ground Truth in 1 second
         val curTime = System.currentTimeMillis()
         if (curTime - lastGTTime >= 1000L) {
-          gtLatencyMap.foreach{
+          gtViolationsMap.foreach{
             case (key, value) => {
-              println("GT: " + lastGTTime + " partition: " + key +  " tuples: " + gtTuplesMap(key) + " Latency: " + gtLatencyMap(key))
+              println("GT: " + lastGTTime + " partition: " + key +  " tuples: " + gtTuplesMap(key) + " violations: " + gtViolationsMap(key))
             }
           }
-          gtLatencyMap.clear()
+          gtViolationsMap.clear()
           gtTuplesMap.clear()
           lastGTTime = (curTime / 1000L) * 1000L
         }
@@ -184,6 +187,11 @@ class RunLoop (
   def setWorkFactor(workFactor: Double): Unit = executor.setWorkFactor(workFactor)
 
   def getWorkFactor: Double = executor.getWorkFactor
+
+  //StreamSluice: For calculating per-tuple latency
+  def setLatencyRequirement(requirement: Long): Unit = {
+    latencyRequirement = requirement
+  }
 
   //StreamSwitch
   def pause: Unit = {
@@ -242,10 +250,16 @@ class RunLoop (
         val partitionId = ssp.getPartition.getPartitionId
         if (gtTuplesMap.contains(partitionId)){
           gtTuplesMap.put(partitionId, gtTuplesMap(partitionId) + 1)
-          gtLatencyMap.put(partitionId, gtLatencyMap(partitionId) + tLatency)
+          if (tLatency > latencyRequirement) {
+            gtViolationsMap.put(partitionId, gtViolationsMap(partitionId) + 1)
+          }
         }else{
           gtTuplesMap.put(partitionId, 1)
-          gtLatencyMap.put(partitionId, tLatency)
+          if (tLatency > latencyRequirement) {
+            gtViolationsMap.put(partitionId, 1)
+          }else{
+            gtViolationsMap.put(partitionId, 0)
+          }
         }
         //println("stock_id: " + ssp.getPartition.getPartitionId + " arrival_ts: " + envelope.getTimestamp + " completion_ts: " + System.currentTimeMillis())
       } else {
