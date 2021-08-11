@@ -57,6 +57,8 @@ class RunLoop (
   private var startTime = 0L
   // Ground truth
   private var lastGTTime = 0L
+
+  private var gtLatencyMap = new mutable.HashMap[Int, Long]()
   private var gtViolationsMap = new mutable.HashMap[Int, Long]()
   private var gtTuplesMap = new mutable.HashMap[Int, Long]()
 
@@ -169,11 +171,13 @@ class RunLoop (
         if (curTime - lastGTTime >= 1000L) {
           gtViolationsMap.foreach{
             case (key, value) => {
-              println("GT: " + lastGTTime + " partition: " + key +  " tuples: " + gtTuplesMap(key) + " violations: " + gtViolationsMap(key))
+              // GT: partition, tuples, latency, violations
+              println("GT: " + lastGTTime + " p: " + key +  " n: " + gtTuplesMap(key) + " l: " + gtLatencyMap(key) + " v: " + gtViolationsMap(key))
             }
           }
           gtViolationsMap.clear()
           gtTuplesMap.clear()
+          gtLatencyMap.clear()
           lastGTTime = (curTime / 1000L) * 1000L
         }
 
@@ -250,11 +254,13 @@ class RunLoop (
         val partitionId = ssp.getPartition.getPartitionId
         if (gtTuplesMap.contains(partitionId)){
           gtTuplesMap.put(partitionId, gtTuplesMap(partitionId) + 1)
+          gtLatencyMap.put(partitionId, gtLatencyMap(partitionId) + tLatency)
           if (tLatency > latencyRequirement) {
             gtViolationsMap.put(partitionId, gtViolationsMap(partitionId) + 1)
           }
         }else{
           gtTuplesMap.put(partitionId, 1)
+          gtLatencyMap.put(partitionId, tLatency)
           if (tLatency > latencyRequirement) {
             gtViolationsMap.put(partitionId, 1)
           }else{
