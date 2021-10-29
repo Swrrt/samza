@@ -927,6 +927,7 @@ public class LatencyGuarantor extends StreamSwitch {
                         if(scaleOutNumber > substreamsToMigrate.size()){
                             scaleOutNumber = substreamsToMigrate.size();
                         }
+                        HashSet<String> emptyOEs = new HashSet<>();
                         LOG.info("Scale out OEs with " + minServiceRate);
                         for(int i = 0; i < scaleOutNumber; i++){
                             long newExecutorId = nextExecutorID.get() + i;
@@ -936,6 +937,7 @@ public class LatencyGuarantor extends StreamSwitch {
                             tlist.add(0.0);
                             tlist.add(minServiceRate);
                             potentialTgts.put(tgtExecutor, tlist);
+                            emptyOEs.add(tgtExecutor);
                         }
                         LOG.info("Potential Tgts: " + potentialTgts.keySet());
                         if(potentialTgts.size() > 0) {
@@ -949,10 +951,14 @@ public class LatencyGuarantor extends StreamSwitch {
                                     double tArrival = (Double) potentialTgts.get(tgt).get(1);
                                     double tService = (Double) potentialTgts.get(tgt).get(2);
                                     double tBacklogDelay = (tBacklog + subBacklog + (tArrival + subArrival) * migrationTime) / tService;
-                                    if (finalTgt.equals("") || tBacklogDelay < minBacklogDelay) {
+                                    if (emptyOEs.contains(tgt)){
+                                        finalTgt = tgt;
+                                        break;
+                                    }else if (finalTgt.equals("") || tBacklogDelay < minBacklogDelay) {
                                         finalTgt = tgt;
                                         minBacklogDelay = tBacklogDelay;
                                     }
+
                                 }
                                 LOG.info("Migrate " + sub + " to " + finalTgt);
                                 long tBacklog = (Long) potentialTgts.get(finalTgt).get(0);
@@ -960,6 +966,7 @@ public class LatencyGuarantor extends StreamSwitch {
                                 potentialTgts.get(finalTgt).set(0, tBacklog + subBacklog);
                                 potentialTgts.get(finalTgt).set(1, tArrival + subArrival);
                                 if (!tgts.contains(finalTgt)) tgts.add(finalTgt);
+                                if (emptyOEs.contains(finalTgt)) emptyOEs.remove(finalTgt);
                                 migratingSubstreams.put(sub, new AbstractMap.SimpleEntry<>(substreamsToMigrate.get(sub), finalTgt));
                             }
                             long newExecutorId = nextExecutorID.get();
