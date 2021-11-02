@@ -123,6 +123,11 @@ class KeyValueStorageEngine[K, V](
 
     val batch = new java.util.ArrayList[Entry[Array[Byte], Array[Byte]]](batchSize)
 
+    // Checking time for consuming and rebuilding
+    val start_time = System.nanoTime()
+    var time_rebuild = 0L
+    var writeTimes = 0
+
     for (envelope <- envelopes.asScala) {
 
       val keyBytes = envelope.getKey.asInstanceOf[Array[Byte]]
@@ -132,8 +137,11 @@ class KeyValueStorageEngine[K, V](
       batch.add(new Entry(keyBytes, valBytes))
 
       if (batch.size >= batchSize) {
+        writeTimes += 1
+        val write_start_time = System.nanoTime()
         doPutAll(rawStore, batch)
         batch.clear()
+        time_rebuild += System.nanoTime() - write_start_time
       }
 
       if (valBytes != null) {
@@ -152,7 +160,8 @@ class KeyValueStorageEngine[K, V](
         info(count + " entries restored for store: " + storeName + " in directory: " + storeDir.toString + "...")
       }
     }
-
+    val time_total = System.nanoTime() - start_time
+    info("Total recovery time: " + time_total + " , write time: " + time_rebuild + " , consume time: " + (time_total - time_rebuild) + " write times: " + writeTimes + ".")
     info(count + " total entries restored for store: " + storeName + " in directory: " + storeDir.toString + ".")
 
     if (batch.size > 0) {
